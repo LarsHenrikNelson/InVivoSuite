@@ -1,7 +1,7 @@
 import multiprocessing
 from collections import namedtuple
 from itertools import combinations
-from typing import Literal
+from typing import Literal, Union
 
 import fcwt
 import KDEpy
@@ -10,7 +10,8 @@ import statsmodels.api as sm
 from numba import jit
 from numpy.polynomial import Polynomial
 from scipy import fft, interpolate, signal
-from spectrum import dpss
+
+from .tapered_spectra import multi_taper_psd
 
 
 __all__ = [
@@ -21,7 +22,7 @@ __all__ = [
     "corr_freqs",
     "create_all_freq_windows",
     "create_cwt",
-    "multitaper",
+    "multi_taper_psd",
     "create_window_ps",
     "get_ave_freq_window",
     "synchrony_cwt",
@@ -74,102 +75,6 @@ def create_cwt(array, fs, start_freq, stop_freq, steps, scaling, nthreads=-1):
     return freqs, sxx
 
 
-def multitaper(
-    acq,
-    k=5,
-    nw=3,
-    fs=1.0,
-    nperseg=10000,
-    noverlap=5000,
-    nfft=10000,
-    method: Literal["adapt", "unity", "eigen"] = "adapt",
-    ret_type: Literal["pxx", "spectrogram"] = "spectrogram",
-):
-    ndim = acq.shape
-    if len(ndim) > 2:
-        raise ValueError("Acq must a single row or column np.array")
-    if len(ndim) == 2:
-        if ndim[1] > ndim[0]:
-            acq = acq.T
-    if noverlap >= nperseg:
-        raise ValueError("noverlap must be less than nperseg.")
-    if nperseg > acq.size:
-        nperseg = acq.size
-    if nfft < nperseg:
-        raise ValueError("nfft must be greater than or equal to nperseg.")
-    step = nperseg - noverlap
-    shape = acq.shape[:-1] + ((acq.shape[-1] - noverlap) // step, nperseg)
-    strides = acq.strides[:-1] + (step * acq.strides[-1], acq.strides[-1])
-    temp = np.lib.stride_tricks.as_strided(acq, shape=shape, strides=strides)
-    # tapers, eigenvalues = signal.windows.dpss(nperseg, nw, k, return_ratios=True)
-    tapers, eigenvalues = dpss(nperseg, NW=3, k=5)
-    tapers = tapers.T
-    p = np.zeros((temp.shape[0], k, temp.shape[1]))
-    for i in range(k):
-        p[:, i, :] = temp
-    w = fft.fft(p * tapers, n=nfft)
-    sk = np.abs(w) ** 2
-
-    # Create weights
-    weights = create_mt_weights(sk, temp, nfft, eigenvalues, method)
-    sk *= weights
-    Sxx = np.mean(sk, axis=1).T
-    if nfft % 2 == 0:
-        freqs = np.linspace(0, fs * 0.5, (nfft // 2) + 1)
-        Sxx = Sxx[0 : (Sxx.shape[0] // 2) + 1,]
-    else:
-        freqs = np.linspace(0, fs * 0.5, (nfft + 1) // 2)
-        Sxx = Sxx[0 : (Sxx.shape[0] + 1) // 2,]
-    if ret_type == "spectrogram":
-        return freqs, Sxx
-    elif ret_type == "pxx":
-        Pxx = Sxx.mean(axis=1)
-        return freqs, Pxx
-    else:
-        raise ValueError("ret_type must be: spectrogram or pxx")
-
-
-# %%
-# Vectorized DPSS FFT
-def create_mt_weights(sk, temp, nfft, eigenvalues, method):
-    if method == "adapt":
-        p = np.zeros((temp.shape[0], eigenvalues.size, temp.shape[1]))
-        for i in range(5):
-            p[:, i, :] = temp
-        sig = np.diag(np.dot(temp, temp.T) / float(temp[0].size))
-        s = (sk.T[:, 0, :] + sk.T[:, 1, :]) / 2  # Initial spectrum estimate
-        tols = 0.0005 * sig / float(nfft)
-        eig = np.full((temp.shape[0], eigenvalues.size), eigenvalues)
-        a = sig.reshape((sig.size, 1)) * (1 - eig)
-        weights = np.zeros(sk.shape)
-        for index in range(tols.size):
-            i = 0
-            S = s[:, index].reshape((nfft, 1))
-            S1 = np.zeros((nfft, 1))
-            wk = np.ones((nfft, 1)) * eigenvalues.T
-            while np.sum(np.abs(S - S1)) / nfft > tols[index] and i < 100:
-                i = i + 1
-                # calculate weights
-                b1 = np.multiply(S, np.ones((1, eigenvalues.size)))
-                b2 = np.multiply(S, eigenvalues.T) + np.ones((nfft, 1)) * a[index].T
-                b3 = b1 / b2
-
-                # calculate new spectral estimate
-                wk = (b3**2) * (np.ones((nfft, 1)) * eigenvalues.T)
-                S1 = np.sum(wk.T * sk[index], axis=0) / np.sum(wk.T, axis=0)
-                S1 = S1.reshape(nfft, 1)
-                S, S1 = S1, S  # swap S and S1
-            weights[index] = wk.T
-    elif method == "unity":
-        weights = np.ones((temp.shape[0], eigenvalues.size, temp.shape[1]))
-    elif method == "eigen":
-        weights = eigenvalues / np.arange(1, eigenvalues.size + 1)
-        weights = weights.reshape(1, eigenvalues.size, 1)
-    else:
-        raise ValueError("method must be adapt, unity, or eigen")
-    return weights
-
-
 def find_logpx_baseline(
     acq,
     fs=1000,
@@ -187,22 +92,27 @@ def find_logpx_baseline(
         "LeastSquares",
     ] = "AndrewWave",
     window: str = "hann",
-    k: int = 5,
-    nw: float = 3.0,
+    NW: float = 2.5,
+    BW: Union[float, None] = None,
+    adaptive=False,
+    jackknife=True,
+    low_bias=True,
+    sides="default",
+    NFFT=None,
 ):
     if window != "dpss":
         f, px = signal.welch(acq, fs=fs, nperseg=nperseg, noverlap=noverlap, nfft=nfft)
     elif window == "dpss":
-        f, px = multitaper(
+        f, px, nu = multi_taper_psd(
             acq,
-            k=k,
-            nw=nw,
             fs=fs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            nfft=nfft,
-            method="adapt",
-            ret_type="pxx",
+            NW=NW,
+            BW=BW,
+            adaptive=adaptive,
+            jackknife=jackknife,
+            low_bias=low_bias,
+            sides=sides,
+            NFFT=NFFT,
         )
     else:
         raise ValueError("Window must be specified.")
@@ -506,8 +416,7 @@ def coherence(
 
 
 def phase_slope_index(
-    acq1,
-    acq2,
+    cohy,
     fs=1000,
     noverlap=1000,
     nperseg=10000,
@@ -515,19 +424,9 @@ def phase_slope_index(
     window="hamming",
     f_band=[4, 10],
 ):
-    cohy = coherence(
-        acq1,
-        acq2,
-        fs=fs,
-        noverlap=noverlap,
-        nperseg=nperseg,
-        nfft=nfft,
-        window=window,
-        ret_type="cohy",
-    )
     freqs = np.linspace(0, fs * 0.5, cohy.size)
-    f_ind = np.where((freqs > f_band[0]) & (freqs < f_band[1]))
-    psi = np.sum(np.conj(cohy[f_ind[0] : f_ind[-2]] * cohy[f_ind[1] : f_ind[-1]])).imag
+    f_ind = np.where((freqs > f_band[0]) & (freqs < f_band[1]))[0]
+    psi = np.sum(np.conj(cohy[f_ind[0] : f_ind[-2]] * cohy[f_ind[1] : f_ind[-1]]).imag)
     return psi
 
 
@@ -618,7 +517,7 @@ def find_bursts(
     bursts = []
     for index, i in enumerate(bursts_temp):
         start = i[0]
-        end = i[-1]
+        end = i[-1] + 1
         end_temp = signal.argrelmin(ste[end : end + int(post * fs)], order=order)[0]
         if end_temp.size == 0:
             end_temp = end
@@ -711,7 +610,6 @@ BurstStats = namedtuple(
 )
 
 
-@jit(nopython=True)
 def burst_stats(acq, bursts, baseline, fs):
     ave_len = np.mean(bursts[:, 1] - bursts[:, 0]) / fs
     iei = np.mean(np.diff(bursts[:, 0])) / fs
@@ -757,6 +655,18 @@ def burst_flatness(burst, nperseg=200, noverlap=0):
     return flatness
 
 
+@jit(nopython=True)
+def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
+    power_dict = {}
+    burst = burst_pxx.mean(axis=0)
+    baseline = baseline_pxx.mean(axis=0)
+    norm = burst - baseline
+    for key, value in freq_dict.items():
+        f_ind = np.where((freqs >= value[0]) & (freqs < value[1]))[0]
+        power_dict[key] = np.mean(np.mean(norm[f_ind]))
+    return power_dict
+
+
 def get_lfp_seg_pxx(acq, bursts, nperseg=100, noverlap=50, nfft=4096, fs=1000):
     burst_wav = np.zeros((bursts.shape[0], nfft // 2 + 1))
     for index, i in enumerate(bursts):
@@ -769,17 +679,6 @@ def get_lfp_seg_pxx(acq, bursts, nperseg=100, noverlap=50, nfft=4096, fs=1000):
         )
         burst_wav[index] = p
     return freq, burst_wav
-
-
-def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
-    power_dict = {}
-    burst = burst_pxx.mean(axis=0)
-    baseline = baseline_pxx.mean(axis=0)
-    norm = burst - baseline
-    for key, value in freq_dict.items():
-        f_ind = np.where((freqs >= value[0]) & (freqs < value[1]))[0]
-        power_dict[key] = np.mean(np.mean(norm[f_ind]))
-    return power_dict
 
 
 def burst_iti():

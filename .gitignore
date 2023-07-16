@@ -12,3 +12,4 @@ exp_manager.py
 dpss.cpp
 .vscode
 __pycache__
+stats.r

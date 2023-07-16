@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Literal, Union
 
 import h5py
@@ -28,40 +30,34 @@ class AcqManager(SpkManager, LFPManager):
         self.file = None
         self.file_open = False
 
-    def load_pl2_acq(
+    def create_hdf5_file(
         self,
-        array,
-        sample_rate,
-        acq_number,
-        start=0,
-        end=24000000,
+        acqs,
+        sample_rates,
+        coeffs,
+        units,
+        enabled,
         identifier="",
         save_path="",
     ):
-        if len(save_path) < 1:
-            self.file_path = f"acq_{acq_number}.hdf5"
+        if save_path == "":
+            save_path = os.getcwd()
+            self.file_path = f"{save_path}.hdf5"
         else:
-            self.file_path = f"{save_path}/acq_{acq_number}.hdf5"
+            save_path = Path(save_path)
+            if not save_path.exists():
+                save_path.mkdir()
+            save_path = save_path / identifier
+            self.file_path = f"{save_path}.hdf5"
         self.file = h5py.File(self.file_path, "a")
-        self.file.create_dataset("array", data=array[start:end])
-        self.file.attrs.create("acq_number", acq_number)
-        self.file.attrs.create("sample_rate", sample_rate)
-        self.file.attrs.create("rec_len", (end - start) / sample_rate)
-        self.file.attrs.create("id", identifier)
+        self.file.create_dataset("acqs", data=acqs)
+        self.file.create_dataset("coeffs", data=coeffs)
+        self.file.create_dataset("sample_rate", data=sample_rates)
+        self.file.create_dataset("id", data=identifier)
+        self.file.create_dataset("units", data=units)
+        self.file.create_dataset("enabled", data=enabled)
         self.file.close()
         self.file_open = False
-
-    @property
-    def sample_rate(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        return self.file.attrs.get("sample_rate")
-
-    @property
-    def acq_number(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        return self.file.attrs.get("acq_number")
 
     def load_hdf5_file(self, file_path):
         self.file_path = file_path
@@ -195,7 +191,7 @@ class AcqManager(SpkManager, LFPManager):
             )
         return filtered_array
 
-    def create_acq(
+    def set_filter(
         self,
         acq_type: Literal["spike", "lfp"],
         filter_type: Filters = "fir_zero_2",
@@ -239,11 +235,20 @@ class AcqManager(SpkManager, LFPManager):
                 value = "None"
             self.set_grp_attr(grp, key, value)
 
-    def acq(self, acq_type: Literal["spike", "lfp", "raw"]):
+    def acq(
+        self,
+        acq_type: Literal["spike", "lfp", "raw"],
+        acq_num: int,
+        start: int = 0,
+        end: int = 24000000,
+    ):
         if not self.file_open:
             self.load_hdf5_acq()
         if acq_type == "raw":
-            return self.file["array"][()]
+            return (
+                self.file["acqs"][acq_num - 1, start:end]
+                * self.file["coeffs"][acq_num - 1]
+            )
         grp = self.file[acq_type]
         input_dict = {
             "sample_rate": grp.attrs["sample_rate"],
@@ -259,7 +264,9 @@ class AcqManager(SpkManager, LFPManager):
         for key, value in input_dict.items():
             if value == "None":
                 input_dict[key] = None
-        array = self.file["array"][()]
+        array = (
+            self.file["acqs"][acq_num - 1, start:end] * self.file["coeffs"][acq_num - 1]
+        )
         acq = self.filter_array(
             array,
             sample_rate=self.sample_rate,
@@ -278,26 +285,7 @@ class AcqManager(SpkManager, LFPManager):
             )
         return acq
 
-    def acq_data(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        items = [
-            "acq_number",
-            "burst_freq",
-            "num_bursts",
-            "ave_burst_len",
-            "intra_burst_iei",
-            "ave_spikes_burst",
-            "ave_iei_burst",
-            "spike_freq",
-        ]
-        attrs = {}
-        for i in items:
-            if self.file.attrs.get(i):
-                attrs[i] = self.file.attrs[i]
-        return attrs
-
-    def set_acq_attr(self, attr, data):
+    def set_file_attr(self, attr, data):
         if not self.file_open:
             self.load_hdf5_acq()
         if not self.file.attrs.get(attr):
@@ -312,10 +300,6 @@ class AcqManager(SpkManager, LFPManager):
             grp.attrs.create(attr, data)
         else:
             grp.attrs[attr] = data
-
-    @property
-    def rec_len(self):
-        return self.file.attrs.get("rec_len")
 
     def close(self):
         if self.file is not None:

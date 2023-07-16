@@ -1,39 +1,20 @@
 # %%
+from pathlib import Path
+
 import h5py
+import numpy as np
+import pandas as pd
 
 from invivosuite.acq import lfp
-from invivosuite.acq import load_hdf5_acqs, load_pl2_acqs
+from invivosuite.acq import load_hdf5_acqs, load_pl2_acqs, load_ad
+from invivosuite.acq.pypl2 import pl2_ad
 
 # %%
-file_path = "D:/in_vivo_ephys/2023_03_20/FKO.pl2"
-save_path = "D:/in_vivo_ephys/2023_03_20/FKO"
-acqs = load_pl2_acqs(file_path, save_path)
-for i in acqs:
-    i.close()
-
-# %%
-# Load data
-file_path = "D:/in_vivo_ephys/2023_03_17/FL5_KO"
-# file_path = "/Volumes/Backup/in_vivo_ephys/2023_03_17/FL5_KO"
-acqs = load_hdf5_acqs(file_path)
-
-# %%
-for i in acqs:
-    i.cwt_settings()
-    i.close()
-
-# %%
-freq_dict = {"theta": (4, 10), "gamma": (30, 80), "beta": (12, 30)}
-for index, i in enumerate(acqs):
-    i.create_all_freq_windows(freq_dict, "cwt", nthreads=10)
-    i.calc_all_pdi(freq_dict, nthreads=10)
-    print(f"Acq {index+1} out of {len(acqs)}")
-    i.close()
-
-# %%
-for index, i in enumerate(acqs):
-    print(index)
-    i.find_spikes(spike_start=50, spike_end=50, n_threshold=4.5, p_threshold=0.0)
+file_paths = list(Path("D:\in_vivo_ephys").rglob("*.hdf5"))
+for file_path in file_paths:
+    f = h5py.File(file_path, "r+")
+    # add code to modify files here
+    f.close()
 
 # %%
 for index, i in enumerate(acqs):
@@ -99,6 +80,41 @@ acqs = {}
 for key, value in pc_paths.items():
     temp = load_hdf5_acqs(value)
     acqs[key] = temp
+
+# %%
+elec_map = pd.read_excel(
+    "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/mapping.xlsx"
+)
+# elec_map = pd.read_excel(
+#     "/Users/larsnelson/OneDrive - University of Pittsburgh/mapping.xlsx"
+# )
+elec_map.sort_values("Depth", inplace=True)
+acq_pos = elec_map["Acq"].to_numpy().flatten()
+acq_pos = np.concatenate((acq_pos, acq_pos + 64))
+
+
+# %%
+g = np.zeros((128, 128))
+t = np.zeros((128, 128))
+b = np.zeros((128, 128))
+for key, value in acqs.items():
+    print(key)
+    lfps = np.zeros((128, 600000))
+    for p in range(128):
+        lfps[p] = acqs[key][acq_pos[p]].acq("lfp")
+        acqs[key][acq_pos[p]].close()
+    for i in range(64, 128):
+        for j in range(0, 64):
+            print(i, j)
+            cohy = lfp.coherence(lfps[i], lfps[j], ret_type="cohy")
+            t[i, j] = lfp.phase_slope_index(cohy, f_band=[4, 10])
+            g[i, j] = lfp.phase_slope_index(cohy, f_band=[30, 80])
+            b[i, j] = lfp.phase_slope_index(cohy, f_band=[12, 30])
+    file = h5py.File(f"{pc_paths[key]}_acc_to_dms_psi.hdf5", "a")
+    file.create_dataset("gamma", data=g)
+    file.create_dataset("theta", data=t)
+    file.create_dataset("beta", data=b)
+    file.close()
 
 # %%
 for key, value in acqs.items():

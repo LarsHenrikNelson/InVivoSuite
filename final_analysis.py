@@ -2,8 +2,8 @@
 import sys
 from pathlib import Path
 
-# sys.path.append(r"D:/working_python_files")
-sys.path.append(r"/Volumes/Backup/working_python_files")
+sys.path.append(r"D:/working_python_files")
+# sys.path.append(r"/Volumes/Backup/working_python_files")
 
 import h5py
 import matplotlib.gridspec as grid_spec
@@ -16,6 +16,7 @@ import seaborn as sns
 import seaborn.objects as so
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+import statsmodels.formula.api as smf
 from KDEpy import FFTKDE
 from new_plot_funcs import plot_two_way
 from seaborn import axes_style
@@ -24,21 +25,28 @@ from stats_functions import two_way_anova
 from invivosuite import utils
 
 # %%
-# df = pd.read_excel("D:/in_vivo_ephys/final_data.xlsx")
-# elec_map = pd.read_excel(
-#     "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/mapping.xlsx"
-# )
-df = pd.read_excel("/Volumes/Backup/in_vivo_ephys/final_data.xlsx")
+df = pd.read_excel("D:/in_vivo_ephys/final_data.xlsx")
 elec_map = pd.read_excel(
-    "/Users/larsnelson/OneDrive - University of Pittsburgh/mapping.xlsx"
+    "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/mapping.xlsx"
 )
+# df = pd.read_excel("/Volumes/Backup/in_vivo_ephys/final_data.xlsx")
+# elec_map = pd.read_excel(
+#     "/Users/larsnelson/OneDrive - University of Pittsburgh/mapping.xlsx"
+# )
 
 # %%
 df["genotype"].replace({"ko": "Shank3B-/-", "wt": "Shank3B+/+"}, inplace=True)
 df["sex"] = df["sex"].str.capitalize()
+df["un_id"] = df["date_rec"] + "_" + df["id"] + "_" + df["sex"]
 df_acc = df[df["Plexon"] > 64].copy(deep=True)
 df_dms = df[(df["Plexon"] < 65) & (df["Depth"] > 31)].copy(deep=True)
 df_cortex = df[(df["Plexon"] < 65) & (df["Depth"] < 32)].copy(deep=True)
+
+# %%
+with pd.ExcelWriter(f"data_by_area.xlsx", mode="w", engine="openpyxl") as writer:
+    df_acc.to_excel(writer, index=False, sheet_name="acc")
+    df_dms.to_excel(writer, index=False, sheet_name="dms")
+    df_cortex.to_excel(writer, index=False, sheet_name="cortex")
 
 
 # %%
@@ -70,11 +78,14 @@ print(acc_aov["PR(>F)"])
 print(dms_aov["PR(>F)"])
 print(cortex_aov["PR(>F)"])
 
+# %%
+md = smf.mixedlm("lfp_burst_len ~ sex+genotype", df_acc, groups=df_acc["un_id"])
+
 
 # %%
-save_path = "/Users/larsnelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/acc/"
+save_path = "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/dms/"
 fig, ax = plot_two_way(
-    df=df_acc,
+    df=df_dms,
     group="genotype",
     subgroup="sex",
     y="lfp_bursts_iei",
@@ -85,7 +96,7 @@ fig, ax = plot_two_way(
     x_pval=0.8,
     color=None,  # {"Male": "darkorange", "Female": "slateblue"},
     alpha=0.5,
-    y_lim=[None, None],
+    y_lim=[1, 5.5],
     y_scale="linear",
     steps=5,
     aspect=0.8 / 1,
@@ -98,12 +109,12 @@ fig, ax = plot_two_way(
 # %%
 plt.rcParams["axes.formatter.use_mathtext"] = True
 # save_path = "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/acc"
-save_path = "/Users/larsnelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/acc"
+save_path = "/Users/larsnelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/dms"
 fig, ax = plot_two_way2(
-    df=df_acc,
+    df=df_dms,
     group="genotype",
     subgroup="sex",
-    y="beta",
+    y="",
     order=[r"Shank3B+/+", r"Shank3B-/-"],
     hue_order=["Male", "Female"],
     y_label="Bursts len (sec)",
@@ -111,7 +122,7 @@ fig, ax = plot_two_way2(
     x_pval=0.8,
     color=None,  # {"Male": "darkorange", "Female": "slateblue"},
     alpha=0.5,
-    y_lim=[None, None],
+    y_lim=[1, 5],
     y_scale="log",
     steps=5,
     aspect=0.8 / 1,
@@ -121,10 +132,10 @@ fig, ax = plot_two_way2(
 )
 
 # %%
-pp = list(Path("D:/in_vivo_ephys").glob("**/*_icohere.hdf5"))
+pp = list(Path("D:/in_vivo_ephys").glob("**/*acc_to_dms_psi.hdf5"))
 mscoh = {}
 for i in pp:
-    mscoh[i.stem.split("_p")[0]] = h5py.File(i, "r+")
+    mscoh[i.stem.split("_a")[0]] = h5py.File(i, "r+")
 fwt = ["FN_WT", "FWT", "FL_WT"]
 mwt = ["ML5_WT", "ML1_WT", "ML", "MLL"]
 fko = ["FL5_KO", "FKO"]
@@ -164,7 +175,7 @@ sex = {
 
 dates = {}
 for i in pp:
-    dates[i.stem.split("_p")[0]] = str(i.parent).split("\\")[-1]
+    dates[i.stem.split("_a")[0]] = str(i.parent).split("\\")[-1]
 
 # %%
 theta = {}
@@ -177,7 +188,7 @@ for key, val in mscoh.items():
 
 # %%
 dat, ind = utils.compile_pairwise_data(
-    beta, v_ind=(32, 64), h_ind=(64, 128), offset=1, ret_type="square"
+    beta, v_ind=(64, 128), h_ind=(32, 64), offset=0, ret_type="square"
 )
 dms_acc_df = (
     pd.DataFrame(data=dat)
@@ -193,8 +204,8 @@ dms_acc_df["sex"] = dms_acc_df["id"].replace(sex)
 dms_acc_df["group"] = dms_acc_df["gt"] + "_" + dms_acc_df["sex"]
 dms_acc_df["id2"] = dms_acc_df["date"] + "_" + dms_acc_df["id"]
 
-dat_g = utils.compile_pairwise_data(
-    gamma, v_ind=(32, 64), h_ind=(64, 128), offset=1, ret_type="square"
+dat_g, ind = utils.compile_pairwise_data(
+    gamma, v_ind=(64, 128), h_ind=(32, 64), offset=1, ret_type="square"
 )
 gamma_dms_acc_df = (
     pd.DataFrame(data=dat_g)
@@ -204,8 +215,8 @@ gamma_dms_acc_df = (
     .drop(columns="level_0")
     .rename(columns={"level_1": "id", 0: "gamma"})
 )
-dat_t = utils.compile_pairwise_data(
-    theta, v_ind=(32, 64), h_ind=(64, 128), offset=1, ret_type="square"
+dat_t, ind = utils.compile_pairwise_data(
+    theta, v_ind=(64, 128), h_ind=(32, 64), offset=1, ret_type="square"
 )
 theta_dms_acc_df = (
     pd.DataFrame(data=dat_t)
@@ -219,9 +230,7 @@ dms_acc_df["theta"] = theta_dms_acc_df["theta"]
 dms_acc_df["gamma"] = gamma_dms_acc_df["gamma"]
 
 # %%
-mdf = smf.mixedlm(
-    "theta~sex*gt", data=dms_acc_df, groups=dms_acc_df["id2"], re_formula="~"
-).fit()
+mdf = smf.mixedlm("theta~sex*gt", data=dms_acc_df, groups=dms_acc_df["id2"]).fit()
 mdf.summary()
 
 # %%
@@ -230,7 +239,22 @@ ds_acc, acc_aov, acc_posthoc = two_way_anova(
 )
 
 # %%
-save_path = "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/coherence_maps/icohere/"
+theta_sum = dms_acc_df.groupby(["gt", "sex"])["theta"].agg(
+    ["count", "mean", "median", "std", "sem"]
+)
+gamma_sum = dms_acc_df.groupby(["gt", "sex"])["gamma"].agg(
+    ["count", "mean", "median", "std", "sem"]
+)
+
+beta_sum = dms_acc_df.groupby(["gt", "sex"])["beta"].agg(
+    ["count", "mean", "median", "std", "sem"]
+)
+print(theta_sum)
+print(gamma_sum)
+print(beta_sum)
+
+# %%
+save_path = "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/coherence_maps/psi/"
 fig, ax = plot_two_way(
     df=dms_acc_df,
     group="gt",
@@ -238,18 +262,18 @@ fig, ax = plot_two_way(
     y="beta",
     order=[r"Shank3B+/+", r"Shank3B-/-"],
     hue_order=["Male", "Female"],
-    y_label="Beta iCohere",
+    y_label="Beta PSI",
     title="",
     x_pval=0.8,
     color=None,  # {"Male": "darkorange", "Female": "slateblue"},
     alpha=0.05,
-    y_lim=[10**-3, 10**0],
-    y_scale="log",
+    y_lim=[-0.002, 0.006],
+    y_scale="linear",
     steps=5,
-    decimals=3,
+    decimals=5,
     aspect=0.8 / 1,
     color_pval=0.05551,
-    path=save_path,
+    # path=save_path,
     filetype="png",
 )
 

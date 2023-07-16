@@ -2,29 +2,44 @@ from collections import namedtuple
 from typing import Union
 from pathlib import Path, PurePath
 
-from .pypl2 import PL2FileInfo, PL2AnalogChannelInfo, PyPL2FileReader, pl2_ad
+import numpy as np
+
+from .pypl2 import (
+    PL2FileInfo,
+    PL2AnalogChannelInfo,
+    PL2SpikeChannelInfo,
+    PL2DigitalChannelInfo,
+    PyPL2FileReader,
+    pl2_ad,
+    pl2_spikes,
+    pl2_events,
+    pl2_info,
+    pl2_comments,
+)
 from .acq_manager import AcqManager
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 
 
 def load_pl2_acqs(
-    file_path: str,
-    save_path: str,
-    start: int = 0,
-    end: int = 24000000,
-    identifier: str = "",
+    pl2_path: str,
+    save_path: str = "",
 ):
-    if not _path_checker(file_path, save_path):
+    name = PurePath(pl2_path).stem
+    if not _path_checker(pl2_path, save_path):
         return None
     reader = PyPL2FileReader()
-    handle = reader.pl2_open_file(file_path)
+    handle = reader.pl2_open_file(pl2_path)
     file_info = PL2FileInfo()
     res = reader.pl2_get_file_info(handle, file_info)
     if res == 0:
         return None
-    channels = file_info.m_TotalNumberOfAnalogChannels
-    ad_channels = []
+    channels = file_info.m_TotalNumberOfSpikeChannels
+    acqs = None
+    fs = np.zeros(channels)
+    coeffs = np.zeros(channels)
+    units = []
+    enabled = np.zeros(channels, np.int16)
     for i in range(0, channels):
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
@@ -33,15 +48,20 @@ def load_pl2_acqs(
             and ad_res != 0
             and ad_info.m_Name.decode("ascii")[:2] == "WB"
         ):
-            data = pl2_ad(file_path, i)
-            acq = AcqManager()
-            acq.load_pl2_acq(
-                data.ad, int(data.adfrequency), i, start, end, identifier, save_path
-            )
-            ad_channels.append(acq)
-
+            data = pl2_ad(pl2_path, i)
+            enabled[i] = 1
+            if acqs is None:
+                acqs = np.zeros((channels, data.ad.size), np.int16)
+            acqs[i] = data.ad[: data.ad.size]
+            fs[i] = data.adfrequency
+            coeffs[i] = data.coeff
+            units.append(ad_info.m_Units)
+    acq_man = AcqManager()
+    if save_path == "":
+        save_path = Path(pl2_path).parent
+    acq_man.load_acqs(acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
-    return ad_channels
+    return acq_man
 
 
 def load_hdf5_acqs(directory: str):

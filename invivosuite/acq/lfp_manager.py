@@ -17,19 +17,7 @@ class LFPManager:
             scaling=scaling,
         )
 
-    def welch_settings(
-        self, nperseg, noverlap, nfft, window=("tukey", 0.25), scaling="density"
-    ):
-        self.pxx_settings(
-            "windowed",
-            nperseg=nperseg,
-            noverlap=noverlap,
-            nfft=nfft,
-            window=window,
-            scaling=scaling,
-        )
-
-    def periodgram_settings(
+    def set_periodgram(
         self,
         nperseg=2048,
         noverlap=0,
@@ -46,9 +34,30 @@ class LFPManager:
             scaling=scaling,
         )
 
+    def set_multitaper(
+        self,
+        NW=2.5,
+        BW=None,
+        adaptive=False,
+        jackknife=True,
+        low_bias=True,
+        sides="default",
+        NFFT=None,
+    ):
+        self.pxx_settings(
+            "multitaper",
+            NW=NW,
+            BW=BW,
+            adaptive=adaptive,
+            jackknife=jackknife,
+            low_bias=low_bias,
+            sides=sides,
+            NFFT=NFFT,
+        )
+
     def pxx_settings(
         self,
-        pxx_type: Literal["cwt", "windowed", "multitaper", "welch", "spectrogram"],
+        pxx_type: Literal["cwt", "windowed", "multitaper", "spectrogram"],
         **kwargs,
     ):
         if not self.file_open:
@@ -215,57 +224,62 @@ class LFPManager:
     ):
         if not self.file_open:
             self.load_hdf5_acq()
-        acq = self.acq("lfp")
-        bursts = lfp.find_bursts(
-            acq,
-            window=window,
-            min_len=min_len,
-            max_len=max_len,
-            min_burst_int=min_burst_int,
-            wlen=wlen,
-            threshold=threshold,
-            fs=self.file["lfp"].attrs["sample_rate"],
-            pre=pre,
-            post=post,
-            order=order,
-            method=method,
-            tol=tol,
-            deg=deg,
-        )
-        input_dict = {
-            "window": window,
-            "min_len": min_len,
-            "max_len": max_len,
-            "min_burst_int": min_burst_int,
-            "wlen": wlen,
-            "threshold": threshold,
-            "pre": pre,
-            "post": post,
-            "order": order,
-            "method": method,
-            "tol": tol,
-            "deg": deg,
-        }
-        if self.file.get("burst_settings"):
-            grp = self.file["burst_settings"]
-        else:
-            grp = self.file.create_group("burst_settings")
-        for key, value in input_dict.items():
-            if value is None:
-                value = "None"
-            self.set_grp_attr(grp, key, value)
-        if self.file.get("lfp_bursts"):
-            del self.file["lfp_bursts"]
-            self.file.create_dataset("lfp_bursts", data=bursts)
-        else:
-            self.file.create_dataset(
-                "lfp_bursts",
-                dtype=bursts.dtype,
-                shape=bursts.shape,
-                maxshape=(acq.size, 2),
+        for i in range(self.file["acqs"].shape[0]):
+            acq = self.acq(
+                "lfp",
+                i,
             )
-            self.file["lfp_bursts"].resize(bursts.shape)
-            self.file["lfp_bursts"][...] = bursts
+            bursts = lfp.find_bursts(
+                acq,
+                window=window,
+                min_len=min_len,
+                max_len=max_len,
+                min_burst_int=min_burst_int,
+                wlen=wlen,
+                threshold=threshold,
+                fs=self.file["lfp"].attrs["sample_rate"],
+                pre=pre,
+                post=post,
+                order=order,
+                method=method,
+                tol=tol,
+                deg=deg,
+            )
+            input_dict = {
+                "window": window,
+                "min_len": min_len,
+                "max_len": max_len,
+                "min_burst_int": min_burst_int,
+                "wlen": wlen,
+                "threshold": threshold,
+                "pre": pre,
+                "post": post,
+                "order": order,
+                "method": method,
+                "tol": tol,
+                "deg": deg,
+            }
+            if self.file.get("bursts"):
+                parent_grp = self.file["bursts"]
+            else:
+                parent_grp = self.file.create_group("bursts")
+            grp = parent_grp.create_group(i + 1)
+            for key, value in input_dict.items():
+                if value is None:
+                    value = "None"
+                self.set_grp_attr(grp, key, value)
+            if grp.get("lfp_bursts"):
+                del grp["lfp_bursts"]
+                grp.create_dataset("lfp_bursts", data=bursts)
+            else:
+                grp.create_dataset(
+                    "lfp_bursts",
+                    dtype=bursts.dtype,
+                    shape=bursts.shape,
+                    maxshape=(acq.size, 2),
+                )
+                grp["lfp_bursts"].resize(bursts.shape)
+                grp["lfp_bursts"][...] = bursts
 
     def get_lfp_burst_indexes(self):
         if not self.file_open:

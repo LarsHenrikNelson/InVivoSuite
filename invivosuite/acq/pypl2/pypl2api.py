@@ -22,7 +22,6 @@ def print_error(pypl2_file_reader_instance):
 
 
 def pl2_ad(filename, channel):
-
     """
     Reads continuous data from specific file and channel.
 
@@ -127,7 +126,9 @@ def pl2_ad(filename, channel):
         return 0
 
     # Create a named tuple called PL2Ad.
-    PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
+    PL2Ad = namedtuple(
+        "PL2Ad", ["adfrequency", "n", "timestamps", "fragmentcounts", "ad", "coeff"]
+    )
 
     tmp_fragment_timestamps = []
     for i in range(num_fragments_returned.value):
@@ -141,8 +142,8 @@ def pl2_ad(filename, channel):
         num_data_points_returned.value,
         tuple(tmp_fragment_timestamps),
         tuple([x for x in fragment_counts if x]),
-        np.ctypeslib.as_array(values, shape=num_data_points_returned.value)
-        * achannel_info.m_CoeffToConvertToUnits,
+        np.ctypeslib.as_array(values, shape=num_data_points_returned.value),
+        achannel_info.m_CoeffToConvertToUnits,
     )
 
 
@@ -430,16 +431,18 @@ def pl2_info(filename):
 
     # If the handle is 0, print error message and return 0.
     if handle == 0:
+        print("handle error")
         print_error(p)
         return 0
 
-    # Create instance of PL2FileInfo.
+    # Create instance of PL2FileInfo
     file_info = PL2FileInfo()
 
     res = p.pl2_get_file_info(handle, file_info)
     # If res is 0, print error message and return 0.
 
     if res == 0:
+        print("info error")
         print_error(p)
         return 0
 

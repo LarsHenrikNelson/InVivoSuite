@@ -38,6 +38,7 @@ class PL2FileInfo(Structure):
         ("m_NumberOfChannelHeaders", c_uint),
         ("m_TotalNumberOfSpikeChannels", c_uint),
         ("m_NumberOfRecordedSpikeChannels", c_uint),
+        ("m_TotalNumberOfAnalogChannels", c_uint),
         ("m_NumberOFRecordedAnalogChannels", c_uint),
         ("m_NumberOfDigitalChannels", c_uint),
         ("m_MinimumTrodality", c_uint),
@@ -124,8 +125,10 @@ class PyPL2FileReader:
         Returns:
             None
         """
+        wdir = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
         self.platform = platform.architecture()[0]
-        self.pl2_dll_path = os.path.abspath(pl2_dll_path)
+        path = r"\bin"
+        self.pl2_dll_path = os.path.abspath(wdir + path)
 
         if self.platform == "32bit":
             self.pl2_dll_file = os.path.join(self.pl2_dll_path, "PL2FileReader.dll")
