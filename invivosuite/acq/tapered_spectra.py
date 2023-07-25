@@ -704,7 +704,7 @@ def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     return jk_var
 
 
-def multi_taper_psd(
+def multitaper(
     s,
     fs=2 * np.pi,
     NW=None,

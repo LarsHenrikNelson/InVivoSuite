@@ -67,9 +67,9 @@ def load_pl2_acqs(
 def load_hdf5_acqs(directory: str):
     path = Path(directory)
     acqs = []
-    for i in path.glob("*.hdf5"):
+    for i in path.rglob("*.hdf5"):
         acq = AcqManager()
-        acq.load_hdf5_file(i)
+        acq.set_hdf5_file(i)
         acqs.append(acq)
     return acqs
 

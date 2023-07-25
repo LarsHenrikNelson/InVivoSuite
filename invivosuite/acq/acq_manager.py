@@ -5,27 +5,15 @@ from typing import Literal, Union
 import h5py
 from scipy import signal
 
-from .filtering_functions import (
-    Filters,
-    Windows,
-    bessel,
-    bessel_zero,
-    butterworth,
-    butterworth_zero,
-    ewma_afilt,
-    ewma_filt,
-    fir_zero_1,
-    fir_zero_2,
-    median_filter,
-    remez_1,
-    remez_2,
-    savgol_filt,
-)
+from .filtering_functions import Filters, Windows, filter_array
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
 
 
 class AcqManager(SpkManager, LFPManager):
+    filters = Filters
+    windows = Windows
+
     def __init__(self):
         self.file = None
         self.file_open = False
@@ -56,145 +44,27 @@ class AcqManager(SpkManager, LFPManager):
         self.file.create_dataset("id", data=identifier)
         self.file.create_dataset("units", data=units)
         self.file.create_dataset("enabled", data=enabled)
-        self.file.close()
-        self.file_open = False
+        self.file.set_file_attr("start", 0)
+        self.file.set_file_attr("end", acqs.shape[1])
+        self.close()
 
-    def load_hdf5_file(self, file_path):
+    def set_hdf5_file(self, file_path):
         self.file_path = file_path
-        self.file = h5py.File(self.file_path, "r+")
-        self.file_open = True
 
-    def load_hdf5_acq(self):
-        self.file = h5py.File(self.file_path, "r+")
-        self.file_open = True
+    def open(self):
+        if not self.file_open:
+            self.file = h5py.File(self.file_path, "r+")
+            self.file_open = True
 
-    def downsample(self, array, resample_freq, up_sample):
-        ratio = int(self.sample_rate / resample_freq)
+    def downsample(self, array, sample_rate, resample_freq, up_sample):
+        ratio = int(sample_rate / resample_freq)
         resampled = signal.resample_poly(array, up_sample, up_sample * ratio)
         return resampled
-
-    def filter_array(
-        self,
-        array,
-        sample_rate,
-        filter_type: Filters = "butterworth_zero",
-        order: Union[None, int] = 301,
-        highpass: Union[int, float, None] = None,
-        high_width: Union[int, float, None] = None,
-        lowpass: Union[int, float, None] = None,
-        low_width: Union[int, float, None] = None,
-        window: Windows = "hann",
-        polyorder: Union[int, None] = None,
-    ):
-        if filter_type == "median":
-            filtered_array = median_filter(array=array, order=order)
-        elif filter_type == "bessel":
-            filtered_array = bessel(
-                array=array,
-                order=order,
-                sample_rate=sample_rate,
-                highpass=highpass,
-                lowpass=lowpass,
-            )
-        elif filter_type == "bessel_zero":
-            filtered_array = bessel_zero(
-                array=array,
-                order=order,
-                sample_rate=sample_rate,
-                highpass=highpass,
-                lowpass=lowpass,
-            )
-        elif filter_type == "butterworth":
-            filtered_array = butterworth(
-                array=array,
-                order=order,
-                sample_rate=sample_rate,
-                highpass=highpass,
-                lowpass=lowpass,
-            )
-        elif filter_type == "butterworth_zero":
-            filtered_array = butterworth_zero(
-                array=array,
-                order=order,
-                sample_rate=sample_rate,
-                highpass=highpass,
-                lowpass=lowpass,
-            )
-        elif filter_type == "fir_zero_1":
-            filtered_array = fir_zero_1(
-                array=array,
-                sample_rate=sample_rate,
-                order=order,
-                highpass=highpass,
-                high_width=high_width,
-                lowpass=lowpass,
-                low_width=low_width,
-                window=window,
-            )
-        elif filter_type == "fir_zero_2":
-            filtered_array = fir_zero_2(
-                array=array,
-                sample_rate=sample_rate,
-                order=order,
-                highpass=highpass,
-                high_width=high_width,
-                lowpass=lowpass,
-                low_width=low_width,
-                window=window,
-            )
-        elif filter_type == "remez_1":
-            filtered_array = remez_1(
-                array=array,
-                sample_rate=sample_rate,
-                order=order,
-                highpass=highpass,
-                high_width=high_width,
-                lowpass=lowpass,
-                low_width=low_width,
-            )
-        elif filter_type == "remez_2":
-            filtered_array = remez_2(
-                array=array,
-                sample_rate=sample_rate,
-                order=order,
-                highpass=highpass,
-                high_width=high_width,
-                lowpass=lowpass,
-                low_width=low_width,
-            )
-        elif filter_type == "savgol":
-            filtered_array = savgol_filt(array=array, order=order, polyorder=polyorder)
-
-        elif filter_type == "None":
-            filtered_array = array.copy()
-
-        elif filter_type == "subtractive":
-            array = fir_zero_2(
-                array,
-                order=order,
-                sample_rate=sample_rate,
-                highpass=highpass,
-                high_width=high_width,
-                lowpass=lowpass,
-                low_width=low_width,
-                window=window,
-            )
-            filtered_array = array - array
-
-        elif filter_type == "ewma":
-            filtered_array = ewma_filt(
-                array=array, window=order, sum_proportion=polyorder
-            )
-        elif filter_type == "ewma_a":
-            filtered_array = ewma_afilt(
-                array=array, window=order, sum_proportion=polyorder
-            )
-        return filtered_array
 
     def set_filter(
         self,
         acq_type: Literal["spike", "lfp"],
-        filter_type: Filters = "fir_zero_2",
+        filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = None,
         highpass: Union[int, float, None] = None,
         high_width: Union[int, float, None] = None,
@@ -202,15 +72,9 @@ class AcqManager(SpkManager, LFPManager):
         low_width: Union[int, float, None] = None,
         window: Windows = "hann",
         polyorder: Union[int, None] = 0,
-        resample_freq=None,
+        resample_freq: Union[float, None] = None,
         up_sample=3,
     ):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if resample_freq is not None:
-            sample_rate = resample_freq
-        else:
-            sample_rate = self.sample_rate
         input_dict = {
             "filter_type": filter_type,
             "order": order,
@@ -220,38 +84,25 @@ class AcqManager(SpkManager, LFPManager):
             "low_width": low_width,
             "window": window,
             "polyorder": polyorder,
-            "sample_rate": sample_rate,
             "resample_freq": resample_freq,
             "up_sample": up_sample,
         }
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if self.file.get(acq_type):
-            grp = self.file[acq_type]
-        else:
-            grp = self.file.create_group(acq_type)
+        self.open()
         for key, value in input_dict.items():
             if value is None:
                 value = "None"
-            self.set_grp_attr(grp, key, value)
+            self.set_grp_attr(acq_type, key, value)
+        self.close()
 
-    def acq(
-        self,
-        acq_type: Literal["spike", "lfp", "raw"],
-        acq_num: int,
-        start: int = 0,
-        end: int = 24000000,
-    ):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if acq_type == "raw":
-            return (
-                self.file["acqs"][acq_num - 1, start:end]
-                * self.file["coeffs"][acq_num - 1]
+    def get_filter(self, acq_type: Literal["spike", "lfp"], close=True):
+        self.open()
+        try:
+            grp = self.file[acq_type]
+        except KeyError:
+            raise KeyError(
+                f"{acq_type} does not exist. Use set_filter to create {acq_type}."
             )
-        grp = self.file[acq_type]
         input_dict = {
-            "sample_rate": grp.attrs["sample_rate"],
             "filter_type": grp.attrs["filter_type"],
             "order": grp.attrs["order"],
             "highpass": grp.attrs["highpass"],
@@ -259,17 +110,39 @@ class AcqManager(SpkManager, LFPManager):
             "lowpass": grp.attrs["lowpass"],
             "low_width": grp.attrs["low_width"],
             "window": grp.attrs["window"],
+            "resample_freq": grp.attrs["resample_freq"],
             "polyorder": grp.attrs["polyorder"],
+            "up_sample": grp.attrs["up_sample"],
         }
+        if close:
+            self.close()
+        return input_dict
+
+    def acq(
+        self,
+        acq_type: Literal["spike", "lfp", "raw"],
+        acq_num: int,
+    ):
+        self.open()
+        start = self.file.attrs["start"]
+        end = self.file.attrs["end"]
+        array = self.file["acqs"][acq_num, start:end] * self.file["coeffs"][acq_num]
+        if acq_type == "raw":
+            return array
+        if not self.file.get(acq_type):
+            raise KeyError(
+                f"{acq_type} does not exist. Use set_filter to create {acq_type}."
+            )
+        else:
+            grp = self.file[acq_type]
+        input_dict = self.get_filter(acq_type, close=False)
         for key, value in input_dict.items():
             if value == "None":
                 input_dict[key] = None
-        array = (
-            self.file["acqs"][acq_num - 1, start:end] * self.file["coeffs"][acq_num - 1]
-        )
-        acq = self.filter_array(
+        sample_rate = self.file["sample_rate"][acq_num]
+        acq = filter_array(
             array,
-            sample_rate=self.sample_rate,
+            sample_rate=sample_rate,
             filter_type=input_dict["filter_type"],
             order=input_dict["order"],
             highpass=input_dict["highpass"],
@@ -279,29 +152,40 @@ class AcqManager(SpkManager, LFPManager):
             window=input_dict["window"],
             polyorder=input_dict["polyorder"],
         )
-        if grp.attrs["sample_rate"] != self.sample_rate:
+        if grp.attrs["resample_freq"] != "None":
             acq = self.downsample(
-                acq, input_dict["sample_rate"], grp.attrs["up_sample"]
+                acq, sample_rate, grp.attrs["resample_freq"], grp.attrs["up_sample"]
             )
+        self.close()
         return acq
 
     def set_file_attr(self, attr, data):
-        if not self.file_open:
-            self.load_hdf5_acq()
+        self.open()
         if not self.file.attrs.get(attr):
             self.file.attrs.create(attr, data=data)
         else:
             self.file.attrs[attr] = data
+        self.close()
 
-    def set_grp_attr(self, grp, attr, data):
-        if not self.file_open:
-            self.load_hdf5_acq()
+    def set_grp_attr(self, grp_name, attr, data):
+        self.open()
+        if self.file.get(grp_name):
+            grp = self.file[grp_name]
+        else:
+            grp = self.file.create_group(grp_name)
         if not self.file.attrs.get(attr):
             grp.attrs.create(attr, data)
         else:
             grp.attrs[attr] = data
+        self.close()
 
     def close(self):
         if self.file is not None:
             self.file.close()
         self.file_open = False
+
+    def set_start(self, start: int = 0):
+        self.set_file_attr("start", start)
+
+    def set_end(self, end):
+        self.set_file_attr("end", end)

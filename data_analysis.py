@@ -278,7 +278,7 @@ cortex_acqs = elec_map[(elec_map["Depth"] <= 32)]["Acq"].to_numpy()
 
 # %%
 # Load model using phylib
-model = load_model("E:/in_vivo_ephys/ACC_kilosort/FL5_KO_2023_02_17/params.py")
+model = load_model("E:/in_vivo_ephys/DMS_kilosort/FL5_KO_2023_02_17/params.py")
 
 # %%
 # Data for each spike
@@ -288,6 +288,14 @@ model.spike_samples
 model.spike_clusters
 model.spike_templates
 
+# %%
+waveforms = model.get_cluster_spike_waveforms(cluster_id)
+n_spikes, n_samples, n_channels_loc = waveforms.shape
+
+# We get the channel ids where the waveforms are located.
+channel_ids = model.get_cluster_channels(cluster_id)
+
+# %%
 # Shows the best channel for each cluster listed in the cluster_ids
 model.clusters_channels
 
@@ -309,39 +317,24 @@ clus = np.where(model.spike_clusters == temps[-1])[0]
 channel = model.clusters_channels[model.cluster_ids[5]]
 indexes = model.spike_samples[clus]
 
-# %%
-spks = np.zeros((indexes.size, 82))
-for index, i in enumerate(indexes):
-    spks[index] = spk[int(i - 41) : int(i + 41)]
 
 # %%
-for i in spks:
-    plt.plot(i, alpha=0.01, c="black")
+spike_clusters = np.load(
+    r"E:\in_vivo_ephys\DMS_kilosort\FL5_KO_2023_02_17\spike_clusters.npy"
+)
+spike_templates = np.load(
+    r"E:\in_vivo_ephys\DMS_kilosort\FL5_KO_2023_02_17\spike_templates.npy"
+)
+spike_ids = np.where(spike_clusters == cluster_id)[0]
+st = spike_templates[spike_ids]
+template_ids, counts = np.unique(st, return_counts=True)
+ind = np.argmax(counts)
+template_id = template_ids[ind]
 
-# %%
-save_path = "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/exp_data/Shank3B/Shank3B_in_vivo/Plots/lfp_bursts/lfp_spikes_lfp.svg"
-plt.rcParams["xtick.labelsize"] = 20
-plt.rcParams["ytick.labelsize"] = 20
-plt.rcParams["font.size"] = 20
-fig, ax = plt.subplots()
-ax.spines["left"].set_linewidth(2)
-ax.spines["bottom"].set_linewidth(2)
-ax.tick_params(width=2)
-ax.plot(gpxx, c="black", alpha=0.8, linewidth=0.5)
-for i in bursts:
-    x = np.arange(i[0], i[1])
-    ax.plot(x, gpxx[i[0] : i[1]], c="red", alpha=0.8, linewidth=0.5)
-sns.rugplot(indexes / 40, ax=ax, alpha=0.5, c="red", height=0.075)
-ax.set_xlim(0, 25000)
-ax.spines["top"].set_visible(False)
-ax.spines["right"].set_visible(False)
-# ticks = np.linspace(-0.00025, 0.0002, num=6)
-# ax.set_yticks(ticks)
-# ax.set_ylim(bottom=ticks[0], top=ticks[-1])
-# plt.savefig(
-#     save_path,
-#     format="svg",
-#     bbox_inches="tight",
-# )
 
-# %%
+class spikeModel:
+    def __init__(self, directory):
+        self.directory = directory
+
+    def get_cluster_spikes(self, cluster_id):
+        spike_ids = np.where(spike_clusters == cluster_id)[0]

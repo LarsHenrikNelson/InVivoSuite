@@ -6,15 +6,70 @@ import numpy as np
 import pandas as pd
 
 from invivosuite.acq import lfp
-from invivosuite.acq import load_hdf5_acqs, load_pl2_acqs, load_ad
-from invivosuite.acq.pypl2 import pl2_ad
+from invivosuite.acq import AcqManager, load_pl2_acqs, load_hdf5_acqs
 
 # %%
-file_paths = list(Path("D:\in_vivo_ephys").rglob("*.hdf5"))
+# Use this if creating hdf5 acquisitions for the first time.
+pl2_paths = list(Path(r"D:\in_vivo_ephys\acqs").rglob("*.pl2"))
+save_path = r"D:\in_vivo_ephys\acqs"
+# If you want multiple save paths just create a list of filepaths
+acqs = []
+for file_path in pl2_paths:
+    acq_manager = load_pl2_acqs(file_path, save_path)
+    acqs.append(acq_manager)
+
+"""
+There are two ways to load all you files at once.
+Use get a list of files the manually load them
+or you can use the convenience function load_hdf5_acqs.
+Note that the package uses lazy loading so no files or
+there content are load into memory. The file is just set as
+an attribute of the AcqManager.
+"""
+# %%
+# create managers for all the files that you want to process
+file_paths = list(Path(r"D:\in_vivo_ephys\acqs").rglob("*.hdf5"))
+acqs = []
 for file_path in file_paths:
-    f = h5py.File(file_path, "r+")
-    # add code to modify files here
-    f.close()
+    acq_manager = AcqManager()
+    acq_manager.set_hdf5_file(file_path)
+    acqs.append(acq_manager)
+
+# %%
+# Use convenience function to load the files
+parent_path = r"D:\in_vivo_ephys\acqs"
+acqs = load_hdf5_acqs(parent_path)
+
+# %%
+# Set the filters for lfp and spike data using a zerophase butterworth filter
+# While the sample rate is needed to filter there is a sample rate per acquisition
+# that comes from the pl2 file so there is no need to supply it.
+for i in acqs:
+    i.set_filter(
+        acq_type="lfp",
+        filter_type="butterworth_zero",
+        order=3,
+        lowpass=300,
+        resample_freq=1000,
+        up_sample=3,
+    )
+    i.set_filter(
+        acq_type="spike",
+        filter_type="butterworth_zero",
+        order=3,
+        highpass=300,
+        lowpass=6000,
+    )
+
+# %%
+# Set the start end of the acquisitions if you want to analyze just a subset
+# of the acquisition. Useful if your aquisitions are different sizes between
+# recordings. The start and end are automatically set to the lenght of the
+# recoding which is pulled from the pl2 file.
+for i in acqs:
+    i.set_start(0)
+    i.set_end(240000000)
+
 
 # %%
 for index, i in enumerate(acqs):

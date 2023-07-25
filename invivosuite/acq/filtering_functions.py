@@ -437,6 +437,120 @@ def ewma_afilt(array: Union[np.ndarray, list], window: int, sum_proportion: floa
     return filtered
 
 
+def filter_array(
+    array,
+    sample_rate,
+    filter_type: Filters = "butterworth_zero",
+    order: Union[None, int] = 301,
+    highpass: Union[int, float, None] = None,
+    high_width: Union[int, float, None] = None,
+    lowpass: Union[int, float, None] = None,
+    low_width: Union[int, float, None] = None,
+    window: Windows = "hann",
+    polyorder: Union[int, None] = None,
+):
+    if filter_type == "median":
+        filtered_array = median_filter(array=array, order=order)
+    elif filter_type == "bessel":
+        filtered_array = bessel(
+            array=array,
+            order=order,
+            sample_rate=sample_rate,
+            highpass=highpass,
+            lowpass=lowpass,
+        )
+    elif filter_type == "bessel_zero":
+        filtered_array = bessel_zero(
+            array=array,
+            order=order,
+            sample_rate=sample_rate,
+            highpass=highpass,
+            lowpass=lowpass,
+        )
+    elif filter_type == "butterworth":
+        filtered_array = butterworth(
+            array=array,
+            order=order,
+            sample_rate=sample_rate,
+            highpass=highpass,
+            lowpass=lowpass,
+        )
+    elif filter_type == "butterworth_zero":
+        filtered_array = butterworth_zero(
+            array=array,
+            order=order,
+            sample_rate=sample_rate,
+            highpass=highpass,
+            lowpass=lowpass,
+        )
+    elif filter_type == "fir_zero_1":
+        filtered_array = fir_zero_1(
+            array=array,
+            sample_rate=sample_rate,
+            order=order,
+            highpass=highpass,
+            high_width=high_width,
+            lowpass=lowpass,
+            low_width=low_width,
+            window=window,
+        )
+    elif filter_type == "fir_zero_2":
+        filtered_array = fir_zero_2(
+            array=array,
+            sample_rate=sample_rate,
+            order=order,
+            highpass=highpass,
+            high_width=high_width,
+            lowpass=lowpass,
+            low_width=low_width,
+            window=window,
+        )
+    elif filter_type == "remez_1":
+        filtered_array = remez_1(
+            array=array,
+            sample_rate=sample_rate,
+            order=order,
+            highpass=highpass,
+            high_width=high_width,
+            lowpass=lowpass,
+            low_width=low_width,
+        )
+    elif filter_type == "remez_2":
+        filtered_array = remez_2(
+            array=array,
+            sample_rate=sample_rate,
+            order=order,
+            highpass=highpass,
+            high_width=high_width,
+            lowpass=lowpass,
+            low_width=low_width,
+        )
+    elif filter_type == "savgol":
+        filtered_array = savgol_filt(array=array, order=order, polyorder=polyorder)
+
+    elif filter_type == "None":
+        filtered_array = array.copy()
+
+    elif filter_type == "subtractive":
+        array = fir_zero_2(
+            array,
+            order=order,
+            sample_rate=sample_rate,
+            highpass=highpass,
+            high_width=high_width,
+            lowpass=lowpass,
+            low_width=low_width,
+            window=window,
+        )
+        filtered_array = array - array
+
+    elif filter_type == "ewma":
+        filtered_array = ewma_filt(array=array, window=order, sum_proportion=polyorder)
+    elif filter_type == "ewma_a":
+        filtered_array = ewma_afilt(array=array, window=order, sum_proportion=polyorder)
+    return filtered_array
+
+
 if __name__ == "__main__":
     bessel()
     bessel_zero()

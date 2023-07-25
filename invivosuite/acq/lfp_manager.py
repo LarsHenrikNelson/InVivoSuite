@@ -1,34 +1,43 @@
+import os
 from typing import Literal, Union
 
-import numpy as np
+import fcwt
+
+# import numpy as np
 from scipy import signal
 
 from . import lfp
-from .filtering_functions import Filters, Windows
+from .filtering_functions import Filters, Windows, filter_array
+from .tapered_spectra import multitaper
 
 
 class LFPManager:
-    def cwt_settings(self, start_freq=1, stop_freq=110, steps=200, scaling="log"):
+    def set_cwt(
+        self,
+        f0: float = 1.0,
+        f1: float = 110,
+        fn: int = 400,
+        scaling: Literal["log", "lin"] = "log",
+        norm: bool = True,
+        nthreads: int = -1,
+    ):
         self.pxx_settings(
             "cwt",
-            start_freq=start_freq,
-            stop_freq=stop_freq,
-            steps=steps,
+            f0=f0,
+            f1=f1,
+            fn=fn,
             scaling=scaling,
+            nthreads=nthreads,
         )
 
     def set_periodgram(
         self,
-        nperseg=2048,
-        noverlap=0,
-        nfft=2048,
+        nfft: int = 2048,
         window=("tukey", 0.25),
-        scaling="density",
+        scaling: Literal["density", "spectrum"] = "density",
     ):
         self.pxx_settings(
-            "windowed",
-            nperseg=nperseg,
-            noverlap=noverlap,
+            "periodogram",
             nfft=nfft,
             window=window,
             scaling=scaling,
@@ -36,13 +45,13 @@ class LFPManager:
 
     def set_multitaper(
         self,
-        NW=2.5,
-        BW=None,
-        adaptive=False,
-        jackknife=True,
-        low_bias=True,
-        sides="default",
-        NFFT=None,
+        NW: float = 2.5,
+        BW: Union[float, None] = None,
+        adaptive: bool = False,
+        jackknife: bool = True,
+        low_bias: bool = True,
+        sides: str = "default",
+        NFFT: Union[int, None] = None,
     ):
         self.pxx_settings(
             "multitaper",
@@ -55,13 +64,29 @@ class LFPManager:
             NFFT=NFFT,
         )
 
+    def set_welch(
+        self,
+        nperseg: int = 2048,
+        noverlap: int = 0,
+        nfft: int = 2048,
+        window=("tukey", 0.25),
+        scaling: str = "density",
+    ):
+        self.pxx_settings(
+            "welch",
+            nperseg=nperseg,
+            noverlap=noverlap,
+            nfft=nfft,
+            window=window,
+            scaling=scaling,
+        )
+
     def pxx_settings(
         self,
-        pxx_type: Literal["cwt", "windowed", "multitaper", "spectrogram"],
+        pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
         **kwargs,
     ):
-        if not self.file_open:
-            self.load_hdf5_acq()
+        self.open()
         if self.file.get(pxx_type):
             grp = self.file[pxx_type]
         else:
@@ -69,65 +94,45 @@ class LFPManager:
         for key, value in kwargs.items():
             self.set_grp_attr(grp, key, value)
 
-    def corr_freqs(self, freq_band_1, freq_band_2, window):
-        band_1 = self.file[freq_band_1][()]
-        band_2 = self.file[freq_band_2][()]
-        corr = lfp.corr_freqs(band_1, band_2, window)
-        return corr
-
-    def pxx(self, pxx_type, nthreads=-1, array=None):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if array is None:
-            array = self.acq("lfp")
-        grp = self.file["lfp"]
-        if pxx_type == "cwt":
-            pxx_grp = self.file.get("cwt")
-            freqs, pxx = lfp.create_cwt(
-                array, grp.attrs["sample_rate"], **pxx_grp.attrs, nthreads=nthreads
-            )
-        elif pxx_type == "multitaper":
-            freqs, pxx = lfp.create_multitaper_ps(array, **pxx_grp.attrs)
-        elif pxx_type == "windowed":
-            freqs, pxx = lfp.create_window_ps(array, **pxx_grp.attrs)
-        elif pxx_type == "welch":
-            freqs, pxx = lfp.create_window_ps(array, **pxx_grp.attrs)
+    def pxx(
+        self,
+        acq_num: int,
+        pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
+        nthreads: int = -1,
+    ):
+        self.open()
+        if not self.file.get(pxx_type):
+            raise KeyError(f"{pxx_type} settings do not exist in file. Use set_pxx")
         else:
-            AttributeError("Pxx_type must be cwt, multitaper or windowed")
+            pxx_grp = self.file[pxx_type]
+        if acq_num <= self.file["acqs"].shape[0]:
+            if self.file["lfp"].attrs["resample_freq"] != "None":
+                fs = self.file["lfp"].attrs["resample_freq"]
+            else:
+                fs = self.file["sample_rate"][acq_num]
+            array = self.acq("lfp", acq_num)
+        else:
+            raise AttributeError(f"{acq_num} does not exist.")
+        if pxx_type == "multitaper":
+            freqs, pxx = multitaper(array, fs=fs, **pxx_grp.attrs)
+        elif pxx_type == "periodogram":
+            freqs, pxx = signal.periodogram(array, fs=fs, **pxx_grp.attrs)
+        elif pxx_type == "welch":
+            freqs, pxx = signal.welch(array, fs=fs, **pxx_grp.attrs)
+        elif pxx_type == "cwt":
+            cpuc = os.cpu_count()
+            if nthreads == -1 or nthreads > cpuc:
+                nthreads = cpuc
+            freqs, sxx = fcwt.cwt(signal=array, fs=fs, **pxx_grp.attrs)
+            pxx = sxx.mean(axis=1)
+        else:
+            AttributeError("Pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
         return freqs, pxx
 
-    def create_all_freq_windows(self, freq_dict, pxx_type, nthreads):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if not self.file.get(pxx_type):
-            AttributeError("Pxx settings do not exist.")
-            return None
-        grp = self.file["lfp"]
-        array = self.acq("lfp")
-        if pxx_type == "cwt":
-            pxx_grp = self.file.get("cwt")
-            freqs, pxx = lfp.create_cwt(
-                array, grp.attrs["sample_rate"], **pxx_grp.attrs, nthreads=nthreads
-            )
-        elif pxx_type == "multitaper":
-            freqs, pxx = lfp.create_multitaper_ps(array, **pxx_grp.attrs)
-        elif pxx_type == "windowed":
-            freqs, pxx = lfp.create_window_ps(array, **pxx_grp.attrs)
-        else:
-            AttributeError("Pxx_type must be cwt, multitaper or windowed")
-            return None
-        bands = lfp.create_all_freq_windows(freq_dict, freqs, pxx)
-        for key, value in bands.items():
-            if self.file.get(key):
-                del self.file[key]
-                self.file.create_dataset(key, data=value)
-            else:
-                self.file.create_dataset(key, shape=value.shape, maxshape=array.shape)
-                self.file[key][...] = value
-
-    def get_hilbert(
+    def hilbert(
         self,
+        acq_num: int,
         filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = 4,
         highpass: Union[int, float, None] = None,
@@ -139,10 +144,11 @@ class LFPManager:
         resample_freq=None,
         up_sample=3,
     ):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        array = self.file["array"][()]
-        acq = self.filter_array(
+        self.open()
+        start = self.file.attr["start"]
+        end = self.file.attr["end"]
+        array = self.file["array"][acq_num, start:end]
+        acq = filter_array(
             array,
             filter_type=filter_type,
             order=order,
@@ -158,30 +164,11 @@ class LFPManager:
             acq = self.downsample(acq, resample_freq, up_sample)
 
         hil_acq = signal.hilbert(acq)
+        self.close()
         return hil_acq
 
-    def get_freq_band(self, band):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        if self.file.get(band):
-            return self.file[band][()]
-        else:
-            AttributeError(f"The {band} frequency band does not exist.")
-            return None
-
-    def psd(self, acq_type, nperseg, noverlap):
-        array = self.acq(acq_type)
-        freq, pxx = signal.welch(
-            array,
-            fs=self.file[acq_type].attrs["sample_rate"],
-            nperseg=nperseg,
-            noverlap=noverlap,
-        )
-        return freq, pxx
-
     def calc_all_pdi(self, freq_dict, nthreads=4, size=5000):
-        if not self.file_open:
-            self.load_hdf5_acq()
+        self.open()
         lfp_grp = self.file["lfp"]
         array = self.acq("lfp")
         pxx_grp = self.file.get("cwt")
@@ -202,8 +189,8 @@ class LFPManager:
             )
             self.set_grp_attr(pdi_grp, key, pdi)
 
-    def get_short_time_energy(self, window="hamming", wlen=501):
-        acq = self.acq("lfp")
+    def get_short_time_energy(self, acq_num, window="hamming", wlen=501):
+        acq = self.acq("lfp", acq_num)
         se_array = lfp.short_time_energy(acq, window=window, wlen=wlen)
         return se_array
 
@@ -222,8 +209,26 @@ class LFPManager:
         tol=0.001,
         deg=90,
     ):
-        if not self.file_open:
-            self.load_hdf5_acq()
+        input_dict = {
+            "window": window,
+            "min_len": min_len,
+            "max_len": max_len,
+            "min_burst_int": min_burst_int,
+            "wlen": wlen,
+            "threshold": threshold,
+            "pre": pre,
+            "post": post,
+            "order": order,
+            "method": method,
+            "tol": tol,
+            "deg": deg,
+        }
+        for key, value in input_dict.items():
+            if value is None:
+                value = "None"
+            self.set_grp_attr("lfp_bursts", key, value)
+
+        self.open()
         for i in range(self.file["acqs"].shape[0]):
             acq = self.acq(
                 "lfp",
@@ -245,58 +250,35 @@ class LFPManager:
                 tol=tol,
                 deg=deg,
             )
-            input_dict = {
-                "window": window,
-                "min_len": min_len,
-                "max_len": max_len,
-                "min_burst_int": min_burst_int,
-                "wlen": wlen,
-                "threshold": threshold,
-                "pre": pre,
-                "post": post,
-                "order": order,
-                "method": method,
-                "tol": tol,
-                "deg": deg,
-            }
-            if self.file.get("bursts"):
-                parent_grp = self.file["bursts"]
+            parent_grp = self.file["lfp_bursts"]
+            if parent_grp.get(i):
+                del parent_grp[i]
+                parent_grp.create_dataset(i, data=bursts)
             else:
-                parent_grp = self.file.create_group("bursts")
-            grp = parent_grp.create_group(i + 1)
-            for key, value in input_dict.items():
-                if value is None:
-                    value = "None"
-                self.set_grp_attr(grp, key, value)
-            if grp.get("lfp_bursts"):
-                del grp["lfp_bursts"]
-                grp.create_dataset("lfp_bursts", data=bursts)
-            else:
-                grp.create_dataset(
-                    "lfp_bursts",
+                parent_grp.create_dataset(
+                    i,
                     dtype=bursts.dtype,
                     shape=bursts.shape,
                     maxshape=(acq.size, 2),
                 )
-                grp["lfp_bursts"].resize(bursts.shape)
-                grp["lfp_bursts"][...] = bursts
+                parent_grp[i].resize(bursts.shape)
+                parent_grp[i][...] = bursts
+        self.close()
 
-    def get_lfp_burst_indexes(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        return np.asarray(self.file["lfp_bursts"][()], dtype=np.int64)
+    # def get_lfp_burst_indexes(self):
+    #     self.open()
+    #     return np.asarray(self.file["lfp_bursts"][()], dtype=np.int64)
 
-    def get_burst_baseline(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
-        bursts = self.file["lfp_bursts"][()]
-        size = int(self.file.attrs["rec_len"] * self.file["lfp"].attrs["sample_rate"])
-        bursts_baseline = lfp.burst_baseline_periods(bursts, size)
-        return bursts_baseline
+    def get_burst_baseline(self, acq_num):
+        self.open()
+        bursts = self.file["lfp_bursts"][acq_num]
+        size = int(self.file.attrs["stop"] - self.file.attrs["start"])
+        burst_baseline = lfp.burst_baseline_periods(bursts, size)
+        self.close()
+        return burst_baseline
 
     def lfp_burst_stats(self):
-        if not self.file_open:
-            self.load_hdf5_acq()
+        self.open()
         acq = self.acq("lfp")
         bursts = self.file["lfp_bursts"][()]
         fs = self.file["lfp"].attrs["sample_rate"]

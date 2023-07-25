@@ -1,17 +1,16 @@
-import multiprocessing
 from collections import namedtuple
 from itertools import combinations
-from typing import Literal, Union
+from typing import Literal, Union, TypeAlias
 
 import fcwt
 import KDEpy
 import numpy as np
 import statsmodels.api as sm
-from numba import jit
+from numba import njit
 from numpy.polynomial import Polynomial
 from scipy import fft, interpolate, signal
 
-from .tapered_spectra import multi_taper_psd
+from .tapered_spectra import multitaper
 
 
 __all__ = [
@@ -21,13 +20,9 @@ __all__ = [
     "calc_all_freq_corrs",
     "corr_freqs",
     "create_all_freq_windows",
-    "create_cwt",
-    "multi_taper_psd",
-    "create_window_ps",
     "get_ave_freq_window",
     "synchrony_cwt",
     "phase_synchrony",
-    "create_ave_cwt",
     "phase_discontinuity_index",
     "stepped_cwt_cohy",
     "find_bursts",
@@ -38,41 +33,6 @@ __all__ = [
     "burst_stats",
     "get_lfp_seg_pxx",
 ]
-
-
-def create_window_ps(
-    array,
-    sample_rate,
-    nperseg=1000,
-    noverlap=900,
-    nfft=1000,
-    mode="psd",
-):
-    freqs, _, pxx = signal.spectrogram(
-        array,
-        sample_rate,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        nfft=nfft,
-        mode=mode,
-    )
-    return freqs, pxx
-
-
-def create_cwt(array, fs, start_freq, stop_freq, steps, scaling, nthreads=-1):
-    cpuc = multiprocessing.cpu_count()
-    if nthreads == -1 or nthreads > cpuc:
-        nthreads = cpuc
-    freqs, sxx = fcwt.cwt(
-        input=array,
-        fs=int(fs),
-        f0=float(start_freq),
-        f1=float(stop_freq),
-        fn=int(steps),
-        nthreads=nthreads,
-        scaling=scaling,
-    )
-    return freqs, sxx
 
 
 def find_logpx_baseline(
@@ -103,7 +63,7 @@ def find_logpx_baseline(
     if window != "dpss":
         f, px = signal.welch(acq, fs=fs, nperseg=nperseg, noverlap=noverlap, nfft=nfft)
     elif window == "dpss":
-        f, px, nu = multi_taper_psd(
+        f, pxx, _ = multitaper(
             acq,
             fs=fs,
             NW=NW,
@@ -157,7 +117,7 @@ def create_all_freq_windows(freq_dict, freqs, pxx):
     return bands
 
 
-@jit(nopython=True)
+@njit()
 def cwt_cohy(cwt_1, cwt_2):
     sxy = cwt_1 * np.conjugate(cwt_2)
     sxx = cwt_1 * np.conjugate(cwt_1)
@@ -166,7 +126,7 @@ def cwt_cohy(cwt_1, cwt_2):
     return coh
 
 
-@jit(nopython=True)
+@njit()
 def corr_freqs(freq_band_1, freq_band_2, window):
     freq_band_1_window = np.lib.stride_tricks.sliding_window_view(freq_band_1, window)
     freq_band_2_window = np.lib.stride_tricks.sliding_window_view(freq_band_2, window)
@@ -181,7 +141,7 @@ def corr_freqs(freq_band_1, freq_band_2, window):
     return corrs
 
 
-@jit(nopython=True)
+@njit()
 def calc_all_freq_corrs(window, freq_bands):
     freqs = list(freq_bands.keys())
     combos = combinations(freqs, 2)
@@ -189,7 +149,7 @@ def calc_all_freq_corrs(window, freq_bands):
         corr_freqs(i[0], i[1], window)
 
 
-@jit(nopython=True)
+@njit()
 def split_at_zeros(array):
     array_list = []
     temp_list = []
@@ -203,7 +163,7 @@ def split_at_zeros(array):
     return array_list
 
 
-@jit(nopython=True)
+@njit()
 def get_max_from_burst(array):
     maximums = [np.max(array[i]) for i in array]
     return maximums
@@ -221,34 +181,102 @@ def get_ave_band_power(
     return ave
 
 
-def create_ave_cwt(acqs):
-    cwt_ave = None
-    for i in acqs:
-        freq, cwt = i.create_pxx("cwt")
-        if cwt_ave is None:
-            cwt_ave = np.zeros(cwt.shape, dtype="complex128")
-        cwt_ave += cwt
-    cwt_ave /= len(acqs)
-    return freq, cwt_ave
-
-
-def synchrony_cwt(cwt_1, cwt_2, freqs, f0, f1):
+def synchrony_cwt_band(cwt_1, cwt_2, freqs, f0, f1):
     band = np.where((freqs <= f1) & (freqs >= f0))
     band_1 = np.angle(np.mean(cwt_1[band], axis=0))
     band_2 = np.angle(np.mean(cwt_2[band], axis=0))
-    # band_1_power = np.abs(np.mean(cwt_1[band], axis=0))
-    # band_1_power = (band_1_power - np.mean(band_1_power)) / np.std(band_1_power)
-    # band_2_power = np.abs(np.mean(cwt_2[band], axis=0))
-    # band_2_power = (band_2_power - np.mean(band_2_power)) / np.std(band_2_power)
     band_synchrony = 1 - np.sin(np.abs(band_2 - band_1) / 2)
     return band_synchrony
 
 
-def synchrony_hilbert(array_1, array_2):
-    al1 = np.angle(signal.hilbert(array_1), deg=False)
-    al2 = np.angle(signal.hilbert(array_2), deg=False)
-    band_synchrony = 1 - np.sin(np.abs(al1 - al2) / 2)
-    return band_synchrony
+Bands: TypeAlias = list[tuple[float, float]]
+
+
+def get_cwt_bands(
+    cwt: np.ndarray,
+    freqs: np.ndarray,
+    bands: Bands,
+    ret_type=Literal["angle", "power", "raw"],
+):
+    band_arrays = np.zeros((bands, cwt.shape[1]))
+    for i in range(len(bands)):
+        band = np.where((freqs >= bands[i][0]) & (freqs <= bands[i][1]))
+        band_arrays[i] = np.mean(cwt[band], axis=0)
+    if ret_type == "raw":
+        return band_arrays
+    elif ret_type == "angle":
+        return np.angle(band_arrays, degree=False)
+    elif ret_type == "power":
+        return np.abs(band_arrays)
+    else:
+        raise AttributeError(f"{ret_type} not recognized. Use angle, power or raw")
+
+
+def synchrony_cwt(
+    arrays: np.ndarray,
+    freq_bands: Bands,
+    fs: float = 1000.0,
+    f0: float = 1.0,
+    f1: float = 110,
+    fn: int = 400,
+    scaling: Literal["log", "lin"] = "log",
+    norm: bool = True,
+    nthreads: int = -1,
+):
+    matrices = []
+    for i in range(len(freq_bands)):
+        syn_matrix = np.zeros((arrays.shape[0], arrays.shape[0]))
+        matrices.append(syn_matrix)
+    morl = fcwt.Morlet(2.0)
+    if scaling == "log":
+        s = fcwt.FCWT_LOGFREQS
+    elif scaling == "lin":
+        s = fcwt.FCWT_LINFREQS
+    else:
+        raise AttributeError(f"{scaling} not a valid setting. Use log or lin.")
+    scales = fcwt.Scales(morl, s, fs, f0, f1, fn)
+    freqs = np.zeros((fn), dtype="single")
+    scales.getFrequencies(freqs)
+    fcwt_obj1 = fcwt.FCWT(
+        morl, nthreads, use_optimization_plan=False, use_normalization=norm
+    )
+    fcwt_obj2 = fcwt.FCWT(
+        morl, nthreads, use_optimization_plan=False, use_normalization=norm
+    )
+    cwt1 = np.zeros((fn, arrays.shape[1]), dtype=np.complex64)
+    cwt2 = np.zeros((fn, arrays.shape[1]), dtype=np.complex64)
+    for i in range(arrays.shape[0]):
+        fcwt_obj1.cwt(arrays[i], scales, cwt1)
+        bands1 = get_cwt_bands(cwt1, freqs, freq_bands, ret_type="angle")
+        for j in range(i, arrays.shape[0]):
+            fcwt_obj2.cwt(arrays[j], scales, cwt2)
+            bands2 = get_cwt_bands(cwt1, freqs, freq_bands, ret_type="angle")
+
+            for m in range(len(freq_bands)):
+                band_synchrony = 1 - np.sin(np.abs(bands1[m] - bands2[m]) / 2)
+                matrices[m][i, j] = band_synchrony
+    return matrices
+
+
+def synchrony_hilbert(arrays):
+    """This functions computes the pairwise synchrony using the
+    hilbert transform. The arrays need to be prefiltered to the
+    frequency band of interest.
+
+    Args:
+        arrays (np.ndarray): A numpy array of shape(signals, time)
+
+    Returns:
+        np.ndarray: Array of shape(signals, signals)
+    """
+    syn_matrix = np.zeros((arrays.shape[0], arrays.shape[0]))
+    for i in range(arrays.shape[0]):
+        al1 = np.angle(signal.hilbert(arrays[i]), deg=False)
+        for j in range(i, arrays.shape[0]):
+            al2 = np.angle(signal.hilbert(arrays[j]), deg=False)
+            band_synchrony = 1 - np.sin(np.abs(al1 - al2) / 2)
+            syn_matrix[i, j] = band_synchrony
+    return syn_matrix
 
 
 def phase_synchrony(array_1, array_2):
@@ -472,6 +500,7 @@ def find_ste_baseline(ste, tol=0.001, method="spline", deg=90):
     return baseline, std
 
 
+@njit()
 def clean_bursts(bursts_ind, acq, fs=1000):
     cb = np.zeros(bursts_ind.shape)
     index = 0
@@ -556,7 +585,7 @@ def find_bursts(
     return bursts
 
 
-@jit(nopython=True)
+@njit()
 def burst_baseline_periods(bursts_ind, size):
     if int(bursts_ind[-1, 1]) == size and int(bursts_ind[0, 0]) == 0:
         burst_baseline = np.zeros((bursts_ind.shape[0] - 1, 2))
@@ -644,7 +673,7 @@ def burst_stats(acq, bursts, baseline, fs):
     return ave_len, iei, rms, min_v, max_v, flatness, p_dict
 
 
-@jit(nopython=True)
+@njit()
 def burst_flatness(burst, nperseg=200, noverlap=0):
     step = nperseg - noverlap
     shape = burst.shape[:-1] + ((burst.shape[-1] - noverlap) // step, nperseg)
@@ -655,7 +684,7 @@ def burst_flatness(burst, nperseg=200, noverlap=0):
     return flatness
 
 
-@jit(nopython=True)
+@njit()
 def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
     power_dict = {}
     burst = burst_pxx.mean(axis=0)
