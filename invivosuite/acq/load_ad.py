@@ -59,7 +59,7 @@ def load_pl2_acqs(
     acq_man = AcqManager()
     if save_path == "":
         save_path = Path(pl2_path).parent
-    acq_man.load_acqs(acqs, fs, coeffs, units, enabled, name, save_path)
+    acq_man.create_hdf5_file(acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
     return acq_man
 

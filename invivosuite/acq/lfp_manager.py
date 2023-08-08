@@ -229,20 +229,23 @@ class LFPManager:
             self.set_grp_attr("lfp_bursts", key, value)
 
         self.open()
-        for i in range(self.file["acqs"].shape[0]):
-            acq = self.acq(
+        shape = self.file["acqs"].shape[0]
+        fs = self.file["lfp"].attrs["sample_rate"]
+        self.close()
+        for i in range(shape):
+            acq_i = self.acq(
                 "lfp",
                 i,
             )
             bursts = lfp.find_bursts(
-                acq,
+                acq_i,
                 window=window,
                 min_len=min_len,
                 max_len=max_len,
                 min_burst_int=min_burst_int,
                 wlen=wlen,
                 threshold=threshold,
-                fs=self.file["lfp"].attrs["sample_rate"],
+                fs=fs,
                 pre=pre,
                 post=post,
                 order=order,
@@ -250,20 +253,7 @@ class LFPManager:
                 tol=tol,
                 deg=deg,
             )
-            parent_grp = self.file["lfp_bursts"]
-            if parent_grp.get(i):
-                del parent_grp[i]
-                parent_grp.create_dataset(i, data=bursts)
-            else:
-                parent_grp.create_dataset(
-                    i,
-                    dtype=bursts.dtype,
-                    shape=bursts.shape,
-                    maxshape=(acq.size, 2),
-                )
-                parent_grp[i].resize(bursts.shape)
-                parent_grp[i][...] = bursts
-        self.close()
+            self.set_grp_dataset("lfp_bursts", str(i), bursts)
 
     # def get_lfp_burst_indexes(self):
     #     self.open()

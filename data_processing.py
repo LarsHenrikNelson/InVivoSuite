@@ -10,12 +10,12 @@ from invivosuite.acq import AcqManager, load_pl2_acqs, load_hdf5_acqs
 
 # %%
 # Use this if creating hdf5 acquisitions for the first time.
-pl2_paths = list(Path(r"D:\in_vivo_ephys\acqs").rglob("*.pl2"))
-save_path = r"D:\in_vivo_ephys\acqs"
+pl2_paths = list(Path(r"D:\in_vivo_ephys\acqs\2023_08_02").rglob("*.pl2"))
+save_path = r"D:\in_vivo_ephys\acqs\2023_08_02"
 # If you want multiple save paths just create a list of filepaths
 acqs = []
 for file_path in pl2_paths:
-    acq_manager = load_pl2_acqs(file_path, save_path)
+    acq_manager = load_pl2_acqs(str(file_path), save_path)
     acqs.append(acq_manager)
 
 """
@@ -41,9 +41,11 @@ parent_path = r"D:\in_vivo_ephys\acqs"
 acqs = load_hdf5_acqs(parent_path)
 
 # %%
-# Set the filters for lfp and spike data using a zerophase butterworth filter
-# While the sample rate is needed to filter there is a sample rate per acquisition
-# that comes from the pl2 file so there is no need to supply it.
+"""
+Set the filters for lfp and spike data using a zerophase butterworth filter
+While the sample rate is needed to filter there is a sample rate per acquisition
+that comes from the pl2 file so there is no need to supply it.
+"""
 for i in acqs:
     i.set_filter(
         acq_type="lfp",
@@ -70,6 +72,40 @@ for i in acqs:
     i.set_start(0)
     i.set_end(240000000)
 
+# %%
+# Set the groups for the channels since the .pl2 file contained both
+# ACC and DMS file. This attribute needs to be set to work with the spike
+# data.
+for i in acqs:
+    i.set_grp_data("electrodes", "acc", [64, 127])
+    i.set_grp_data("electrodes", "dms", [0, 63])
+
+
+# %%
+# Set the channel map
+for i in acqs:
+    i.set_channel_map(
+        r"C:\Users\LarsNelson\OneDrive - University of Pittsburgh\channel_map.csv"
+    )
+
+# %%
+for index, i in enumerate(acqs):
+    print(index)
+    i.find_lfp_bursts(
+        window="hamming",
+        min_len=0.2,
+        max_len=20,
+        min_burst_int=0.2,
+        wlen=200,
+        threshold=10,
+        pre=3,
+        post=3,
+        order=100,
+        method="spline",
+        tol=0.001,
+        deg=90,
+    )
+
 
 # %%
 for index, i in enumerate(acqs):
@@ -82,71 +118,6 @@ for index, i in enumerate(acqs):
         max_end=0.300,
         max_int=0.200,
     )
-
-# %%
-for index, i in enumerate(acqs):
-    print(index)
-    i.find_lfp_bursts(threshold=10)
-
-# %%
-for i in acqs:
-    i.close()
-
-# %%
-pc_paths = {
-    # "L4": "D:/in_vivo_ephys/2022_12_16/L4",
-    # "R4": "D:/in_vivo_ephys/2022_12_14/R4",
-    # "R5": "D:/in_vivo_ephys/2022_12_14/R5",
-    # "L5": "D:/in_vivo_ephys/2022_12_14/L5",
-    "FN_WT": "D:/in_vivo_ephys/2023_02_17/FN_WT",
-    "FKO": "D:/in_vivo_ephys/2023_02_17/FL5_KO",
-    "MWT": "D:/in_vivo_ephys/2023_02_17/ML5_WT",
-    "ML4": "D:/in_vivo_ephys/2023_02_24/ML4",
-    "ML5": "D:/in_vivo_ephys/2023_02_24/ML5",
-    "ML1_WT": "D:/in_vivo_ephys/2023_03_03/ML1_WT",
-    "ML4_KO": "D:/in_vivo_ephys/2023_03_03/ML4_KO",
-    "MN_KO": "D:/in_vivo_ephys/2023_03_08/MN_KO_P16",
-    "FL_WT": "D:/in_vivo_ephys/2023_03_09/FL",
-    "ML_WT": "D:/in_vivo_ephys/2023_03_09/ML",
-    "MLL_WT": "D:/in_vivo_ephys/2023_03_09/MLL",
-    "FL5_KO": "D:/in_vivo_ephys/2023_03_17/FL5_KO",
-    "FWT": "D:/in_vivo_ephys/2023_03_20/FWT",
-}
-mac_paths = {
-    # "L4": "/Volumes/Backup/in_vivo_ephys/2022_12_16/L4",
-    # "R4": "/Volumes/Backup/in_vivo_ephys/2022_12_14/R4",
-    # "R5": "/Volumes/Backup/in_vivo_ephys/2022_12_14/R5",
-    # "L5": "/Volumes/Backup/in_vivo_ephys/2022_12_14/L5",
-    "FN_WT": "/Volumes/Backup/in_vivo_ephys/2023_02_17/FN_WT",
-    "FKO": "/Volumes/Backup/in_vivo_ephys/2023_02_17/FL5_KO",
-    "MWT": "/Volumes/Backup/in_vivo_ephys/2023_02_17/ML5_WT",
-    "ML4": "/Volumes/Backup/in_vivo_ephys/2023_02_24/ML4",
-    "ML5": "/Volumes/Backup/in_vivo_ephys/2023_02_24/ML5",
-    "ML1_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_03/ML1_WT",
-    "ML4_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_03/ML4_KO",
-    "MN_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_08/MN_KO_P16",
-    "FL_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/FL",
-    "ML_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/ML",
-    "MLL_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/MLL",
-    "FL5_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_17/FL5_KO",
-    "FWT": "/Volumes/Backup/in_vivo_ephys/2023_03_20/FWT",
-}
-acqs = {}
-for key, value in pc_paths.items():
-    temp = load_hdf5_acqs(value)
-    acqs[key] = temp
-
-# %%
-elec_map = pd.read_excel(
-    "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/mapping.xlsx"
-)
-# elec_map = pd.read_excel(
-#     "/Users/larsnelson/OneDrive - University of Pittsburgh/mapping.xlsx"
-# )
-elec_map.sort_values("Depth", inplace=True)
-acq_pos = elec_map["Acq"].to_numpy().flatten()
-acq_pos = np.concatenate((acq_pos, acq_pos + 64))
-
 
 # %%
 g = np.zeros((128, 128))

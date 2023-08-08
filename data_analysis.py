@@ -330,11 +330,3 @@ st = spike_templates[spike_ids]
 template_ids, counts = np.unique(st, return_counts=True)
 ind = np.argmax(counts)
 template_id = template_ids[ind]
-
-
-class spikeModel:
-    def __init__(self, directory):
-        self.directory = directory
-
-    def get_cluster_spikes(self, cluster_id):
-        spike_ids = np.where(spike_clusters == cluster_id)[0]

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal, Union
 
 import h5py
+import numpy as np
 from scipy import signal
 
 from .filtering_functions import Filters, Windows, filter_array
@@ -17,6 +18,7 @@ class AcqManager(SpkManager, LFPManager):
     def __init__(self):
         self.file = None
         self.file_open = False
+        self.spike_data = {}
 
     def create_hdf5_file(
         self,
@@ -41,11 +43,11 @@ class AcqManager(SpkManager, LFPManager):
         self.file.create_dataset("acqs", data=acqs)
         self.file.create_dataset("coeffs", data=coeffs)
         self.file.create_dataset("sample_rate", data=sample_rates)
-        self.file.create_dataset("id", data=identifier)
+        self.set_file_attr("id", data=identifier)
         self.file.create_dataset("units", data=units)
         self.file.create_dataset("enabled", data=enabled)
-        self.file.set_file_attr("start", 0)
-        self.file.set_file_attr("end", acqs.shape[1])
+        self.set_file_attr("start", 0)
+        self.set_file_attr("end", acqs.shape[1])
         self.close()
 
     def set_hdf5_file(self, file_path):
@@ -114,6 +116,9 @@ class AcqManager(SpkManager, LFPManager):
             "polyorder": grp.attrs["polyorder"],
             "up_sample": grp.attrs["up_sample"],
         }
+        for key, value in input_dict.items():
+            if value == "None":
+                input_dict[key] = None
         if close:
             self.close()
         return input_dict
@@ -122,10 +127,17 @@ class AcqManager(SpkManager, LFPManager):
         self,
         acq_type: Literal["spike", "lfp", "raw"],
         acq_num: int,
+        electrode: Union[None, str] = None,
+        map_channel: bool = False,
     ):
         self.open()
         start = self.file.attrs["start"]
         end = self.file.attrs["end"]
+        if map_channel and self.file.get("channel_map"):
+            acq_num = self.file["channel_map"][acq_num]
+        if electrode is not None:
+            data = self._get_grp_dataset("electrode", electrode)
+            acq_num += data[0]
         array = self.file["acqs"][acq_num, start:end] * self.file["coeffs"][acq_num]
         if acq_type == "raw":
             return array
@@ -136,9 +148,6 @@ class AcqManager(SpkManager, LFPManager):
         else:
             grp = self.file[acq_type]
         input_dict = self.get_filter(acq_type, close=False)
-        for key, value in input_dict.items():
-            if value == "None":
-                input_dict[key] = None
         sample_rate = self.file["sample_rate"][acq_num]
         acq = filter_array(
             array,
@@ -152,9 +161,9 @@ class AcqManager(SpkManager, LFPManager):
             window=input_dict["window"],
             polyorder=input_dict["polyorder"],
         )
-        if grp.attrs["resample_freq"] != "None":
+        if grp.attrs["sample_rate"] != sample_rate:
             acq = self.downsample(
-                acq, sample_rate, grp.attrs["resample_freq"], grp.attrs["up_sample"]
+                acq, sample_rate, grp.attrs["sample_rate"], grp.attrs["up_sample"]
             )
         self.close()
         return acq
@@ -165,6 +174,15 @@ class AcqManager(SpkManager, LFPManager):
             self.file.attrs.create(attr, data=data)
         else:
             self.file.attrs[attr] = data
+        self.close()
+
+    def set_file_dataset(self, name, data):
+        self.open()
+        if self.file.get(name):
+            del self.file[name]
+            self.file.create_dataset(name, data=data)
+        else:
+            self.file.create_dataset(name, data=data)
         self.close()
 
     def set_grp_attr(self, grp_name, attr, data):
@@ -178,6 +196,83 @@ class AcqManager(SpkManager, LFPManager):
         else:
             grp.attrs[attr] = data
         self.close()
+
+    def set_grp_dataset(self, grp_name, name, data):
+        self.open()
+        if self.file.get(grp_name):
+            grp = self.file[grp_name]
+        else:
+            grp = self.file.create_group(grp_name)
+        if grp.get(name):
+            del grp[name]
+            grp.create_dataset(name, data=data)
+        else:
+            grp.create_dataset(name, data=data)
+        self.close()
+
+    def _get_grp_dataset(self, grp, data):
+        if self.file.get(grp):
+            if self.file[grp].get(data):
+                grp_data = self.file[grp][data][()]
+            else:
+                raise AttributeError(f"{data} does not exist.")
+        else:
+            raise AttributeError(f"{grp} does not exist.")
+        return grp_data
+
+    def set_channel_map(self, map_path):
+        path = Path(map_path)
+        if path.suffix == ".xlsx":
+            raise NotImplementedError("xlsx files are not supported")
+        elif path.suffix == ".csv":
+            chan_map = np.loadtxt(path, delimiter=",", dtype=np.int16)
+        elif path.suffix == ".txt":
+            chan_map = np.loadtxt(path, dtype=np.int16)
+        else:
+            raise NotImplementedError("File type not recognized.")
+        self.set_file_dataset("channel_map", data=chan_map)
+
+    def set_spike_data(self, dir, id):
+        if self.file.get(id):
+            self.spike_data[id] = dir
+        else:
+            raise AttributeError("Must set name for spike first.")
+
+    def save_to_bin(
+        self, acqs=None, electrode=None, save_path=None, map_channels=False
+    ):
+        self.open()
+        start = self.file.attrs["start"]
+        end = self.file.attrs["end"]
+        if acqs is None:
+            shape = self.file["acqs"].shape
+            acqs = [0]
+            acqs.append(shape[0])
+        if electrode is not None and acqs is not None:
+            data = self._get_grp_dataset("electrode", electrode)
+            acqs[0] += data[0]
+            acqs[1] += data[0]
+        if map_channels and self.file.get("channel_map"):
+            acqs = np.zeros((shape[0], end - start))
+            channel_map = self.file["channel_map"][()]
+            for i in range(shape[1]):
+                acqs[i] = self.file["acqs"][channel_map[i], start:end]
+        else:
+            acqs = np.asarray(
+                self.file["acqs"][acqs[0] : acqs[1], start:end],
+                dtype=np.int16,
+                order="C",
+            )
+        self.close()
+
+        # Need to transpose to (n_samples, n_channels) fo kilosort
+        acqs = acqs.T
+        if save_path is None:
+            save_path = Path(self.save_path).parents[0] / Path(self.save_path).stem
+            save_path = save_path / ".bin"
+        else:
+            save_path = Path(save_path) / ".bin"
+        acqs.tofile(save_path)
 
     def close(self):
         if self.file is not None:

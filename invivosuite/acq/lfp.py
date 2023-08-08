@@ -467,10 +467,16 @@ def short_time_energy(array, window="hamming", wlen=200):
 
 def find_ste_baseline(ste, tol=0.001, method="spline", deg=90):
     baseline_x = np.arange(0, ste.size, 1)
-    min_v = ste.min()
-    max_v = ste.max()
     power2 = int(np.ceil(np.log2(ste.size)))
-    x = np.linspace(min_v - np.abs(min_v * tol), max_v + max_v * tol, num=2**power2)
+    # min_v = ste.min()
+    # max_v = ste.max()
+    # x = np.linspace(min_v - np.abs(min_v * tol), max_v + max_v * tol, num=2**power2)
+
+    # Calculating x comes from Seaborn KDE
+    bw = np.cov(ste)
+    min_ste = ste.min() - bw * tol
+    max_ste = ste.max() + bw * tol
+    x = np.linspace(min_ste, max_ste, num=2**power2)
     y = KDEpy.FFTKDE(kernel="biweight", bw="ISJ").fit(ste, weights=None).evaluate(x)
     max_index = y.argmax()
     ste_max = x[0] + x[max_index]
@@ -500,7 +506,6 @@ def find_ste_baseline(ste, tol=0.001, method="spline", deg=90):
     return baseline, std
 
 
-@njit()
 def clean_bursts(bursts_ind, acq, fs=1000):
     cb = np.zeros(bursts_ind.shape)
     index = 0
@@ -517,28 +522,23 @@ def clean_bursts(bursts_ind, acq, fs=1000):
                 cb[index] = i
                 index += 1
     cb = cb[:index, :]
-    return cb
+    return np.asarray(cb, dtype=np.int64)
 
 
-def find_bursts(
-    acq,
-    window="hamming",
+def _find_bursts(
+    ste,
+    baseline,
+    std,
+    threshold=10,
     min_len=0.2,
     max_len=20,
     min_burst_int=0.2,
-    wlen=200,
-    threshold=10,
-    fs=1000,
     pre=3,
     post=3,
-    order=100,
-    method="spline",
-    tol=0.001,
-    deg=90,
+    order=1000,
+    fs=1000,
 ):
-    ste = short_time_energy(acq, window=window, wlen=wlen)
     min_burst_int = int(min_burst_int * fs)
-    baseline, std = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
     p = np.where(ste > baseline + (std * threshold))[0]
     diffs = np.diff(p)
     spl_in = np.where(diffs > min_burst_int)[0] + 1
@@ -580,8 +580,41 @@ def find_bursts(
             new_bursts.append(i)
             index += 1
     bursts = np.array(new_bursts)
+    return bursts
+
+
+def find_bursts(
+    acq,
+    window="hamming",
+    min_len=0.2,
+    max_len=20,
+    min_burst_int=0.2,
+    wlen=200,
+    threshold=10,
+    fs=1000,
+    pre=3,
+    post=3,
+    order=100,
+    method="spline",
+    tol=0.001,
+    deg=90,
+):
+    ste = short_time_energy(acq, window=window, wlen=wlen)
+    baseline, std = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
+    bursts = _find_bursts(
+        ste,
+        baseline,
+        std,
+        threshold,
+        min_len,
+        max_len,
+        min_burst_int,
+        pre,
+        post,
+        order,
+        fs,
+    )
     bursts = clean_bursts(bursts, acq, fs=fs)
-    bursts = bursts.astype(np.int64)
     return bursts
 
 
