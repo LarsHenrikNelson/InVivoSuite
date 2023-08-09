@@ -1,37 +1,12 @@
-from pathlib import Path
-
 import numpy as np
-import pandas as pd
 import pyqtgraph as pg
-from pyqtgraph.dockarea.Dock import Dock
-from pyqtgraph.dockarea.DockArea import DockArea
-from PySide6.QtCore import (
-    QAbstractListModel,
-    QMutex,
-    QObject,
-    QRunnable,
-    Qt,
-    QThreadPool,
-)
-from PySide6.QtGui import QAction, QFont, QIntValidator, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
-    QGridLayout,
     QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
     QProgressBar,
     QPushButton,
-    QScrollArea,
-    QSizePolicy,
-    QSlider,
     QSpinBox,
-    QTabWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -51,7 +26,7 @@ class LFPWidget(QWidget):
         self.main_layout.addLayout(self.load_layout)
         self.load_widget = ListView()
         self.load_widget.setMaximumWidth(300)
-        self.load_widget.clicked.connect(self.plot_acq)
+        self.load_widget.clicked.connect(self.set_acq_spinbox)
         self.load_layout.addWidget(self.load_widget)
         self.exp_manager = {}
         self.load_widget.setData(self.exp_manager)
@@ -68,16 +43,23 @@ class LFPWidget(QWidget):
         self.plot_check_list = QFormLayout()
         self.main_layout.addLayout(self.plot_check_list)
 
+        self.plot_spinbox = QSpinBox()
+        self.plot_spinbox.valueChanged.connect(self.plot_acq)
+        self.plot_check_list.addRow("Acquisition", self.plot_spinbox)
+
         self.plot_bursts = QCheckBox()
         self.plot_check_list.addRow("Plot bursts", self.plot_bursts)
 
+        self.channel_map = QCheckBox()
+        self.plot_check_list.addRow("Map channels", self.channel_map)
+
         self.plot_layout = QVBoxLayout()
         self.main_layout.addLayout(self.plot_layout)
-        self.main_plot = pg.PlotWidget()
+        self.main_plot = pg.PlotWidget(useOpenGl=True)
         self.plot_layout.addWidget(self.main_plot)
-        self.ste_plot = pg.PlotWidget()
+        self.ste_plot = pg.PlotWidget(useOpenGl=True)
         self.plot_layout.addWidget(self.ste_plot)
-        self.access_plot = pg.PlotWidget()
+        self.access_plot = pg.PlotWidget(useOpenGl=True)
         self.access_plot.setMaximumHeight(200)
         self.access_plot.plotItem.setMouseEnabled(x=False)
         self.access_plot.plotItem.setMouseEnabled(y=False)
@@ -125,20 +107,37 @@ class LFPWidget(QWidget):
         self.access_plot.clear()
         self.ste_plot.clear()
 
-    def plot_acq(self):
+    def set_acq_spinbox(self):
+        id = self.load_widget.getAcqID()
+        channels = self.exp_manager[id].num_channels
+        self.plot_spinbox.setRange(1, channels)
+
+    def plot_acq(self, num):
         self.main_plot.clear()
         self.access_plot.clear()
         self.ste_plot.clear()
         id = self.load_widget.getAcqID()
-        acq = self.exp_manager[id].acq("lfp")
+        acq = self.exp_manager[id].acq(
+            "lfp", num - 1, map_channel=self.channel_map.isChecked()
+        )
         x = np.arange(acq.size) / 1000
         self.main_plot.plot(x=x, y=acq, name="main")
         self.access_plot.plot(x=x, y=acq, name="access")
         self.access_plot.addItem(self.region, ignoreBounds=True)
-        ste = self.exp_manager[id].get_short_time_energy()
+        fs = self.exp_manager[id].get_grp_attr("lfp", "sample_rate")
+        wlen = self.exp_manager[id].get_grp_attr("lfp_bursts", "wlen")
+        window = self.exp_manager[id].get_grp_attr("lfp_bursts", "window")
+        ste = self.exp_manager[id].get_short_time_energy(
+            acq,
+            wlen=wlen,
+            window=window,
+            fs=fs,
+        )
         self.ste_plot.plot(x=x, y=ste)
         if self.plot_bursts.isChecked():
-            b = self.exp_manager[id].get_lfp_burst_indexes()
+            b = self.exp_manager[id].get_lfp_burst_indexes(
+                num - 1, map_channel=self.channel_map.isChecked()
+            )
             for i in range(b.shape[0]):
                 self.main_plot.plot(
                     x=x[int(b[i, 0]) : int(b[i, 1])],

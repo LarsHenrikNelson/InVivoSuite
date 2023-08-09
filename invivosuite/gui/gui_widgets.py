@@ -164,8 +164,8 @@ class ListView(QListView):
         self.model().setLoadData(exp_manager)
 
     def getAcqID(self):
-        index = self.currentIndex()
-        return self.model().acq_names[index.row()]
+        index = self.currentIndex().row()
+        return self.model().acq_names[index]
 
 
 class ListModel(QAbstractListModel):
@@ -222,24 +222,13 @@ class ListModel(QAbstractListModel):
             urls = [PurePath(str(url.toLocalFile())) for url in urls]
         for value in urls:
             temp = AcqManager()
-            temp.load_hdf5_file(value)
+            temp.open_hdf5_file(value)
             self.exp_manager[value.stem] = temp
             self.acq_names.append(value.stem)
-        self.acqsAdded()
-        # worker.signals.progress.connect(self.updateProgress)
-        # worker.signals.finished.connect(self.acqsAdded)
-        # QThreadPool.globalInstance().start(worker)
-
-    def acqsAdded(self):
-        self.sortNames()
         self.layoutChanged.emit()
 
     def updateProgress(self, value):
         self.signals.progress.emit(value)
-
-    def sortNames(self):
-        self.acq_names = list(self.exp_manager.keys())
-        self.acq_names.sort(key=lambda d: int(d.split("_")[1]))
 
     def setLoadData(self, exp_manager):
         self.exp_manager = exp_manager

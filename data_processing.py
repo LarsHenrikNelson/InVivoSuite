@@ -52,7 +52,7 @@ for i in acqs:
         filter_type="butterworth_zero",
         order=3,
         lowpass=300,
-        resample_freq=1000,
+        sample_rate=1000,
         up_sample=3,
     )
     i.set_filter(
@@ -77,8 +77,8 @@ for i in acqs:
 # ACC and DMS file. This attribute needs to be set to work with the spike
 # data.
 for i in acqs:
-    i.set_grp_data("electrodes", "acc", [64, 127])
-    i.set_grp_data("electrodes", "dms", [0, 63])
+    i.set_grp_dataset("electrodes", "acc", [64, 127])
+    i.set_grp_dataset("electrodes", "dms", [0, 63])
 
 
 # %%
@@ -89,14 +89,14 @@ for i in acqs:
     )
 
 # %%
-for index, i in enumerate(acqs):
+for index, i in enumerate(acqs[:1]):
     print(index)
     i.find_lfp_bursts(
         window="hamming",
         min_len=0.2,
         max_len=20,
         min_burst_int=0.2,
-        wlen=200,
+        wlen=0.2,
         threshold=10,
         pre=3,
         post=3,
@@ -108,8 +108,8 @@ for index, i in enumerate(acqs):
 
 
 # %%
+# I recommend
 for index, i in enumerate(acqs):
-    print(index)
     i.analyze_bursts(
         method="max_int",
         min_count=5,

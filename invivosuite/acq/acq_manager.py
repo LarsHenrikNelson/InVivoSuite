@@ -50,7 +50,7 @@ class AcqManager(SpkManager, LFPManager):
         self.set_file_attr("end", acqs.shape[1])
         self.close()
 
-    def set_hdf5_file(self, file_path):
+    def open_hdf5_file(self, file_path):
         self.file_path = file_path
 
     def open(self):
@@ -63,6 +63,13 @@ class AcqManager(SpkManager, LFPManager):
         resampled = signal.resample_poly(array, up_sample, up_sample * ratio)
         return resampled
 
+    @property
+    def num_channels(self):
+        self.open()
+        channels = self.file["acqs"].shape[0]
+        self.close()
+        return channels
+
     def set_filter(
         self,
         acq_type: Literal["spike", "lfp"],
@@ -74,7 +81,7 @@ class AcqManager(SpkManager, LFPManager):
         low_width: Union[int, float, None] = None,
         window: Windows = "hann",
         polyorder: Union[int, None] = 0,
-        resample_freq: Union[float, None] = None,
+        sample_rate: Union[float, int] = 40000,
         up_sample=3,
     ):
         input_dict = {
@@ -86,7 +93,7 @@ class AcqManager(SpkManager, LFPManager):
             "low_width": low_width,
             "window": window,
             "polyorder": polyorder,
-            "resample_freq": resample_freq,
+            "sample_rate": sample_rate,
             "up_sample": up_sample,
         }
         self.open()
@@ -112,7 +119,7 @@ class AcqManager(SpkManager, LFPManager):
             "lowpass": grp.attrs["lowpass"],
             "low_width": grp.attrs["low_width"],
             "window": grp.attrs["window"],
-            "resample_freq": grp.attrs["resample_freq"],
+            "sample_rate": grp.attrs["sample_rate"],
             "polyorder": grp.attrs["polyorder"],
             "up_sample": grp.attrs["up_sample"],
         }
@@ -219,6 +226,21 @@ class AcqManager(SpkManager, LFPManager):
         else:
             raise AttributeError(f"{grp} does not exist.")
         return grp_data
+
+    def get_grp_attr(self, grp_name, name):
+        self.open()
+        if self.file.get(grp_name):
+            grp = self.file[grp_name]
+            if grp.attrs.get(name):
+                value = grp.attrs[name]
+                self.close()
+                return value
+            else:
+                self.close()
+                raise KeyError(f"{name} is not an attribute of {grp_name}.")
+        else:
+            self.close()
+            raise KeyError(f"{grp_name} does not exist.")
 
     def set_channel_map(self, map_path):
         path = Path(map_path)

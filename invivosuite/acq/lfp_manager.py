@@ -2,8 +2,7 @@ import os
 from typing import Literal, Union
 
 import fcwt
-
-# import numpy as np
+import numpy as np
 from scipy import signal
 
 from . import lfp
@@ -28,6 +27,7 @@ class LFPManager:
             fn=fn,
             scaling=scaling,
             nthreads=nthreads,
+            norm=norm,
         )
 
     def set_periodgram(
@@ -167,7 +167,7 @@ class LFPManager:
         self.close()
         return hil_acq
 
-    def calc_all_pdi(self, freq_dict, nthreads=4, size=5000):
+    def calc_all_pdi(self, freq_dict: dict, nthreads: int = 4, size: int = 5000):
         self.open()
         lfp_grp = self.file["lfp"]
         array = self.acq("lfp")
@@ -189,25 +189,67 @@ class LFPManager:
             )
             self.set_grp_attr(pdi_grp, key, pdi)
 
-    def get_short_time_energy(self, acq_num, window="hamming", wlen=501):
-        acq = self.acq("lfp", acq_num)
-        se_array = lfp.short_time_energy(acq, window=window, wlen=wlen)
+    def get_short_time_energy(
+        self,
+        acq: Union[None, np.ndarray] = None,
+        acq_num: Union[None, int] = None,
+        window: str = "hamming",
+        wlen: float = 0.2,
+        fs: Union[float, int, None] = None,
+        map_channel: bool = False,
+    ):
+        """This is a convience function to test out different short time energy settings
+        or get the short time energy of an specific acquisition.
+
+        Args:
+            acq (Union[None, np.ndarray], optional): Numpy array containing the acq.
+            Defaults to None.
+            acq_num (Union[None, int], optional): Acquistion number must be supplied as
+            a zero-indexed (e.g. 1 is 0, 2 is 1, etc). Defaults to None.
+            window (str, optional): _description_. Defaults to "hamming".
+            wlen (float, optional): _description_. Defaults to 0.2.
+            fs (Union[float, int, None], optional): _description_. Defaults to None.
+            map_channel (bool, optional): _description_. Defaults to None.
+
+        Raises:
+            AttributeError: Raises error is acq or acq_num is not supplied.
+            AttributeError: Raises error if fs is not supplied if an acq is supplied.
+
+        Returns:
+            np.ndarray: The short time energy
+        """
+        if acq is None and acq_num is None:
+            raise AttributeError(
+                "An acquisition or acquisition number must be supplied"
+            )
+        if acq is not None:
+            if fs is None:
+                raise AttributeError("fs must be supplied if using acq argument.")
+            se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
+        else:
+            self.open()
+            if map_channel and self.file.get("channel_map"):
+                acq_num = self.file["channel_map"][acq_num]
+            acq = self.acq("lfp", acq_num)
+            fs = self.get_grp_attr("lfp", "sample_rate")
+            se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
+            self.close()
         return se_array
 
     def find_lfp_bursts(
         self,
-        window="hamming",
-        min_len=0.2,
-        max_len=20,
-        min_burst_int=0.2,
-        wlen=200,
-        threshold=10,
-        pre=3,
-        post=3,
-        order=100,
-        method="spline",
-        tol=0.001,
-        deg=90,
+        window: lfp.Windows = "hamming",
+        min_len: float = 0.2,
+        max_len: float = 20.0,
+        min_burst_int: float = 0.2,
+        wlen: float = 0.2,
+        threshold: Union[float, int] = 10,
+        pre: Union[float, int] = 3.0,
+        post: Union[float, int] = 3.0,
+        order: Union[float, int] = 0.1,
+        method: Literal["spline", "fixed", "polynomial"] = "spline",
+        tol: float = 0.001,
+        deg: int = 90,
     ):
         input_dict = {
             "window": window,
@@ -255,13 +297,19 @@ class LFPManager:
             )
             self.set_grp_dataset("lfp_bursts", str(i), bursts)
 
-    # def get_lfp_burst_indexes(self):
-    #     self.open()
-    #     return np.asarray(self.file["lfp_bursts"][()], dtype=np.int64)
-
-    def get_burst_baseline(self, acq_num):
+    def get_lfp_burst_indexes(self, acq_num: int, map_channel=False):
         self.open()
-        bursts = self.file["lfp_bursts"][acq_num]
+        if map_channel and self.file.get("channel_map"):
+            acq_num = self.file["channel_map"][acq_num]
+        indexes = np.asarray(self.file["lfp_bursts"][str(acq_num)][()], dtype=np.int64)
+        self.close()
+        return indexes
+
+    def get_burst_baseline(self, acq_num: int, map_channel=False):
+        self.open()
+        if map_channel and self.file.get("channel_map"):
+            acq_num = self.file["channel_map"][acq_num]
+        bursts = np.asarray(self.file["lfp_bursts"][str(acq_num)][()], dtype=np.int64)
         size = int(self.file.attrs["stop"] - self.file.attrs["start"])
         burst_baseline = lfp.burst_baseline_periods(bursts, size)
         self.close()

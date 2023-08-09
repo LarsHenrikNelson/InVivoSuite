@@ -69,7 +69,7 @@ def load_hdf5_acqs(directory: str):
     acqs = []
     for i in path.rglob("*.hdf5"):
         acq = AcqManager()
-        acq.set_hdf5_file(i)
+        acq.open_hdf5_file(i)
         acqs.append(acq)
     return acqs
 

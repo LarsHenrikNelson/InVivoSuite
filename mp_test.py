@@ -8,6 +8,9 @@ import pandas as pd
 
 from invivosuite.acq import AcqManager, lfp, load_hdf5_acqs, load_pl2_acqs
 
+"""This is a template for multiprocessing files
+"""
+
 
 # %%
 def multi_func(file_path):
@@ -18,7 +21,7 @@ def multi_func(file_path):
         min_len=0.2,
         max_len=20,
         min_burst_int=0.2,
-        wlen=200,
+        wlen=0.2,
         threshold=10,
         pre=3,
         post=3,

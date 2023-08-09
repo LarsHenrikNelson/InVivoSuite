@@ -34,6 +34,25 @@ __all__ = [
     "get_lfp_seg_pxx",
 ]
 
+Windows = Literal[
+    "hamming",
+    "hann",
+    "blackmanharris",
+    "boxcar",
+    "triangle",
+    "flattop",
+    "parzen",
+    "bohman",
+    "nuttall",
+    "barthann",
+    "cosine",
+    "exponential",
+    "tukey",
+    "taylor",
+    "lanczos",
+    "bartlett",
+]
+
 
 def find_logpx_baseline(
     acq,
@@ -63,7 +82,7 @@ def find_logpx_baseline(
     if window != "dpss":
         f, px = signal.welch(acq, fs=fs, nperseg=nperseg, noverlap=noverlap, nfft=nfft)
     elif window == "dpss":
-        f, pxx, _ = multitaper(
+        f, px, _ = multitaper(
             acq,
             fs=fs,
             NW=NW,
@@ -458,14 +477,22 @@ def phase_slope_index(
     return psi
 
 
-def short_time_energy(array, window="hamming", wlen=200):
+def short_time_energy(
+    array, window: Windows = "hamming", wlen: int = 0.2, fs: Union[float, int] = 1000.0
+):
+    wlen = int(wlen * fs)
     win_array = signal.get_window(window, wlen)
     se_array = signal.convolve(array**2, win_array, mode="full")
     se_array = se_array[wlen // 2 : array.size + wlen // 2]
     return se_array
 
 
-def find_ste_baseline(ste, tol=0.001, method="spline", deg=90):
+def find_ste_baseline(
+    ste: np.ndarray,
+    tol: float = 0.001,
+    method: Literal["spline", "fixed", "polynomial"] = "spline",
+    deg: int = 90,
+):
     baseline_x = np.arange(0, ste.size, 1)
     power2 = int(np.ceil(np.log2(ste.size)))
     # min_v = ste.min()
@@ -543,6 +570,8 @@ def _find_bursts(
     diffs = np.diff(p)
     spl_in = np.where(diffs > min_burst_int)[0] + 1
     bursts_temp = np.split(p, spl_in)
+    max_len = max_len * fs
+    min_len = min_len * fs
     bursts = []
     for index, i in enumerate(bursts_temp):
         start = i[0]
@@ -566,7 +595,7 @@ def _find_bursts(
         if start < 0:
             start = 0
         blen = end - start
-        if blen <= (max_len * fs) and blen >= (min_len * fs):
+        if blen <= (max_len) and blen >= (min_len):
             bursts.append((int(start), int(end)))
     bursts = np.array(bursts)
     new_bursts = [bursts[0]]
@@ -589,7 +618,7 @@ def find_bursts(
     min_len=0.2,
     max_len=20,
     min_burst_int=0.2,
-    wlen=200,
+    wlen=0.2,
     threshold=10,
     fs=1000,
     pre=3,
@@ -599,20 +628,21 @@ def find_bursts(
     tol=0.001,
     deg=90,
 ):
+    wlen = int(wlen * fs)
     ste = short_time_energy(acq, window=window, wlen=wlen)
     baseline, std = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
     bursts = _find_bursts(
-        ste,
-        baseline,
-        std,
-        threshold,
-        min_len,
-        max_len,
-        min_burst_int,
-        pre,
-        post,
-        order,
-        fs,
+        ste=ste,
+        baseline=baseline,
+        std=std,
+        threshold=threshold,
+        min_len=min_len,
+        max_len=max_len,
+        min_burst_int=min_burst_int,
+        pre=pre,
+        post=post,
+        order=order,
+        fs=fs,
     )
     bursts = clean_bursts(bursts, acq, fs=fs)
     return bursts
