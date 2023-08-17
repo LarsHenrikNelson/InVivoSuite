@@ -9,8 +9,26 @@ that I got from https://github.com/nipy/nitime. There are two other ways to
 implement multitaper spectral analysis with python; using Scipy or the spectrum
 package how ever they create numerical issues with large array sizes. Nitime does
 not have the issues but I increased the speed of the code by using numba and removed
-small unecessary bits of code.
+small unecessary bits of code. My version is about a factor of 10 faster.
 """
+
+
+def _centered(arr, newshape):
+    # Return the center newshape portion of the array.
+    newshape = np.asarray(newshape)
+    currshape = np.array(arr.shape)
+    startind = (currshape - newshape) // 2
+    endind = startind + newshape
+    myslice = [slice(startind[k], endind[k]) for k in range(len(endind))]
+    return arr[tuple(myslice)]
+
+
+def remove_bias(x, axis):
+    "Subtracts an estimate of the mean from signal x at axis"
+    padded_slice = [slice(d) for d in x.shape]
+    padded_slice[axis] = np.newaxis
+    mn = np.mean(x, axis=axis)
+    return x - mn[tuple(padded_slice)]
 
 
 def mtm_cross_spectrum(tx, ty, weights, sides="twosided"):
@@ -171,6 +189,9 @@ def adaptive_weights(yk, eigvals, sides="onesided", max_iter=150):
 
     # start with an estimate from incomplete data--the first 2 tapers
     sdf_iter = mtm_cross_spectrum(yk[:2], yk[:2], eigvals[:2, None], sides=sides)
+
+    # err = np.zeros((K, L))
+
     # for numerical considerations, don't bother doing adaptive
     # weighting after 150 dB down
 
@@ -219,6 +240,55 @@ def adaptive_weights(yk, eigvals, sides="onesided", max_iter=150):
     return weights, nu
 
 
+def fftconvolve(in1, in2, mode="full", axis=None):
+    """Convolve two N-dimensional arrays using FFT. See convolve.
+
+    This is a fix of scipy.signal.fftconvolve, adding an axis argument.
+    """
+    s1 = np.array(in1.shape)
+    s2 = np.array(in2.shape)
+    complex_result = np.issubdtype(in1.dtype, np.complex128) or np.issubdtype(
+        in2.dtype, np.complex128
+    )
+
+    if axis is None:
+        size = s1.size + s2.size - 1
+        fslice = tuple([slice(0, int(sz)) for sz in size])
+    else:
+        equal_shapes = s1 == s2
+        # allow equal_shapes[axis] to be False
+        equal_shapes[axis] = True
+        assert equal_shapes.all(), "Shape mismatch on non-convolving axes"
+        size = s1.shape[axis] + s2.shape[axis] - 1
+        fslice = [slice(L) for L in s1]
+        fslice[axis] = slice(0, int(size))
+        fslice = tuple(fslice)
+
+    # Always use 2**n-sized FFT
+    fsize = 2 ** int(np.ceil(np.log2(size)))
+    if axis is None:
+        IN1 = fft.fftn(in1, fsize)
+        IN1 *= fft.fftn(in2, fsize)
+        ret = fft.ifftn(IN1)[fslice].copy()
+    else:
+        IN1 = fft.fft(in1, fsize, axis=axis)
+        IN1 *= fft.fft(in2, fsize, axis=axis)
+        ret = fft.ifft(IN1, axis=axis)[fslice].copy()
+    del IN1
+    if not complex_result:
+        ret = ret.real
+    if mode == "full":
+        return ret
+    elif mode == "same":
+        if np.product(s1, axis=0) > np.product(s2, axis=0):
+            osize = s1
+        else:
+            osize = s2
+        return _centered(ret, osize)
+    elif mode == "valid":
+        return _centered(ret, abs(s2 - s1) + 1)
+
+
 def crosscov(x, y, axis=-1, all_lags=False, debias=True, normalize=True):
     r"""Returns the crosscovariance sequence between two ndarrays.
     This is performed by calling fftconvolve on x, y[::-1]
@@ -261,11 +331,12 @@ def crosscov(x, y, axis=-1, all_lags=False, debias=True, normalize=True):
     if x.shape[axis] != y.shape[axis]:
         raise ValueError("crosscov() only works on same-length sequences for now")
     if debias:
-        x = x - x.mean()
-        y = y - y.mean()
+        # de-mean this sucker
+        x = remove_bias(x, axis)
+        y = remove_bias(y, axis)
     slicing = [slice(d) for d in x.shape]
     slicing[axis] = slice(None, None, -1)
-    cxy = signal.convolve(x, y[tuple(slicing)].conj(), mode="full")
+    cxy = signal.fftconvolve(x, y[tuple(slicing)].conj(), axes=axis, mode="full")
     N = x.shape[axis]
     if normalize:
         cxy /= N
@@ -307,8 +378,9 @@ def autocov(x, **kwargs):
     """
     # only remove the mean once, if needed
     debias = kwargs.pop("debias", True)
+    axis = kwargs.get("axis", -1)
     if debias:
-        x = x - x.mean()
+        x = remove_bias(x, axis)
     kwargs["debias"] = False
     return crosscov(x, x, **kwargs)
 
@@ -388,6 +460,7 @@ def tridisolve(d, e, b):
     return x
 
 
+@njit(cache=True)
 def tridi_inverse_iteration(d, e, w, x0=None, rtol=1e-8):
     """Perform an inverse iteration to find the eigenvector corresponding
     to the given eigenvalue in a symmetric tridiagonal system.
@@ -423,7 +496,7 @@ def tridi_inverse_iteration(d, e, w, x0=None, rtol=1e-8):
     x0 /= norm_x
     while np.linalg.norm(np.abs(x0) - np.abs(x_prev)) > rtol:
         x_prev = x0.copy()
-        tridisolve(eig_diag, e, x0)
+        x0 = tridisolve(eig_diag, e, x0)
         norm_x = np.linalg.norm(x0)
         x0 /= norm_x
     return x0
@@ -592,10 +665,12 @@ def tapered_spectra(s, tapers, NFFT=None, low_bias=True):
     if NFFT is None or NFFT < N:
         NFFT = N
     rest_of_dims = s.shape[:-1]
+    # M = int(np.product(rest_of_dims))
 
     s = s.reshape(int(np.product(rest_of_dims)), N)
     # de-mean this sucker
-    s = s - s.mean()
+    s = remove_bias(s, axis=-1)
+    # s = s - s.mean(axis=-1)
 
     if not isinstance(tapers, np.ndarray):
         # then tapers is (NW, K)
@@ -671,10 +746,10 @@ def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     # for each leave-one-out. This is now the case.
     for i in range(K):
         items = [j for j in range(K) if j != i]
-        # spectra_i = np.take(yk, items, axis=0)
-        spectra_i = yk[items]
-        # eigs_i = np.take(eigvals, items)
-        eigs_i = eigvals[items]
+        spectra_i = np.take(yk, items, axis=0)
+        # spectra_i = yk[items]
+        eigs_i = np.take(eigvals, items)
+        # eigs_i = eigvals[items]
         if adaptive:
             # compute the weights
             weights, _ = adaptive_weights(spectra_i, eigs_i, sides=sides)
@@ -685,15 +760,13 @@ def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     # log-transform the leave-one-out estimates and the mean of estimates
     jk_sdf = np.log(jk_sdf)
     # jk_avg should be the mean of the log(jk_sdf(i))
-    # jk_avg = jk_sdf.mean(axis=0)
-    jk_avg = np.mean(jk_sdf, axis=0)
+    jk_avg = jk_sdf.mean(axis=0)
 
     K = float(K)
 
     jk_var = jk_sdf - jk_avg
     np.power(jk_var, 2, jk_var)
     jk_var = np.sum(jk_var, axis=0)
-    # jk_var = np.sum(jk_var, axis=0)
 
     # Thompson's recommended factor, eq 18
     # Jackknifing Multitaper Spectrum Estimates

@@ -20,48 +20,49 @@ from invivosuite.acq import lfp, load_hdf5_acqs
 
 
 # %%
-pc_paths = {
-    # "L4": "D:/in_vivo_ephys/2022_12_16/L4",
-    # "R4": "D:/in_vivo_ephys/2022_12_14/R4",
-    # "R5": "D:/in_vivo_ephys/2022_12_14/R5",
-    # "L5": "D:/in_vivo_ephys/2022_12_14/L5",
-    "FN_WT": "D:/in_vivo_ephys/2023_02_17/FN_WT",
-    "FKO": "D:/in_vivo_ephys/2023_02_17/FL5_KO",
-    "MWT": "D:/in_vivo_ephys/2023_02_17/ML5_WT",
-    "ML4": "D:/in_vivo_ephys/2023_02_24/ML4",
-    "ML5": "D:/in_vivo_ephys/2023_02_24/ML5",
-    "ML1_WT": "D:/in_vivo_ephys/2023_03_03/ML1_WT",
-    "ML4_KO": "D:/in_vivo_ephys/2023_03_03/ML4_KO",
-    "MN_KO": "D:/in_vivo_ephys/2023_03_08/MN_KO_P16",
-    "FL_WT": "D:/in_vivo_ephys/2023_03_09/FL",
-    "ML_WT": "D:/in_vivo_ephys/2023_03_09/ML",
-    "MLL_WT": "D:/in_vivo_ephys/2023_03_09/MLL",
-    "FL5_KO": "D:/in_vivo_ephys/2023_03_17/FL5_KO",
-    "FWT": "D:/in_vivo_ephys/2023_03_20/FWT",
-}
-mac_paths = {
-    # "L4": "/Volumes/Backup/in_vivo_ephys/2022_12_16/L4",
-    # "R4": "/Volumes/Backup/in_vivo_ephys/2022_12_14/R4",
-    # "R5": "/Volumes/Backup/in_vivo_ephys/2022_12_14/R5",
-    # "L5": "/Volumes/Backup/in_vivo_ephys/2022_12_14/L5",
-    "FN_WT": "/Volumes/Backup/in_vivo_ephys/2023_02_17/FN_WT",
-    "FKO": "/Volumes/Backup/in_vivo_ephys/2023_02_17/FL5_KO",
-    "MWT": "/Volumes/Backup/in_vivo_ephys/2023_02_17/ML5_WT",
-    "ML4": "/Volumes/Backup/in_vivo_ephys/2023_02_24/ML4",
-    "ML5": "/Volumes/Backup/in_vivo_ephys/2023_02_24/ML5",
-    "ML1_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_03/ML1_WT",
-    "ML4_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_03/ML4_KO",
-    "MN_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_08/MN_KO_P16",
-    "FL_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/FL",
-    "ML_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/ML",
-    "MLL_WT": "/Volumes/Backup/in_vivo_ephys/2023_03_09/MLL",
-    "FL5_KO": "/Volumes/Backup/in_vivo_ephys/2023_03_17/FL5_KO",
-    "FWT": "/Volumes/Backup/in_vivo_ephys/2023_03_20/FWT",
-}
-acqs = {}
-for key, value in pc_paths.items():
-    temp = load_hdf5_acqs(value)
-    acqs[key] = temp
+# Use convenience function to load the files
+parent_path = r"D:\in_vivo_ephys\acqs"
+acqs = load_hdf5_acqs(parent_path)
+
+# %%
+import nitime.algorithms as tsa
+from invivosuite.acq.tapered_spectra import multitaper, dpss_windows, fftconvolve
+
+# %%
+acq = acqs[-1].acq("lfp", 0)
+bursts = lfp.find_bursts(acq)
+
+# %%
+from nitime import utils
+
+dpss1, eigvals1 = utils.dpss_windows(600000, 2.5, 5)
+dpss, eigvals = dpss_windows(600000, 2.5, 5)
+
+
+# %%
+f, adaptive_psd_mt, nu = tsa.multi_taper_psd(
+    acq[bursts[2, 0] : bursts[2, 1]],
+    Fs=1000,
+    adaptive=False,
+    jackknife=True,
+    low_bias=True,
+    sides="default",
+    NFFT=4096 * 2,
+)
+# %%
+f, p, n = multitaper(
+    acq[bursts[2, 0] : bursts[2, 1]],
+    fs=1000,
+    NW=None,
+    BW=None,
+    adaptive=False,
+    jackknife=True,
+    low_bias=True,
+    sides="default",
+    NFFT=4096 * 2,
+)
+
+# %%
 
 
 # %%
@@ -90,15 +91,8 @@ bpxx = np.abs(pxx[beta].mean(axis=0))
 gpxx = np.abs(pxx[gamma].mean(axis=0))
 
 # %%
-nperseg = 200
-noverlap = 0
-b = a[bursts[0, 0] : bursts[0, 1]]
-step = nperseg - noverlap
-shape = b.shape[:-1] + ((b.shape[-1] - noverlap) // step, nperseg)
-strides = b.strides[:-1] + (step * b.strides[-1], b.strides[-1])
-temp = np.lib.stride_tricks.as_strided(b, shape=shape, strides=strides)
-rms = np.sqrt(np.mean(temp**2, axis=1))
-flatness = np.min(rms) / np.max(rms)
+acq = acqs[-1].acq("lfp", 0)
+
 
 # %%
 f, px, baseline = lfp.find_logpx_baseline(

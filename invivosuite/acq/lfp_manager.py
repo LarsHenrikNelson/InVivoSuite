@@ -319,10 +319,10 @@ class LFPManager:
         return burst_baseline
 
     def lfp_burst_stats(self):
-        self.open()
-        acq = self.acq("lfp")
-        bursts = self.file["lfp_bursts"][()]
-        fs = self.file["lfp"].attrs["sample_rate"]
-        baseline = self.get_burst_baseline()
-        ave_len, iei, rms = lfp.burst_stats(acq, bursts, baseline, fs)
-        return ave_len, iei, rms
+        for i in self.num_channels:
+            acq = self.acq("lfp", i)
+            bursts = self.file["lfp_bursts"][i]
+            fs = self.file["lfp"].attrs["sample_rate"]
+            baseline = self.get_burst_baseline()
+            ave_len, iei, rms = lfp.burst_stats(acq, bursts, baseline, fs)
+            return ave_len, iei, rms

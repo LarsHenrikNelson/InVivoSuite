@@ -52,7 +52,7 @@ for i in acqs:
         filter_type="butterworth_zero",
         order=3,
         lowpass=300,
-        sample_rate=1000,
+        sample_rate=1000.0,
         up_sample=3,
     )
     i.set_filter(

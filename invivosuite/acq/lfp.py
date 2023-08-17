@@ -703,19 +703,26 @@ BurstStats = namedtuple(
 
 
 @njit(parallel=True, cache=True)
-def burst_flatness(bursts, acq, nperseg=200, noverlap=0):
+def burst_flatness(
+    bursts: np.ndarray, acq: np.ndarray, nperseg: int = 200, noverlap: int = 0
+) -> np.ndarray:
     flatness = np.zeros(bursts.shape[0])
     for i in prange(bursts.shape[0]):
-        burst = acq[bursts[i, 0] : bursts[i, 1]]
+        nperseg = 200
+        noverlap = 0
+        burst_size = bursts[i, 1] - bursts[i, 0]
         step = nperseg - noverlap
-        shape = burst.shape[:-1] + ((burst.shape[-1] - noverlap) // step, nperseg)
-        strides = burst.strides[:-1] + (step * burst.strides[-1], burst.strides[-1])
-        temp = np.lib.stride_tricks.as_strided(burst, shape=shape, strides=strides)
-        rms = np.zeros(temp.shape[0])
-        for j in range(temp.shape[0]):
-            rms[j] = np.sqrt(np.mean(temp[j] ** 2))
-        rms /= temp.shape[0]
-        flatness[i] = np.divide(np.min(rms), np.max(rms))
+        num_segs, mod = np.divmod(burst_size, step)
+        if mod != 0:
+            out_size = num_segs + 1
+        else:
+            out_size = num_segs
+        rms = np.zeros(out_size)
+        for j in range(out_size - 1):
+            start = (j * step) + bursts[i, 0]
+            rms[j] = np.sqrt(np.mean(acq[start : start + nperseg] ** 2))
+        rms[-1] = np.sqrt(np.mean(acq[bursts[i, 1] - mod : bursts[i, 1]] ** 2))
+        flatness[i] = np.divide(rms.min(), rms.max())
     return flatness
 
 
@@ -726,7 +733,7 @@ def burst_iei(bursts, acq, fs):
         peaks, _ = signal.find_peaks(
             burst * -1, prominence=0.5 * np.sqrt(np.mean(np.square(burst)))
         )
-        iei[i] = np.mean(np.diff(peaks) / 1000)
+        iei[i] = np.mean(np.diff(peaks) / fs)
     return iei
 
 
@@ -746,7 +753,7 @@ def get_lfp_seg_pxx(
     acq,
     bursts,
     fs: float = 1000.0,
-    NW: float = 2.5,
+    NW: Union[float, None] = 2.5,
     BW: Union[float, None] = None,
     adaptive=False,
     jackknife=True,
@@ -754,12 +761,12 @@ def get_lfp_seg_pxx(
     sides="default",
     NFFT=None,
 ):
-    diff = np.max(bursts[1] - bursts[0])
-    if NFFT < diff:
-        raise ValueError("NFFT must be longer than the longest burst.")
+    diff = np.max(bursts[:, 1] - bursts[:, 0])
     if NFFT is None:
         NFFT = 2 ** int(np.ceil(np.log2(diff)))
-    burst_wav = np.zeros((bursts.shape[0], NFFT // 2 + 1))
+    if NFFT < diff:
+        raise ValueError("NFFT must be longer than the longest burst.")
+    burst_pxx = np.zeros((bursts.shape[0], NFFT // 2 + 1))
     for index, i in enumerate(bursts):
         freq, pxx, _ = multitaper(
             acq[i[0] : i[1]],
@@ -772,8 +779,8 @@ def get_lfp_seg_pxx(
             sides=sides,
             NFFT=NFFT,
         )
-        burst_wav[index] = pxx
-    return freq, burst_wav
+        burst_pxx[index] = pxx
+    return freq, burst_pxx
 
 
 def burst_stats(acq, bursts, baseline, fs):
