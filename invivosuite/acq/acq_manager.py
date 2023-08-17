@@ -70,6 +70,13 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return channels
 
+    @property
+    def id(self):
+        self.open()
+        id = self.file.attrs["id"]
+        self.close()
+        return id
+
     def set_filter(
         self,
         acq_type: Literal["spike", "lfp"],

@@ -94,13 +94,13 @@ for index, i in enumerate(acqs[:1]):
     i.find_lfp_bursts(
         window="hamming",
         min_len=0.2,
-        max_len=20,
+        max_len=20.0,
         min_burst_int=0.2,
         wlen=0.2,
         threshold=10,
-        pre=3,
-        post=3,
-        order=100,
+        pre=3.0,
+        post=3.0,
+        order=0.1,
         method="spline",
         tol=0.001,
         deg=90,
@@ -118,6 +118,7 @@ for index, i in enumerate(acqs):
         max_end=0.300,
         max_int=0.200,
     )
+x = np.median(np.abs(x - np.median(x)))
 
 # %%
 g = np.zeros((128, 128))

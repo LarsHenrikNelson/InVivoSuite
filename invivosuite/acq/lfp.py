@@ -6,7 +6,7 @@ import fcwt
 import KDEpy
 import numpy as np
 import statsmodels.api as sm
-from numba import njit
+from numba import njit, prange
 from numpy.polynomial import Polynomial
 from scipy import fft, interpolate, signal
 
@@ -529,11 +529,12 @@ def find_ste_baseline(
         baseline = poly(baseline_x)
     else:
         raise ValueError("method must be: fixed, spline, polynomial,")
-    std = np.std(temp)
-    return baseline, std
+    return baseline
 
 
-def clean_bursts(bursts_ind, acq, fs=1000):
+def clean_bursts(
+    bursts_ind: np.ndarray, acq: np.ndarray, minimum_peaks: int = 5, fs: float = 1000.0
+):
     cb = np.zeros(bursts_ind.shape)
     index = 0
     min_lag = fs * 0.025
@@ -543,9 +544,9 @@ def clean_bursts(bursts_ind, acq, fs=1000):
             peaks, _ = signal.find_peaks(
                 np.abs(burst),
                 distance=min_lag,
-                prominence=0.5 * np.sqrt(np.mean(burst**2)),
+                prominence=np.sqrt(np.mean(burst**2)),
             )
-            if len(peaks) >= 5:
+            if len(peaks) >= minimum_peaks:
                 cb[index] = i
                 index += 1
     cb = cb[:index, :]
@@ -555,23 +556,23 @@ def clean_bursts(bursts_ind, acq, fs=1000):
 def _find_bursts(
     ste,
     baseline,
-    std,
     threshold=10,
     min_len=0.2,
     max_len=20,
     min_burst_int=0.2,
-    pre=3,
-    post=3,
-    order=1000,
+    pre=3.0,
+    post=3.0,
+    order=0.1,
     fs=1000,
 ):
+    max_len = max_len * fs
+    min_len = min_len * fs
+    order = int(order * fs)
     min_burst_int = int(min_burst_int * fs)
-    p = np.where(ste > baseline + (std * threshold))[0]
+    p = np.where(ste > baseline * threshold)[0]
     diffs = np.diff(p)
     spl_in = np.where(diffs > min_burst_int)[0] + 1
     bursts_temp = np.split(p, spl_in)
-    max_len = max_len * fs
-    min_len = min_len * fs
     bursts = []
     for index, i in enumerate(bursts_temp):
         start = i[0]
@@ -614,27 +615,26 @@ def _find_bursts(
 
 def find_bursts(
     acq,
-    window="hamming",
-    min_len=0.2,
-    max_len=20,
-    min_burst_int=0.2,
-    wlen=0.2,
-    threshold=10,
-    fs=1000,
-    pre=3,
-    post=3,
-    order=100,
-    method="spline",
-    tol=0.001,
-    deg=90,
+    window: Windows = "hamming",
+    min_len: float = 0.2,
+    max_len: float = 20.0,
+    min_burst_int: float = 0.2,
+    minimum_peaks: int = 5,
+    wlen: float = 0.2,
+    threshold: float = 10.0,
+    fs=1000.0,
+    pre: float = 3.0,
+    post: float = 3.0,
+    order: float = 0.1,
+    method: Literal["spline", "fixed", "polynomial"] = "spline",
+    tol: float = 0.001,
+    deg: int = 90,
 ):
-    wlen = int(wlen * fs)
-    ste = short_time_energy(acq, window=window, wlen=wlen)
-    baseline, std = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
+    ste = short_time_energy(acq, window=window, wlen=wlen, fs=fs)
+    baseline = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
     bursts = _find_bursts(
         ste=ste,
         baseline=baseline,
-        std=std,
         threshold=threshold,
         min_len=min_len,
         max_len=max_len,
@@ -644,7 +644,7 @@ def find_bursts(
         order=order,
         fs=fs,
     )
-    bursts = clean_bursts(bursts, acq, fs=fs)
+    bursts = clean_bursts(bursts, acq, minimum_peaks=minimum_peaks, fs=fs)
     return bursts
 
 
@@ -702,6 +702,80 @@ BurstStats = namedtuple(
 )
 
 
+@njit(parallel=True, cache=True)
+def burst_flatness(bursts, acq, nperseg=200, noverlap=0):
+    flatness = np.zeros(bursts.shape[0])
+    for i in prange(bursts.shape[0]):
+        burst = acq[bursts[i, 0] : bursts[i, 1]]
+        step = nperseg - noverlap
+        shape = burst.shape[:-1] + ((burst.shape[-1] - noverlap) // step, nperseg)
+        strides = burst.strides[:-1] + (step * burst.strides[-1], burst.strides[-1])
+        temp = np.lib.stride_tricks.as_strided(burst, shape=shape, strides=strides)
+        rms = np.zeros(temp.shape[0])
+        for j in range(temp.shape[0]):
+            rms[j] = np.sqrt(np.mean(temp[j] ** 2))
+        rms /= temp.shape[0]
+        flatness[i] = np.divide(np.min(rms), np.max(rms))
+    return flatness
+
+
+def burst_iei(bursts, acq, fs):
+    iei = np.zeros(bursts.shape[0])
+    for i in range(bursts.shape[0]):
+        burst = acq[bursts[i, 0] : bursts[i, 1]]
+        peaks, _ = signal.find_peaks(
+            burst * -1, prominence=0.5 * np.sqrt(np.mean(np.square(burst)))
+        )
+        iei[i] = np.mean(np.diff(peaks) / 1000)
+    return iei
+
+
+@njit(cache=True)
+def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
+    power_dict = {}
+    burst = burst_pxx.mean(axis=0)
+    baseline = baseline_pxx.mean(axis=0)
+    norm = burst - baseline
+    for key, value in freq_dict.items():
+        f_ind = np.where((freqs >= value[0]) & (freqs < value[1]))[0]
+        power_dict[key] = np.mean(np.mean(norm[f_ind]))
+    return power_dict
+
+
+def get_lfp_seg_pxx(
+    acq,
+    bursts,
+    fs: float = 1000.0,
+    NW: float = 2.5,
+    BW: Union[float, None] = None,
+    adaptive=False,
+    jackknife=True,
+    low_bias=True,
+    sides="default",
+    NFFT=None,
+):
+    diff = np.max(bursts[1] - bursts[0])
+    if NFFT < diff:
+        raise ValueError("NFFT must be longer than the longest burst.")
+    if NFFT is None:
+        NFFT = 2 ** int(np.ceil(np.log2(diff)))
+    burst_wav = np.zeros((bursts.shape[0], NFFT // 2 + 1))
+    for index, i in enumerate(bursts):
+        freq, pxx, _ = multitaper(
+            acq[i[0] : i[1]],
+            fs=fs,
+            NW=NW,
+            BW=BW,
+            adaptive=adaptive,
+            jackknife=jackknife,
+            low_bias=low_bias,
+            sides=sides,
+            NFFT=NFFT,
+        )
+        burst_wav[index] = pxx
+    return freq, burst_wav
+
+
 def burst_stats(acq, bursts, baseline, fs):
     ave_len = np.mean(bursts[:, 1] - bursts[:, 0]) / fs
     iei = np.mean(np.diff(bursts[:, 0])) / fs
@@ -734,47 +808,6 @@ def burst_stats(acq, bursts, baseline, fs):
     max_v /= i + 1
     rms -= baseline_rms
     return ave_len, iei, rms, min_v, max_v, flatness, p_dict
-
-
-@njit()
-def burst_flatness(burst, nperseg=200, noverlap=0):
-    step = nperseg - noverlap
-    shape = burst.shape[:-1] + ((burst.shape[-1] - noverlap) // step, nperseg)
-    strides = burst.strides[:-1] + (step * burst.strides[-1], burst.strides[-1])
-    temp = np.lib.stride_tricks.as_strided(burst, shape=shape, strides=strides)
-    rms = np.sqrt(np.mean(temp**2, axis=1))
-    flatness = np.min(rms) / np.max(rms)
-    return flatness
-
-
-@njit()
-def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
-    power_dict = {}
-    burst = burst_pxx.mean(axis=0)
-    baseline = baseline_pxx.mean(axis=0)
-    norm = burst - baseline
-    for key, value in freq_dict.items():
-        f_ind = np.where((freqs >= value[0]) & (freqs < value[1]))[0]
-        power_dict[key] = np.mean(np.mean(norm[f_ind]))
-    return power_dict
-
-
-def get_lfp_seg_pxx(acq, bursts, nperseg=100, noverlap=50, nfft=4096, fs=1000):
-    burst_wav = np.zeros((bursts.shape[0], nfft // 2 + 1))
-    for index, i in enumerate(bursts):
-        freq, p = signal.welch(
-            acq[int(i[0]) : int(i[1])],
-            fs=fs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            nfft=nfft,
-        )
-        burst_wav[index] = p
-    return freq, burst_wav
-
-
-def burst_iti():
-    pass
 
 
 # if __name__ == "__main__":

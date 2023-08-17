@@ -1,7 +1,7 @@
 import warnings
 
 import numpy as np
-from numba import njit, prange
+from numba import njit
 from scipy import linalg, interpolate, fft, signal
 
 """tapered_spectra is modified version of the multitaper spectral analysis
@@ -13,10 +13,8 @@ small unecessary bits of code.
 """
 
 
-@njit()
 def mtm_cross_spectrum(tx, ty, weights, sides="twosided"):
-    r"""
-
+    """
     The cross-spectrum between two tapered time-series, derived from a
     multi-taper spectral estimation.
 
@@ -67,7 +65,7 @@ def mtm_cross_spectrum(tx, ty, weights, sides="twosided"):
         autospectrum = True
         weights_x = weights
         weights_y = weights
-        denom = (np.abs(weights) ** 2).sum(axis=0)
+        denom = np.sum((np.abs(weights) ** 2), axis=0)
 
     if sides == "onesided":
         # where the nyq freq should be
@@ -85,7 +83,7 @@ def mtm_cross_spectrum(tx, ty, weights, sides="twosided"):
 
     sf = weights_x * tx
     sf *= (weights_y * ty).conj()
-    sf = sf.sum(axis=0)
+    sf = np.sum(sf, axis=0)
     sf /= denom
 
     if sides == "onesided":
@@ -100,7 +98,6 @@ def mtm_cross_spectrum(tx, ty, weights, sides="twosided"):
     return sf
 
 
-@njit(parallel=True)
 def adaptive_weights(yk, eigvals, sides="onesided", max_iter=150):
     r"""
     Perform an iterative procedure to find the optimal weights for K
@@ -189,7 +186,7 @@ def adaptive_weights(yk, eigvals, sides="onesided", max_iter=150):
         d_sdfs *= 2
     sdf_iter = sdf_iter[adaptiv_weights]
     yk = yk[:, adaptiv_weights]
-    for n in prange(max_iter):
+    for n in range(max_iter):
         d_k = rt_eig[:, None] * sdf_iter[None, :]
         d_k /= eigvals[:, None] * sdf_iter[None, :] + bband_sup[:, None]
 
@@ -347,7 +344,7 @@ def autocorr(x, **kwargs):
     return autocov(x, **kwargs)
 
 
-@njit(parallel=True)
+@njit(cache=True)
 def tridisolve(d, e, b):
     """
     Symmetric tridiagonal system solver,
@@ -376,13 +373,13 @@ def tridisolve(d, e, b):
     dw = d.copy()
     ew = e.copy()
     x = b.copy()
-    for k in prange(1, N):
+    for k in range(1, N):
         # e^(k-1) = e(k-1) / d(k-1)
         # d(k) = d(k) - e^(k-1)e(k-1) / d(k-1)
         t = ew[k - 1]
         ew[k - 1] = t / dw[k - 1]
         dw[k] = dw[k] - t * ew[k - 1]
-    for k in prange(1, N):
+    for k in range(1, N):
         x[k] = x[k] - ew[k - 1] * x[k - 1]
     x[N - 1] = x[N - 1] / dw[N - 1]
     for k in range(N - 2, -1, -1):
@@ -538,7 +535,7 @@ def dpss_windows(N, NW, Kmax, interp_from=None, interp_kind="linear"):
     # By convention (Percival and Walden, 1993 pg 379)
     # * symmetric tapers (k=0,2,4,...) should have a positive average.
     # * antisymmetric tapers should begin with a positive lobe
-    fix_symmetric = dpss[0::2].sum(axis=1) < 0
+    fix_symmetric = np.sum(dpss[0::2], axis=1) < 0
     for i, f in enumerate(fix_symmetric):
         if f:
             dpss[2 * i] *= -1
@@ -627,7 +624,6 @@ def tapered_spectra(s, tapers, NFFT=None, low_bias=True):
     return t_spectra, eigvals
 
 
-@njit()
 def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     r"""
     Returns the variance of the log-sdf estimated through jack-knifing
@@ -670,14 +666,15 @@ def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     # | x_k |**2 = | y_k * d_k |**2          (with adaptive weights)
     # | x_k |**2 = | y_k * sqrt(eig_k) |**2  (without adaptive weights)
 
-    all_orders = set(range(K))
     jk_sdf = []
     # get the leave-one-out estimates -- ideally, weights are recomputed
     # for each leave-one-out. This is now the case.
     for i in range(K):
-        items = list(all_orders.difference([i]))
-        spectra_i = np.take(yk, items, axis=0)
-        eigs_i = np.take(eigvals, items)
+        items = [j for j in range(K) if j != i]
+        # spectra_i = np.take(yk, items, axis=0)
+        spectra_i = yk[items]
+        # eigs_i = np.take(eigvals, items)
+        eigs_i = eigvals[items]
         if adaptive:
             # compute the weights
             weights, _ = adaptive_weights(spectra_i, eigs_i, sides=sides)
@@ -688,13 +685,15 @@ def jackknifed_sdf_variance(yk, eigvals, sides="onesided", adaptive=True):
     # log-transform the leave-one-out estimates and the mean of estimates
     jk_sdf = np.log(jk_sdf)
     # jk_avg should be the mean of the log(jk_sdf(i))
-    jk_avg = jk_sdf.mean(axis=0)
+    # jk_avg = jk_sdf.mean(axis=0)
+    jk_avg = np.mean(jk_sdf, axis=0)
 
     K = float(K)
 
     jk_var = jk_sdf - jk_avg
     np.power(jk_var, 2, jk_var)
-    jk_var = jk_var.sum(axis=0)
+    jk_var = np.sum(jk_var, axis=0)
+    # jk_var = np.sum(jk_var, axis=0)
 
     # Thompson's recommended factor, eq 18
     # Jackknifing Multitaper Spectrum Estimates
