@@ -1,3 +1,4 @@
+from typing import Literal
 import warnings
 
 import numpy as np
@@ -11,16 +12,6 @@ package how ever they create numerical issues with large array sizes. Nitime doe
 not have the issues but I increased the speed of the code by using numba and removed
 small unecessary bits of code. My version is about a factor of 10 faster.
 """
-
-
-def _centered(arr, newshape):
-    # Return the center newshape portion of the array.
-    newshape = np.asarray(newshape)
-    currshape = np.array(arr.shape)
-    startind = (currshape - newshape) // 2
-    endind = startind + newshape
-    myslice = [slice(startind[k], endind[k]) for k in range(len(endind))]
-    return arr[tuple(myslice)]
 
 
 def remove_bias(x, axis):
@@ -238,55 +229,6 @@ def adaptive_weights(yk, eigvals, sides="onesided", max_iter=150):
     weights[:, default_weights] = w_def
     nu = 2 * (weights**2).sum(axis=-2)
     return weights, nu
-
-
-def fftconvolve(in1, in2, mode="full", axis=None):
-    """Convolve two N-dimensional arrays using FFT. See convolve.
-
-    This is a fix of scipy.signal.fftconvolve, adding an axis argument.
-    """
-    s1 = np.array(in1.shape)
-    s2 = np.array(in2.shape)
-    complex_result = np.issubdtype(in1.dtype, np.complex128) or np.issubdtype(
-        in2.dtype, np.complex128
-    )
-
-    if axis is None:
-        size = s1.size + s2.size - 1
-        fslice = tuple([slice(0, int(sz)) for sz in size])
-    else:
-        equal_shapes = s1 == s2
-        # allow equal_shapes[axis] to be False
-        equal_shapes[axis] = True
-        assert equal_shapes.all(), "Shape mismatch on non-convolving axes"
-        size = s1.shape[axis] + s2.shape[axis] - 1
-        fslice = [slice(L) for L in s1]
-        fslice[axis] = slice(0, int(size))
-        fslice = tuple(fslice)
-
-    # Always use 2**n-sized FFT
-    fsize = 2 ** int(np.ceil(np.log2(size)))
-    if axis is None:
-        IN1 = fft.fftn(in1, fsize)
-        IN1 *= fft.fftn(in2, fsize)
-        ret = fft.ifftn(IN1)[fslice].copy()
-    else:
-        IN1 = fft.fft(in1, fsize, axis=axis)
-        IN1 *= fft.fft(in2, fsize, axis=axis)
-        ret = fft.ifft(IN1, axis=axis)[fslice].copy()
-    del IN1
-    if not complex_result:
-        ret = ret.real
-    if mode == "full":
-        return ret
-    elif mode == "same":
-        if np.product(s1, axis=0) > np.product(s2, axis=0):
-            osize = s1
-        else:
-            osize = s2
-        return _centered(ret, osize)
-    elif mode == "valid":
-        return _centered(ret, abs(s2 - s1) + 1)
 
 
 def crosscov(x, y, axis=-1, all_lags=False, debias=True, normalize=True):
@@ -786,6 +728,7 @@ def multitaper(
     low_bias=True,
     sides="default",
     NFFT=None,
+    out_type: Literal["density", "spectrum"] = "density",
 ):
     """Returns an estimate of the PSD function of s using the multitaper
     method. If the NW product, or the BW and fs in Hz are not specified
@@ -911,7 +854,6 @@ def multitaper(
     spectra = np.rollaxis(spectra, 1, start=0)
     weights = np.rollaxis(weights, 1, start=0)
     sdf_est = mtm_cross_spectrum(spectra, spectra, weights, sides=sides)
-    sdf_est /= fs
 
     if sides == "onesided":
         freqs = np.linspace(0, fs / 2, NFFT // 2 + 1)
@@ -920,6 +862,10 @@ def multitaper(
 
     out_shape = s.shape[:-1] + (len(freqs),)
     sdf_est.shape = out_shape
+
+    if out_type == "density":
+        sdf_est /= fs
+
     if jackknife:
         jk_var.shape = out_shape
         return freqs, sdf_est, jk_var

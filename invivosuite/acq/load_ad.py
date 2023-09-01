@@ -1,22 +1,22 @@
 from collections import namedtuple
-from typing import Union
 from pathlib import Path, PurePath
+from typing import Union
 
 import numpy as np
 
+from .acq_manager import AcqManager
 from .pypl2 import (
-    PL2FileInfo,
     PL2AnalogChannelInfo,
-    PL2SpikeChannelInfo,
     PL2DigitalChannelInfo,
+    PL2FileInfo,
+    PL2SpikeChannelInfo,
     PyPL2FileReader,
     pl2_ad,
-    pl2_spikes,
+    pl2_comments,
     pl2_events,
     pl2_info,
-    pl2_comments,
+    pl2_spikes,
 )
-from .acq_manager import AcqManager
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 
@@ -24,6 +24,8 @@ PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 def load_pl2_acqs(
     pl2_path: str,
     save_path: str = "",
+    start: int = 0,
+    end: Union[None, int] = None,
 ):
     name = PurePath(pl2_path).stem
     if not _path_checker(pl2_path, save_path):
@@ -51,8 +53,12 @@ def load_pl2_acqs(
             data = pl2_ad(pl2_path, i)
             enabled[i] = 1
             if acqs is None:
-                acqs = np.zeros((channels, data.ad.size), np.int16)
-            acqs[i] = data.ad[: data.ad.size]
+                if end is None:
+                    size = data.ad.size - start
+                else:
+                    size = end - start
+                acqs = np.zeros((channels, size), np.int16)
+            acqs[i] = data.ad[:size]
             fs[i] = data.adfrequency
             coeffs[i] = data.coeff
             units.append(ad_info.m_Units)

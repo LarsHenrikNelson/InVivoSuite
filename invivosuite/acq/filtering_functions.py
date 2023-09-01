@@ -551,6 +551,18 @@ def filter_array(
     return filtered_array
 
 
+def iirnotch_zero(array: np.ndarray, freq: float, q: float, fs: float):
+    b, a = signal.iirnotch(freq, q, fs)
+    filtered_array = signal.filtfilt(b, a, array)
+    return filtered_array
+
+
+def iirnotch(array: np.ndarray, freq: float, q: float, fs: float):
+    a, b = signal.iirnotch(freq, q, fs)
+    filtered_array = signal.lfilter(b, a, array)
+    return filtered_array
+
+
 if __name__ == "__main__":
     bessel()
     bessel_zero()
@@ -566,5 +578,7 @@ if __name__ == "__main__":
     remez_2()
     remez_1()
     savgol_filt()
+    iirnotch_zero()
+    iirnotch()
     Filters,
     Windows

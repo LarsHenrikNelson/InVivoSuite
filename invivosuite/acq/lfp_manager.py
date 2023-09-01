@@ -13,14 +13,14 @@ from .tapered_spectra import multitaper
 class LFPManager:
     def set_cwt(
         self,
-        f0: float = 1.0,
-        f1: float = 110,
+        f0: int = 1,
+        f1: int = 110,
         fn: int = 400,
         scaling: Literal["log", "lin"] = "log",
         norm: bool = True,
         nthreads: int = -1,
     ):
-        self.pxx_settings(
+        self.set_spectral_settings(
             "cwt",
             f0=f0,
             f1=f1,
@@ -30,13 +30,30 @@ class LFPManager:
             norm=norm,
         )
 
+    def set_spectrogram(
+        self,
+        nperseg: int = 2048,
+        noverlap: int = 0,
+        nfft: int = 2048,
+        window=("tukey", 0.25),
+        scaling: str = "density",
+    ):
+        self.set_spectral_settings(
+            "spectrogram",
+            nperseg=nperseg,
+            noverlap=noverlap,
+            nfft=nfft,
+            window=window,
+            scaling=scaling,
+        )
+
     def set_periodgram(
         self,
         nfft: int = 2048,
         window=("tukey", 0.25),
         scaling: Literal["density", "spectrum"] = "density",
     ):
-        self.pxx_settings(
+        self.set_spectral_settings(
             "periodogram",
             nfft=nfft,
             window=window,
@@ -53,7 +70,7 @@ class LFPManager:
         sides: str = "default",
         NFFT: Union[int, None] = None,
     ):
-        self.pxx_settings(
+        self.set_spectral_settings(
             "multitaper",
             NW=NW,
             BW=BW,
@@ -69,10 +86,10 @@ class LFPManager:
         nperseg: int = 2048,
         noverlap: int = 0,
         nfft: int = 2048,
-        window=("tukey", 0.25),
+        window: Union[str, tuple[str, float]] = ("tukey", 0.25),
         scaling: str = "density",
     ):
-        self.pxx_settings(
+        self.set_set_spectral_settings(
             "welch",
             nperseg=nperseg,
             noverlap=noverlap,
@@ -81,58 +98,114 @@ class LFPManager:
             scaling=scaling,
         )
 
-    def pxx_settings(
+    def set_spectral_settings(
         self,
-        pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
+        pxx_type: Literal["cwt", "periodogram", "multitaper", "welch", "spectrogram"],
         **kwargs,
     ):
-        self.open()
-        if self.file.get(pxx_type):
-            grp = self.file[pxx_type]
-        else:
-            grp = self.file.create_group(pxx_type)
         for key, value in kwargs.items():
-            self.set_grp_attr(grp, key, value)
+            if type(value) is tuple:
+                for index, i in enumerate(value):
+                    self.set_grp_attr(pxx_type, f"{key}_{index}", i)
+            else:
+                self.set_grp_attr(pxx_type, key, value)
+
+    def get_spectral_settings(self, pxx_type: str):
+        pxx_dict = self.get_grp_attrs(pxx_type)
+        window_keys = [
+            i.split("_")[1] for i in pxx_dict.keys() if i.split("_")[0] == "window"
+        ]
+        if len(window_keys) > 0:
+            pxx_dict["window"] = tuple(
+                pxx_dict[f"window_{i}"] for i in range(len(window_keys))
+            )
+            for i in window_keys:
+                del pxx_dict["window_" + i]
+        return pxx_dict
 
     def pxx(
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        nthreads: int = -1,
+        map_channel: bool = False,
+        electrode: str = "None",
     ):
-        self.open()
-        if not self.file.get(pxx_type):
-            raise KeyError(f"{pxx_type} settings do not exist in file. Use set_pxx")
-        else:
-            pxx_grp = self.file[pxx_type]
-        if acq_num <= self.file["acqs"].shape[0]:
-            if self.file["lfp"].attrs["resample_freq"] != "None":
-                fs = self.file["lfp"].attrs["resample_freq"]
-            else:
-                fs = self.file["sample_rate"][acq_num]
-            array = self.acq("lfp", acq_num)
-        else:
-            raise AttributeError(f"{acq_num} does not exist.")
+        pxx_attrs = self.get_spectral_settings(pxx_type)
+        if acq_num > self.num_channels:
+            raise ValueError(f"{acq_num} does not exist.")
+        if map_channel:
+            acq_num = self.get_mapped_channel(electrode, acq_num)
+        if electrode != "None":
+            data = self.get_grp_dataset("electrode", electrode)
+            acq_num += data[0]
+        fs = self.get_grp_attr("lfp", "sample_rate")
+        array = self.acq(acq_num, "lfp")
         if pxx_type == "multitaper":
-            freqs, pxx = multitaper(array, fs=fs, **pxx_grp.attrs)
+            freqs, pxx = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":
-            freqs, pxx = signal.periodogram(array, fs=fs, **pxx_grp.attrs)
+            freqs, pxx = signal.periodogram(array, fs=fs, **pxx_attrs)
         elif pxx_type == "welch":
-            freqs, pxx = signal.welch(array, fs=fs, **pxx_grp.attrs)
+            freqs, pxx = signal.welch(array, fs=fs, **pxx_attrs)
         elif pxx_type == "cwt":
             cpuc = os.cpu_count()
-            if nthreads == -1 or nthreads > cpuc:
-                nthreads = cpuc
-            freqs, sxx = fcwt.cwt(signal=array, fs=fs, **pxx_grp.attrs)
-            pxx = sxx.mean(axis=1)
+            if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
+                pxx_attrs["nthreads"] = cpuc
+            freqs, sxx = fcwt.cwt(
+                array,
+                int(fs),
+                int(pxx_attrs["f0"]),
+                int(pxx_attrs["f1"]),
+                int(pxx_attrs["fn"]),
+                int(pxx_attrs["nthreads"]),
+                pxx_attrs["scaling"],
+                False,
+                bool(pxx_attrs["norm"]),
+            )
+            pxx = np.abs(sxx).mean(axis=1)
         else:
-            AttributeError("Pxx_type must be cwt, multitaper, periodogram, or welch")
+            AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
         return freqs, pxx
+
+    def sxx(
+        self,
+        acq_num: int,
+        pxx_type: Literal["cwt", "spectrogram"],
+        map_channel: bool = False,
+        electrode: str = "None",
+    ):
+        pxx_attrs = self.get_grp_attrs(pxx_type)
+        if acq_num > self.num_channels:
+            raise ValueError(f"{acq_num} does not exist.")
+        if map_channel:
+            acq_num = self.get_mapped_channel(electrode, acq_num)
+        if electrode != "None":
+            data = self.get_grp_dataset("electrode", electrode)
+            acq_num += data[0]
+        fs = self.get_grp_attr("lfp", "sample_rate")
+        array = self.acq(acq_num, "lfp")
+        if pxx_type == "cwt":
+            cpuc = os.cpu_count()
+            if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
+                pxx_attrs["nthreads"] = cpuc
+            freqs, sxx = fcwt.cwt(
+                array,
+                int(fs),
+                int(pxx_attrs["f0"]),
+                int(pxx_attrs["f1"]),
+                int(pxx_attrs["fn"]),
+                pxx_attrs["nthreads"],
+                str(pxx_attrs["scaling"]),
+                False,
+                bool(pxx_attrs["norm"]),
+            )
+        return freqs, sxx
 
     def hilbert(
         self,
         acq_num: int,
+        map_channel: bool = False,
+        electrode: str = "None",
         filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = 4,
         highpass: Union[int, float, None] = None,
@@ -144,10 +217,17 @@ class LFPManager:
         resample_freq=None,
         up_sample=3,
     ):
-        self.open()
-        start = self.file.attr["start"]
-        end = self.file.attr["end"]
-        array = self.file["array"][acq_num, start:end]
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
+        if map_channel:
+            acq_num = self.get_mapped_channel(electrode, acq_num)
+        if electrode != "None":
+            data = self.get_grp_dataset("electrode", electrode)
+            acq_num += data[0]
+        array = self.get_file_dataset(
+            "acqs", rows=acq_num, columns=(start, end)
+        ) * self.get_file_dataset("coeffs", rows=acq_num)
         acq = filter_array(
             array,
             filter_type=filter_type,
@@ -158,19 +238,20 @@ class LFPManager:
             low_width=low_width,
             window=window,
             polyorder=polyorder,
-            sample_rate=self.sample_rate,
+            sample_rate=sample_rate,
         )
         if resample_freq is not None:
-            acq = self.downsample(acq, resample_freq, up_sample)
+            acq = self.downsample(acq, sample_rate, resample_freq, up_sample)
 
         hil_acq = signal.hilbert(acq)
-        self.close()
         return hil_acq
 
-    def calc_all_pdi(self, freq_dict: dict, nthreads: int = 4, size: int = 5000):
+    def calc_all_pdi(
+        self, acq_num: int, freq_dict: dict, nthreads: int = 4, size: int = 5000
+    ):
         self.open()
         lfp_grp = self.file["lfp"]
-        array = self.acq("lfp")
+        array = self.acq(acq_num, "lfp")
         pxx_grp = self.file.get("cwt")
         if not self.file.get("pdi"):
             pdi_grp = self.file.create_group("pdi")
@@ -225,16 +306,23 @@ class LFPManager:
         if acq is not None:
             if fs is None:
                 raise AttributeError("fs must be supplied if using acq argument.")
-            se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
         else:
             self.open()
             if map_channel and self.file.get("channel_map"):
                 acq_num = self.file["channel_map"][acq_num]
-            acq = self.acq("lfp", acq_num)
+            acq = self.acq(acq_num, "lfp")
             fs = self.get_grp_attr("lfp", "sample_rate")
-            se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
-            self.close()
+        se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
         return se_array
+
+    def get_ste_baseline(
+        ste: np.ndarray,
+        tol: float = 0.001,
+        method: Literal["spline", "fixed", "polynomial"] = "spline",
+        deg: int = 90,
+    ):
+        ste_baseline = lfp.find_ste_baseline(ste, tol, method, deg)
+        return ste_baseline
 
     def find_lfp_bursts(
         self,
@@ -273,13 +361,12 @@ class LFPManager:
             self.set_grp_attr("lfp_bursts", key, value)
 
         self.open()
-        shape = self.file["acqs"].shape[0]
-        fs = self.file["lfp"].attrs["sample_rate"]
+        fs = self.get_grp_attr("lfp", "sample_rate")
         self.close()
-        for i in range(shape):
+        for i in range(self.num_channels):
             acq_i = self.acq(
-                "lfp",
                 i,
+                "lfp",
             )
             bursts = lfp.find_bursts(
                 acq_i,
@@ -300,29 +387,47 @@ class LFPManager:
             )
             self.set_grp_dataset("lfp_bursts", str(i), bursts)
 
-    def get_lfp_burst_indexes(self, acq_num: int, map_channel=False):
-        self.open()
-        if map_channel and self.file.get("channel_map"):
-            acq_num = self.file["channel_map"][acq_num]
-        indexes = np.asarray(self.file["lfp_bursts"][str(acq_num)][()], dtype=np.int64)
-        self.close()
+    def get_lfp_burst_indexes(
+        self, acq_num: int, map_channel: bool = False, electrode: str = "None"
+    ):
+        if map_channel:
+            acq_num = self.get_mapped_channel(acq_num, electrode)
+        indexes = self.get_grp_dataset("lfp_bursts", str(acq_num))
         return indexes
 
-    def get_burst_baseline(self, acq_num: int, map_channel=False):
-        self.open()
-        if map_channel and self.file.get("channel_map"):
-            acq_num = self.file["channel_map"][acq_num]
-        bursts = np.asarray(self.file["lfp_bursts"][str(acq_num)][()], dtype=np.int64)
-        size = int(self.file.attrs["stop"] - self.file.attrs["start"])
+    def get_burst_baseline(
+        self, acq_num: int, map_channel: bool = False, electrode: str = "None"
+    ):
+        if map_channel:
+            acq_num = self.get_mapped_channel(acq_num, electrode)
+        bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        size = int(end - start)
+        fs_lfp = self.get_grp_attr("lfp", "sample_rate")
+        fs_raw = self.get_file_dataset("sample_rate", rows=acq_num)
+        size = int(size / (fs_raw / fs_lfp))
         burst_baseline = lfp.burst_baseline_periods(bursts, size)
         self.close()
         return burst_baseline
 
-    def lfp_burst_stats(self):
-        for i in self.num_channels:
-            acq = self.acq("lfp", i)
-            bursts = self.file["lfp_bursts"][i]
-            fs = self.file["lfp"].attrs["sample_rate"]
-            baseline = self.get_burst_baseline()
-            ave_len, iei, rms = lfp.burst_stats(acq, bursts, baseline, fs)
-            return ave_len, iei, rms
+    def lfp_burst_stats(
+        self, acq_num, bands, map_channel: bool = False, electrode: str = "None"
+    ):
+        if map_channel:
+            acq_num = self.get_mapped_channel(electrode, acq_num)
+        if electrode != "None":
+            data = self.get_grp_dataset("electrode", electrode)
+            acq_num += data[0]
+        acq = self.acq(acq_num, "lfp")
+        bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
+        fs = self.get_grp_attr("lfp", "sample_rate")
+        baseline = self.get_burst_baseline(
+            acq_num, map_channel=map_channel, electrode=electrode
+        )
+        b_stats = lfp.burst_stats(acq, bursts, baseline, bands, fs)
+        return b_stats
+
+    def set_freq_bands(self, freq_dict):
+        for key, value in freq_dict.items():
+            self.set_grp_dataset("freq_bands", key, np.array(value))

@@ -30,7 +30,8 @@ def multi_func(file_path):
 
 if __name__ == "__main__":
     file_paths = list(Path(r"D:\in_vivo_ephys\acqs").rglob("*.hdf5"))
-    pool = mp.Pool(mp.cpu_count())
+    # Use only half of processors otherwise your computer will be really slow
+    pool = mp.Pool(int(mp.cpu_count() // 2))
     with mp.Pool() as pool:
         result = pool.map(multi_func, file_paths)
         print(result)

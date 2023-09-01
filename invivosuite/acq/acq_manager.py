@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 from scipy import signal
 
-from .filtering_functions import Filters, Windows, filter_array
+from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
 
@@ -77,6 +77,16 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return id
 
+    # def channel_map(self):
+    #     self.open()
+    #     if self.file.get("channel_map"):
+    #         channel_map = self.file["channel_map"][()]
+    #         self.close()
+    #         return channel_map
+    #     else:
+    #         self.close()
+    #         return None
+
     def set_filter(
         self,
         acq_type: Literal["spike", "lfp"],
@@ -90,6 +100,9 @@ class AcqManager(SpkManager, LFPManager):
         polyorder: Union[int, None] = 0,
         sample_rate: Union[float, int] = 40000,
         up_sample=3,
+        notch_filter: bool = False,
+        notch_freq: float = 60.0,
+        notch_q: float = 30.0,
     ):
         input_dict = {
             "filter_type": filter_type,
@@ -102,15 +115,16 @@ class AcqManager(SpkManager, LFPManager):
             "polyorder": polyorder,
             "sample_rate": sample_rate,
             "up_sample": up_sample,
+            "notch_filter": notch_filter,
+            "notch_freq": notch_freq,
+            "notch_q": notch_q,
         }
-        self.open()
         for key, value in input_dict.items():
             if value is None:
                 value = "None"
             self.set_grp_attr(acq_type, key, value)
-        self.close()
 
-    def get_filter(self, acq_type: Literal["spike", "lfp"], close=True):
+    def get_filter(self, acq_type: Literal["spike", "lfp"]):
         self.open()
         try:
             grp = self.file[acq_type]
@@ -118,73 +132,63 @@ class AcqManager(SpkManager, LFPManager):
             raise KeyError(
                 f"{acq_type} does not exist. Use set_filter to create {acq_type}."
             )
-        input_dict = {
-            "filter_type": grp.attrs["filter_type"],
-            "order": grp.attrs["order"],
-            "highpass": grp.attrs["highpass"],
-            "high_width": grp.attrs["high_width"],
-            "lowpass": grp.attrs["lowpass"],
-            "low_width": grp.attrs["low_width"],
-            "window": grp.attrs["window"],
-            "sample_rate": grp.attrs["sample_rate"],
-            "polyorder": grp.attrs["polyorder"],
-            "up_sample": grp.attrs["up_sample"],
-        }
+        input_dict = dict(grp.attrs)
         for key, value in input_dict.items():
             if value == "None":
                 input_dict[key] = None
-        if close:
-            self.close()
+        self.close()
         return input_dict
 
     def acq(
         self,
-        acq_type: Literal["spike", "lfp", "raw"],
         acq_num: int,
-        electrode: Union[None, str] = None,
+        acq_type: Literal["spike", "lfp", "raw"],
         map_channel: bool = False,
+        electrode: str = "None",
     ):
-        self.open()
-        start = self.file.attrs["start"]
-        end = self.file.attrs["end"]
-        if map_channel and self.file.get("channel_map"):
-            acq_num = self.file["channel_map"][acq_num]
-        if electrode is not None:
-            data = self._get_grp_dataset("electrode", electrode)
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        if map_channel:
+            acq_num = self.get_mapped_channel(electrode, acq_num)
+        if electrode != "None":
+            data = self.get_grp_dataset("electrode", electrode)
             acq_num += data[0]
-        array = self.file["acqs"][acq_num, start:end] * self.file["coeffs"][acq_num]
+        array = self.get_file_dataset(
+            "acqs", rows=acq_num, columns=(start, end)
+        ) * self.get_file_dataset("coeffs", rows=acq_num)
         if acq_type == "raw":
             return array
-        if not self.file.get(acq_type):
-            raise KeyError(
-                f"{acq_type} does not exist. Use set_filter to create {acq_type}."
-            )
-        else:
-            grp = self.file[acq_type]
-        input_dict = self.get_filter(acq_type, close=False)
-        sample_rate = self.file["sample_rate"][acq_num]
+        filter_dict = self.get_filter(acq_type)
+        sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
         acq = filter_array(
             array,
             sample_rate=sample_rate,
-            filter_type=input_dict["filter_type"],
-            order=input_dict["order"],
-            highpass=input_dict["highpass"],
-            high_width=input_dict["high_width"],
-            lowpass=input_dict["lowpass"],
-            low_width=input_dict["low_width"],
-            window=input_dict["window"],
-            polyorder=input_dict["polyorder"],
+            filter_type=filter_dict["filter_type"],
+            order=filter_dict["order"],
+            highpass=filter_dict["highpass"],
+            high_width=filter_dict["high_width"],
+            lowpass=filter_dict["lowpass"],
+            low_width=filter_dict["low_width"],
+            window=filter_dict["window"],
+            polyorder=filter_dict["polyorder"],
         )
-        if grp.attrs["sample_rate"] != sample_rate:
+        if filter_dict["notch_filter"]:
+            acq = iirnotch_zero(
+                array,
+                freq=filter_dict["notch_freq"],
+                q=filter_dict["notch_q"],
+                fs=sample_rate,
+            )
+        if filter_dict["sample_rate"] != sample_rate:
             acq = self.downsample(
-                acq, sample_rate, grp.attrs["sample_rate"], grp.attrs["up_sample"]
+                acq, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
             )
         self.close()
         return acq
 
     def set_file_attr(self, attr, data):
         self.open()
-        if not self.file.attrs.get(attr):
+        if attr not in self.file.attrs:
             self.file.attrs.create(attr, data=data)
         else:
             self.file.attrs[attr] = data
@@ -192,7 +196,7 @@ class AcqManager(SpkManager, LFPManager):
 
     def set_file_dataset(self, name, data):
         self.open()
-        if self.file.get(name):
+        if name in self.file:
             del self.file[name]
             self.file.create_dataset(name, data=data)
         else:
@@ -201,11 +205,11 @@ class AcqManager(SpkManager, LFPManager):
 
     def set_grp_attr(self, grp_name, attr, data):
         self.open()
-        if self.file.get(grp_name):
+        if grp_name in self.file:
             grp = self.file[grp_name]
         else:
             grp = self.file.create_group(grp_name)
-        if not self.file.attrs.get(attr):
+        if attr not in self.file.attrs:
             grp.attrs.create(attr, data)
         else:
             grp.attrs[attr] = data
@@ -213,33 +217,36 @@ class AcqManager(SpkManager, LFPManager):
 
     def set_grp_dataset(self, grp_name, name, data):
         self.open()
-        if self.file.get(grp_name):
+        if grp_name in self.file:
             grp = self.file[grp_name]
         else:
             grp = self.file.create_group(grp_name)
-        if grp.get(name):
+        if name in grp:
             del grp[name]
             grp.create_dataset(name, data=data)
         else:
             grp.create_dataset(name, data=data)
         self.close()
 
-    def _get_grp_dataset(self, grp, data):
-        if self.file.get(grp):
-            if self.file[grp].get(data):
+    def get_grp_dataset(self, grp, data):
+        self.open()
+        if grp in self.file:
+            if data in self.file[grp]:
                 grp_data = self.file[grp][data][()]
+                self.close()
             else:
+                self.close()
                 raise AttributeError(f"{data} does not exist.")
         else:
+            self.close()
             raise AttributeError(f"{grp} does not exist.")
         return grp_data
 
     def get_grp_attr(self, grp_name, name):
         self.open()
-        if self.file.get(grp_name):
-            grp = self.file[grp_name]
-            if grp.attrs.get(name):
-                value = grp.attrs[name]
+        if grp_name in self.file:
+            if name in self.file[grp_name].attrs:
+                value = self.file[grp_name].attrs[name]
                 self.close()
                 return value
             else:
@@ -249,7 +256,75 @@ class AcqManager(SpkManager, LFPManager):
             self.close()
             raise KeyError(f"{grp_name} does not exist.")
 
-    def set_channel_map(self, map_path):
+    def get_file_attr(self, attr: str):
+        self.open()
+        if attr in self.file.attrs:
+            file_attr = self.file.attrs[attr]
+            self.close()
+        else:
+            self.close()
+            raise KeyError(f"{attr} does not exist.")
+        return file_attr
+
+    def get_file_dataset(
+        self,
+        dataset: str,
+        rows: Union[int, tuple[int, int], list[int, int], None] = None,
+        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+    ):
+        self.open()
+        if dataset in self.file:
+            if rows is None and columns is None:
+                file_dataset = self.file[dataset]
+                self.close()
+            elif columns is None:
+                if isinstance(rows, int):
+                    file_dataset = self.file[dataset][rows]
+                    self.close()
+                else:
+                    file_dataset = self.file[dataset][rows[0] : rows[1]]
+                    self.close()
+            elif rows is None:
+                if isinstance(columns, int):
+                    file_dataset = self.file[dataset][columns]
+                    self.close()
+                else:
+                    file_dataset = self.file[dataset][columns[0] : columns[1]]
+                    self.close()
+            else:
+                if isinstance(columns, int) and isinstance(rows, int):
+                    file_dataset = self.file[dataset][rows, columns]
+                    self.close()
+                elif isinstance(columns, int) and not isinstance(rows, int):
+                    file_dataset = self.file[dataset][rows[0] : rows[1], columns]
+                    self.close()
+                elif not isinstance(columns, int) and isinstance(rows, int):
+                    file_dataset = self.file[dataset][rows, columns[0] : columns[1]]
+                    self.close()
+                else:
+                    file_dataset = self.file[dataset][
+                        rows[0] : rows[1], columns[0] : columns[1]
+                    ]
+                    self.close()
+        else:
+            self.close()
+            raise KeyError(f"{dataset} does not exist.")
+        return file_dataset
+
+    def get_grp_attrs(self, grp_name: str):
+        self.open()
+        if grp_name in self.file:
+            grp = self.file[grp_name]
+            attrs = dict(grp.attrs)
+            self.close()
+            return attrs
+        else:
+            self.close()
+            raise KeyError(f"{grp_name} settings do not exist in file. Use set_pxx")
+
+    def set_channel_map_from_file(
+        self, map_path: Union[str, Path], electrode: str = "None"
+    ):
         path = Path(map_path)
         if path.suffix == ".xlsx":
             raise NotImplementedError("xlsx files are not supported")
@@ -259,7 +334,33 @@ class AcqManager(SpkManager, LFPManager):
             chan_map = np.loadtxt(path, dtype=np.int16)
         else:
             raise NotImplementedError("File type not recognized.")
-        self.set_file_dataset("channel_map", data=chan_map)
+        if chan_map.ndim > 1 and chan_map.shape[1] > 1 and chan_map.shape[0] > 1:
+            raise ValueError("File can only inlude one column or row.")
+        if chan_map.ndim > 1:
+            chan_map = chan_map.flatten()
+        self.set_grp_dataset("channel_maps", electrode, data=chan_map)
+
+    def set_channel_map_from_array(self, chan_map, electrode: str = "None"):
+        if chan_map.ndim > 1 and chan_map.shape[1] > 1 and chan_map.shape[0] > 1:
+            raise ValueError("File can only inlude one column or row.")
+        if chan_map.ndim > 1:
+            chan_map = chan_map.flatten()
+        self.set_grp_dataset("channel_maps", electrode, data=chan_map)
+
+    def set_channel_map(
+        self, chan_map: Union[str, Path, np.ndarray], electrode: str = "None"
+    ):
+        if isinstance(chan_map, str) or isinstance(chan_map, Path):
+            self.set_channel_map_from_file(chan_map, electrode)
+        elif isinstance(chan_map, np.ndarray):
+            self.set_channel_map_from_array(chan_map, electrode)
+        else:
+            raise ValueError(f"{chan_map} chan_map must be str, Path or np.ndarray")
+
+    def get_mapped_channel(self, channel: int, electrode: str):
+        channel_map = self.get_grp_dataset(electrode, "channel_map")
+        mapped_channel = channel_map[channel]
+        return mapped_channel
 
     def set_spike_data(self, dir, id):
         if self.file.get(id):
@@ -268,7 +369,10 @@ class AcqManager(SpkManager, LFPManager):
             raise AttributeError("Must set name for spike first.")
 
     def save_to_bin(
-        self, acqs=None, electrode=None, save_path=None, map_channels=False
+        self,
+        acqs: Union[str, tuple[int, int], None] = None,
+        save_path=None,
+        map_channels=False,
     ):
         self.open()
         start = self.file.attrs["start"]
@@ -277,10 +381,13 @@ class AcqManager(SpkManager, LFPManager):
             shape = self.file["acqs"].shape
             acqs = [0]
             acqs.append(shape[0])
-        if electrode is not None and acqs is not None:
-            data = self._get_grp_dataset("electrode", electrode)
-            acqs[0] += data[0]
-            acqs[1] += data[0]
+        elif isinstance(acqs, str):
+            data = self.get_grp_dataset("electrodes", acqs)
+            acqs = []
+            acqs.append(data[0])
+            acqs.append(data[1] + 1)
+        else:
+            raise AttributeError("acqs must be string, tuple[int, int] or None.")
         if map_channels and self.file.get("channel_map"):
             acqs = np.zeros((shape[0], end - start))
             channel_map = self.file["channel_map"][()]
@@ -297,10 +404,11 @@ class AcqManager(SpkManager, LFPManager):
         # Need to transpose to (n_samples, n_channels) fo kilosort
         acqs = acqs.T
         if save_path is None:
-            save_path = Path(self.save_path).parents[0] / Path(self.save_path).stem
-            save_path = save_path / ".bin"
+            save_path = Path(self.file_path).with_suffix(".bin")
         else:
-            save_path = Path(save_path) / ".bin"
+            save_path = (Path(save_path) / Path(self.file_path).stem).with_suffix(
+                ".bin"
+            )
         acqs.tofile(save_path)
 
     def close(self):
@@ -313,3 +421,6 @@ class AcqManager(SpkManager, LFPManager):
 
     def set_end(self, end):
         self.set_file_attr("end", end)
+
+    def set_electrode(self, electrode: str, array: np.array):
+        self.set_grp_dataset("electrodes", electrode, array)

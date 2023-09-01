@@ -3,19 +3,20 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-import pandas as pd
 
 from invivosuite.acq import lfp
 from invivosuite.acq import AcqManager, load_pl2_acqs, load_hdf5_acqs
 
 # %%
 # Use this if creating hdf5 acquisitions for the first time.
-pl2_paths = list(Path(r"D:\in_vivo_ephys\acqs\2023_08_02").rglob("*.pl2"))
-save_path = r"D:\in_vivo_ephys\acqs\2023_08_02"
+pl2_paths = list(Path(r"E:\Lars\Shank3B_P16\2023_08_25").rglob("*.pl2"))
+save_path = r"D:\in_vivo_ephys\acqs\2023_08_25"
 # If you want multiple save paths just create a list of filepaths
+
+# %%
 acqs = []
 for file_path in pl2_paths:
-    acq_manager = load_pl2_acqs(str(file_path), save_path)
+    acq_manager = load_pl2_acqs(str(file_path), save_path, end=40000 * 60 * 12)
     acqs.append(acq_manager)
 
 """
@@ -54,6 +55,9 @@ for i in acqs:
         lowpass=300,
         sample_rate=1000.0,
         up_sample=3,
+        notch_filter=False,
+        notch_freq=60.0,
+        notch_q=30.0,
     )
     i.set_filter(
         acq_type="spike",
@@ -64,21 +68,25 @@ for i in acqs:
     )
 
 # %%
-# Set the start end of the acquisitions if you want to analyze just a subset
-# of the acquisition. Useful if your aquisitions are different sizes between
-# recordings. The start and end are automatically set to the lenght of the
-# recoding which is pulled from the pl2 file.
+"""
+Set the start end of the acquisitions if you want to analyze just a subset
+of the acquisition. Useful if your aquisitions are different sizes between
+recordings. The start and end are automatically set to the lenght of the
+recoding which is pulled from the pl2 file.
+"""
 for i in acqs:
     i.set_start(0)
     i.set_end(240000000)
 
 # %%
-# Set the groups for the channels since the .pl2 file contained both
-# ACC and DMS file. This attribute needs to be set to work with the spike
-# data.
+"""
+Set the groups for the channels since the .pl2 file contained both
+ACC and DMS file. This attribute needs to be set to work with the spike
+data.
+"""
 for i in acqs:
-    i.set_grp_dataset("electrodes", "acc", [64, 127])
-    i.set_grp_dataset("electrodes", "dms", [0, 63])
+    i.set_electrode("electrodes", "acc", [64, 127])
+    i.set_electrode("electrodes", "dms", [0, 63])
 
 
 # %%
@@ -106,6 +114,16 @@ for index, i in enumerate(acqs[:1]):
         deg=90,
     )
 
+# %%
+for i in acqs:
+    i.set_cwt(
+        f0=1,
+        f1=110,
+        fn=400,
+        scaling="log",
+        norm=True,
+        nthreads=-1,
+    )
 
 # %%
 # I recommend

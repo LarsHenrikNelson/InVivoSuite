@@ -118,7 +118,7 @@ class LFPWidget(QWidget):
         self.ste_plot.clear()
         id = self.load_widget.getAcqID()
         acq = self.exp_manager[id].acq(
-            "lfp", num - 1, map_channel=self.channel_map.isChecked()
+            num - 1, "lfp", map_channel=self.channel_map.isChecked()
         )
         x = np.arange(acq.size) / 1000
         self.main_plot.plot(x=x, y=acq, name="main")

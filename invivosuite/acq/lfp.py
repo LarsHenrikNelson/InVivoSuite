@@ -1,4 +1,3 @@
-from collections import namedtuple
 from itertools import combinations
 from typing import Literal, Union, TypeAlias
 
@@ -29,9 +28,10 @@ __all__ = [
     "short_time_energy",
     "coherence",
     "get_pairwise_coh",
-    "find_ste_baseline",
+    "kde_baseline",
+    "derivative_baseline",
     "burst_stats",
-    "get_lfp_seg_pxx",
+    "seg_pxx",
 ]
 
 Windows = Literal[
@@ -208,7 +208,9 @@ def synchrony_cwt_band(cwt_1, cwt_2, freqs, f0, f1):
     return band_synchrony
 
 
-Bands: TypeAlias = list[tuple[float, float]]
+Bands: TypeAlias = dict[
+    str, Union[list[float, float], tuple[float, float], np.ndarray[float, float]]
+]
 
 
 def get_cwt_bands(
@@ -217,16 +219,18 @@ def get_cwt_bands(
     bands: Bands,
     ret_type=Literal["angle", "power", "raw"],
 ):
-    band_arrays = np.zeros((bands, cwt.shape[1]))
-    for i in range(len(bands)):
-        band = np.where((freqs >= bands[i][0]) & (freqs <= bands[i][1]))
-        band_arrays[i] = np.mean(cwt[band], axis=0)
+    band_arrays = {}
+    for key, value in bands.items():
+        band = np.where((freqs >= value[0]) & (freqs <= value[1]))
+        band_arrays[key] = np.mean(cwt[band], axis=0)
     if ret_type == "raw":
         return band_arrays
     elif ret_type == "angle":
-        return np.angle(band_arrays, degree=False)
+        return {
+            key: np.angle(value, degree=False) for key, value in band_arrays.items()
+        }
     elif ret_type == "power":
-        return np.abs(band_arrays)
+        return {key: np.abs(value) for key, value in band_arrays.items()}
     else:
         raise AttributeError(f"{ret_type} not recognized. Use angle, power or raw")
 
@@ -335,7 +339,7 @@ def phase_discontinuity_index(coh, freqs, lower_limit, upper_limit, tol=0.01):
     f_lim = np.where((freqs <= upper_limit) & (freqs >= lower_limit))[0]
     g = coh[f_lim]
     g = g.flatten()
-    power2 = int(np.ceil(np.log2(g.size)))
+    power2 = np.int(np.ceil(np.log2(g.size)))
     bw = np.cov(g)
     min_g = g.min() - bw * tol
     max_g = g.max() + bw * tol
@@ -348,13 +352,6 @@ def phase_discontinuity_index(coh, freqs, lower_limit, upper_limit, tol=0.01):
     args2 = np.where((x <= np.pi / 5) & (x >= -np.pi / 5))[0]
     pdi = np.sum(y[args1]) / np.sum(y[args2])
     return pdi
-
-
-def get_bands(acq_list: list, band: str):
-    bands = []
-    for i in acq_list:
-        bands.append(i.file[band][()])
-    return bands
 
 
 def coherence(
@@ -465,10 +462,6 @@ def coherence(
 def phase_slope_index(
     cohy,
     fs=1000,
-    noverlap=1000,
-    nperseg=10000,
-    nfft=10000,
-    window="hamming",
     f_band=[4, 10],
 ):
     freqs = np.linspace(0, fs * 0.5, cohy.size)
@@ -482,12 +475,25 @@ def short_time_energy(
 ):
     wlen = int(wlen * fs)
     win_array = signal.get_window(window, wlen)
+    win_array /= win_array.sum()
     se_array = signal.convolve(array**2, win_array, mode="full")
     se_array = se_array[wlen // 2 : array.size + wlen // 2]
     return se_array
 
 
-def find_ste_baseline(
+def derivative_baseline(array, window, wlen, fs):
+    temp = np.gradient(array)
+    wlen = int(wlen * fs)
+    window = window
+    win_array = signal.get_window(window, wlen)
+    win_array /= win_array.sum()
+    se_array = signal.convolve(temp, win_array, mode="full")
+    se_array = se_array[wlen // 2 : temp.size + wlen // 2]
+    baseline = np.cumsum(se_array)
+    return baseline
+
+
+def kde_baseline(
     ste: np.ndarray,
     tol: float = 0.001,
     method: Literal["spline", "fixed", "polynomial"] = "spline",
@@ -506,7 +512,7 @@ def find_ste_baseline(
     x = np.linspace(min_ste, max_ste, num=2**power2)
     y = KDEpy.FFTKDE(kernel="biweight", bw="ISJ").fit(ste, weights=None).evaluate(x)
     max_index = y.argmax()
-    ste_max = x[0] + x[max_index]
+    ste_max = x[0] - x[max_index]
     indices = np.where(ste < ste_max)[0]
     # max_index = (y.argmax() * 2) + 1
     # indices = np.where(ste < max_index)[0]
@@ -556,7 +562,6 @@ def clean_bursts(
 def _find_bursts(
     ste,
     baseline,
-    threshold=10,
     min_len=0.2,
     max_len=20,
     min_burst_int=0.2,
@@ -569,7 +574,8 @@ def _find_bursts(
     min_len = min_len * fs
     order = int(order * fs)
     min_burst_int = int(min_burst_int * fs)
-    p = np.where(ste > baseline * threshold)[0]
+
+    p = np.where(ste > baseline)[0]
     diffs = np.diff(p)
     spl_in = np.where(diffs > min_burst_int)[0] + 1
     bursts_temp = np.split(p, spl_in)
@@ -626,16 +632,23 @@ def find_bursts(
     pre: float = 3.0,
     post: float = 3.0,
     order: float = 0.1,
-    method: Literal["spline", "fixed", "polynomial"] = "spline",
+    method: Literal["spline", "fixed", "polynomial", "derivative"] = "spline",
     tol: float = 0.001,
     deg: int = 90,
 ):
     ste = short_time_energy(acq, window=window, wlen=wlen, fs=fs)
-    baseline = find_ste_baseline(ste, tol=tol, method=method, deg=deg)
+    if method == "derivative":
+        baseline = derivative_baseline(ste, tol=tol, method=method, deg=deg)
+        baseline *= np.std(baseline) * threshold
+    else:
+        # Multiplying baseline by threshold value accentuates
+        # the curves of the baseline. Adding a threshold value
+        # Just moves the baseline up.
+        baseline = kde_baseline(ste, tol=tol, method=method, deg=deg)
+        baseline *= threshold
     bursts = _find_bursts(
         ste=ste,
         baseline=baseline,
-        threshold=threshold,
         min_len=min_len,
         max_len=max_len,
         min_burst_int=min_burst_int,
@@ -651,24 +664,23 @@ def find_bursts(
 @njit()
 def burst_baseline_periods(bursts_ind, size):
     if int(bursts_ind[-1, 1]) == size and int(bursts_ind[0, 0]) == 0:
-        burst_baseline = np.zeros((bursts_ind.shape[0] - 1, 2))
+        burst_baseline = np.zeros((bursts_ind.shape[0] - 1, 2), dtype=np.int64)
         burst_baseline[:, 0] = bursts_ind[:-1, 1]
         burst_baseline[:, 1] = bursts_ind[1:, 0]
     elif int(bursts_ind[-1, 1]) != size and int(bursts_ind[0, 0]) != 0:
-        burst_baseline = np.zeros((bursts_ind.shape[0] + 1, 2))
+        burst_baseline = np.zeros((bursts_ind.shape[0] + 1, 2), dtype=np.int64)
         burst_baseline[1:, 0] = bursts_ind[:, 1]
         burst_baseline[:-1, 1] = bursts_ind[:, 0]
         burst_baseline[-1, 1] = size
     elif int(bursts_ind[-1, 1]) == size and int(bursts_ind[0, 0]) != 0:
-        burst_baseline = np.zeros((bursts_ind.shape[0], 2))
+        burst_baseline = np.zeros((bursts_ind.shape[0], 2), dtype=np.int64)
         burst_baseline[1:, 0] = bursts_ind[:-1, 1]
         burst_baseline[:, 1] = bursts_ind[:, 0]
     else:
-        burst_baseline = np.zeros((bursts_ind.shape[0], 2))
+        burst_baseline = np.zeros((bursts_ind.shape[0], 2), dtype=np.int64)
         burst_baseline[:, 0] = bursts_ind[:, 1]
         burst_baseline[:-1, 1] = bursts_ind[1:, 0]
         burst_baseline[-1, 1] = size
-    burst_baseline = burst_baseline.astype(np.int64)
     return burst_baseline
 
 
@@ -695,11 +707,6 @@ def get_pairwise_coh(
             theta[i, j] = np.mean(imag_coh[t])
             beta[i, j] = np.mean(imag_coh[b])
     return theta, beta, gamma
-
-
-BurstStats = namedtuple(
-    "BurstStats", ["length", "iei", "rms", "min_v", "max_v", "flatness"]
-)
 
 
 @njit(parallel=True, cache=True)
@@ -737,21 +744,25 @@ def burst_iei(bursts, acq, fs):
     return iei
 
 
-@njit(cache=True)
-def get_burst_power(burst_pxx, baseline_pxx, freqs, freq_dict):
+def burst_power_bands(burst_pxxs, freqs, freq_dict):
     power_dict = {}
-    burst = burst_pxx.mean(axis=0)
-    baseline = baseline_pxx.mean(axis=0)
-    norm = burst - baseline
     for key, value in freq_dict.items():
         f_ind = np.where((freqs >= value[0]) & (freqs < value[1]))[0]
-        power_dict[key] = np.mean(np.mean(norm[f_ind]))
+        power_dict[key] = burst_pxxs[:, f_ind].mean(axis=1)
     return power_dict
 
 
-def get_lfp_seg_pxx(
-    acq,
-    bursts,
+@njit(cache=True)
+def bursts_rms(bursts, acq):
+    rms = np.zeros(bursts.shape[0])
+    for i in range(bursts.shape[0]):
+        rms[i] = np.sqrt(np.mean(acq[bursts[i, 0] : bursts[i, 1]] ** 2))
+    return rms
+
+
+def seg_pxx(
+    acq: np.ndarray,
+    segments: np.ndarray,
     fs: float = 1000.0,
     NW: Union[float, None] = 2.5,
     BW: Union[float, None] = None,
@@ -761,13 +772,14 @@ def get_lfp_seg_pxx(
     sides="default",
     NFFT=None,
 ):
-    diff = np.max(bursts[:, 1] - bursts[:, 0])
+    diff = np.max(segments[:, 1] - segments[:, 0])
     if NFFT is None:
-        NFFT = 2 ** int(np.ceil(np.log2(diff)))
+        size = (segments[:, 1] - segments[:, 0]).max()
+        NFFT = fft.next_fast_len(size)
     if NFFT < diff:
         raise ValueError("NFFT must be longer than the longest burst.")
-    burst_pxx = np.zeros((bursts.shape[0], NFFT // 2 + 1))
-    for index, i in enumerate(bursts):
+    burst_pxx = np.zeros((segments.shape[0], NFFT // 2 + 1))
+    for index, i in enumerate(segments):
         freq, pxx, _ = multitaper(
             acq[i[0] : i[1]],
             fs=fs,
@@ -783,59 +795,67 @@ def get_lfp_seg_pxx(
     return freq, burst_pxx
 
 
-def burst_stats(acq, bursts, baseline, fs):
-    ave_len = np.mean(bursts[:, 1] - bursts[:, 0]) / fs
-    iei = np.mean(np.diff(bursts[:, 0])) / fs
-    rms = 0
-    flatness = 0
-    min_v = 0
-    max_v = 0
-    baseline_rms = 0
-    freqs, bursts_pxx = get_lfp_seg_pxx(bursts)
-    _, baseline_pxx = get_lfp_seg_pxx(baseline)
-    p_dict = get_burst_power(
-        bursts_pxx,
-        baseline_pxx,
-        freqs,
-        {"theta": [4, 10], "beta": [12, 30], "gamma": [30, 80]},
+def get_burst_pxx(
+    bursts,
+    baselines,
+    acq,
+    fs: float = 1000.0,
+    NW: Union[float, None] = 2.5,
+    BW: Union[float, None] = None,
+    adaptive=False,
+    jackknife=True,
+    low_bias=True,
+    sides="default",
+):
+    size1 = (bursts[:, 1] - bursts[:, 0]).max()
+    size2 = (baselines[:, 1] - baselines[:, 0]).max()
+    NFFT = fft.next_fast_len(np.max((size1, size2)))
+    f, bursts_pxx = seg_pxx(
+        acq=acq,
+        segments=bursts,
+        fs=fs,
+        NW=NW,
+        BW=BW,
+        adaptive=adaptive,
+        jackknife=jackknife,
+        low_bias=low_bias,
+        sides=sides,
+        NFFT=NFFT,
     )
-    for i in range(baseline.shape[0]):
-        start, end = int(baseline[i, 0]), int(baseline[i, 1])
-        baseline_rms += np.sqrt(np.mean(acq[start:end] ** 2))
-    baseline_rms /= i + 1
-    for i in range(bursts.shape[0]):
-        start, end = int(bursts[i, 0]), int(bursts[i, 1])
-        rms += np.sqrt(np.mean(acq[start:end] ** 2))
-        flatness += burst_flatness(acq[start:end])
-        min_v += np.min(acq[start:end])
-        max_v += np.max(acq[start:end])
-    rms /= i + 1
-    flatness /= i + 1
-    min_v /= i + 1
-    max_v /= i + 1
-    rms -= baseline_rms
-    return ave_len, iei, rms, min_v, max_v, flatness, p_dict
+    _, baseline_pxx = seg_pxx(
+        acq=acq,
+        segments=baselines,
+        fs=fs,
+        NW=NW,
+        BW=BW,
+        adaptive=adaptive,
+        jackknife=jackknife,
+        low_bias=low_bias,
+        sides=sides,
+        NFFT=NFFT,
+    )
+    return f, bursts_pxx, baseline_pxx
 
 
-# if __name__ == "__main__":
-#     get_ave_band_power()
-#     get_max_from_burst()
-#     split_at_zeros()
-#     calc_all_freq_corrs()
-#     corr_freqs()
-#     create_all_freq_windows()
-#     create_cwt()
-#     multitaper()
-#     create_window_ps()
-#     get_ave_freq_window()
-#     synchrony_cwt()
-#     phase_synchrony()
-#     create_ave_cwt()
-#     phase_discontinuity_index()
-#     stepped_cwt_cohy()
-#     find_bursts()
-#     short_time_energy()
-#     coherence()
-#     get_pairwise_coh()
-#     find_ste_baseline()
-#     burst_stats()
+def burst_stats(
+    acq: np.ndarray,
+    bursts: np.ndarray,
+    baseline_seg: np.ndarray,
+    band_dict: dict,
+    fs: float,
+):
+    output_dict = {}
+    output_dict["ave_len"] = bursts[:, 1] - bursts[:, 0] / fs
+    output_dict["iei"] = np.mean(np.diff(bursts[:, 0])) / fs
+    freqs, bursts_pxx = seg_pxx(acq, bursts, fs)
+    _, baseline_pxx = seg_pxx(acq, baseline_seg, fs)
+    p_dict = burst_power_bands(
+        bursts_pxx,
+        freqs,
+        band_dict,
+    )
+    output_dict.update(p_dict)
+    output_dict["intra_iei"] = burst_iei(bursts, acq, fs)
+    output_dict["flatness"] = burst_flatness(bursts, acq)
+    output_dict["rms"] = bursts_rms(bursts, acq)
+    return output_dict

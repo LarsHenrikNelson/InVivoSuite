@@ -3,15 +3,16 @@ from pathlib import Path
 
 import h5py
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 import pandas as pd
 
 # import quantities as pq
 # from elephant import current_source_density
-from KDEpy import FFTKDE
+import KDEpy
 
 # from neo import AnalogSignal
-from scipy import signal
+from scipy import fft
 
 #
 from phylib.io.model import load_model
@@ -24,94 +25,37 @@ from invivosuite.acq import lfp, load_hdf5_acqs
 parent_path = r"D:\in_vivo_ephys\acqs"
 acqs = load_hdf5_acqs(parent_path)
 
-# %%
-import nitime.algorithms as tsa
-from invivosuite.acq.tapered_spectra import multitaper, dpss_windows, fftconvolve
 
 # %%
-acq = acqs[-1].acq("lfp", 0)
-bursts = lfp.find_bursts(acq)
+acq = acqs[2].acq(0, "lfp")
+bursts = acqs[2].get_lfp_burst_indexes(0)
+baselines = acqs[2].get_burst_baseline(0)
 
 # %%
-from nitime import utils
+bands={"theta": [4, 10], "low_gamma": [30, 50], "high_gamma": [70, 80], "beta": [12, 28]}
+b_stats = acqs[-1].lfp_burst_stats(0, bands)
 
-dpss1, eigvals1 = utils.dpss_windows(600000, 2.5, 5)
-dpss, eigvals = dpss_windows(600000, 2.5, 5)
+#%%
+n_features = len(b_stats.p_dict)+5
+n_samples = 122
+output_dict = 
+for i in b_stats:
+    if isinstance(i, dict):
+        for key, value in i.items():
 
 
 # %%
-f, adaptive_psd_mt, nu = tsa.multi_taper_psd(
-    acq[bursts[2, 0] : bursts[2, 1]],
-    Fs=1000,
-    adaptive=False,
-    jackknife=True,
-    low_bias=True,
-    sides="default",
-    NFFT=4096 * 2,
+f, cwt = acqs[-1].sxx(0, "cwt")
+bands = lfp.get_cwt_bands(
+    cwt,
+    f,
+    bands={"theta": [4, 10], "gamma": [30, 80], "beta": [12, 28]},
+    ret_type="raw",
 )
-# %%
-f, p, n = multitaper(
-    acq[bursts[2, 0] : bursts[2, 1]],
-    fs=1000,
-    NW=None,
-    BW=None,
-    adaptive=False,
-    jackknife=True,
-    low_bias=True,
-    sides="default",
-    NFFT=4096 * 2,
-)
-
-# %%
-
-
-# %%
-elec_map = pd.read_excel(
-    "C:/Users/LarsNelson/OneDrive - University of Pittsburgh/mapping.xlsx"
-)
-# elec_map = pd.read_excel(
-#     "/Users/larsnelson/OneDrive - University of Pittsburgh/mapping.xlsx"
-# )
-elec_map.sort_values("Depth", inplace=True)
-acq_pos = elec_map["Acq"].to_numpy().flatten()
-acq_pos = np.concatenate((acq_pos, acq_pos + 64))
-
-# %%
-ste = acqs["FKO"][64].get_short_time_energy()
-a = acqs["FKO"][64].acq("lfp")
-s = acqs["FKO"][64].acq("spike")
-baseline, std = lfp.find_ste_baseline(ste)
-bursts = np.asarray(acqs["FKO"][64].get_lfp_burst_indexes(), dtype=np.int64)
-f, pxx = acqs["FKO"][64].pxx("cwt")
-theta = np.where(np.logical_and(f >= 4, f < 10))[0]
-beta = np.where(np.logical_and(f >= 12, f < 30))[0]
-gamma = np.where(np.logical_and(f >= 30, f < 80))[0]
-tpxx = np.abs(pxx[theta].mean(axis=0))
-bpxx = np.abs(pxx[beta].mean(axis=0))
-gpxx = np.abs(pxx[gamma].mean(axis=0))
-
-# %%
-acq = acqs[-1].acq("lfp", 0)
-
-
-# %%
-f, px, baseline = lfp.find_logpx_baseline(
-    a, freqs=(0, 100), method="TrimmedMean", window="dpss"
-)
-plt.plot(f, 10 ** (np.log10(px) - baseline))
-
-# %%
-temp = np.zeros((64, 24000000))
-for i in range(16):
-    acq1 = acqs[key][acq_pos[i + 64]].acq("spike")
-    temp[i] = acq1
-
-# %%
-acq = acqs["FKO"][0].acq("lfp")
-acq1 = acqs["FKO"][1].acq("lfp")
-bursts = acqs["FKO"][0].get_lfp_burst_indexes()
-burst_baseline = lfp.burst_baseline_periods(bursts, 600000)
-
+hil_gamma = acqs[-1].hilbert(0, highpass=50, lowpass=70, resample_freq=1000)
+low_gamma = acqs[-1].hilbert(0, highpass=30, lowpass=50, resample_freq=1000)
+high_gamma = acqs[-1].hilbert(0, highpass=70, lowpass=80, resample_freq=1000)
+theta = acqs[-1].hilbert(0, highpass=4, lowpass=10, resample_freq=1000)
 
 # %%
 def whitening_matrix(data, distances, um=200):
