@@ -5,18 +5,13 @@ from typing import Union
 import numpy as np
 
 from .acq_manager import AcqManager
-from .pypl2 import (
-    PL2AnalogChannelInfo,
-    PL2DigitalChannelInfo,
-    PL2FileInfo,
-    PL2SpikeChannelInfo,
-    PyPL2FileReader,
-    pl2_ad,
-    pl2_comments,
-    pl2_events,
-    pl2_info,
-    pl2_spikes,
-)
+from .pypl2 import PL2DigitalChannelInfo  # noqa: F401
+from .pypl2 import PL2SpikeChannelInfo  # noqa: F401
+from .pypl2 import pl2_comments  # noqa: F401
+from .pypl2 import pl2_events  # noqa: F401
+from .pypl2 import pl2_info  # noqa: F401
+from .pypl2 import pl2_spikes  # noqa: F401
+from .pypl2 import PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 
@@ -65,7 +60,10 @@ def load_pl2_acqs(
     acq_man = AcqManager()
     if save_path == "":
         save_path = Path(pl2_path).parent
-    acq_man.create_hdf5_file(acqs, fs, coeffs, units, enabled, name, save_path)
+    acq_man.create_hdf5_file(
+        acqs, fs, coeffs, np.asarray(units), enabled, name, save_path
+    )
+    # acq_data = (acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
     return acq_man
 

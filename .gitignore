@@ -15,3 +15,5 @@ __pycache__
 stats.r
 phylib_mock.py
 pca_loading.py
+stats_analysis.r
+umap_sorting_analysis.py

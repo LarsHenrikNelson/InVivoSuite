@@ -15,7 +15,7 @@ save_path = r"D:\in_vivo_ephys\acqs\2023_08_25"
 
 # %%
 acqs = []
-for file_path in pl2_paths:
+for file_path in pl2_paths[1:3]:
     acq_manager = load_pl2_acqs(str(file_path), save_path, end=40000 * 60 * 12)
     acqs.append(acq_manager)
 

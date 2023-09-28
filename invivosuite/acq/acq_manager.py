@@ -27,7 +27,7 @@ class AcqManager(SpkManager, LFPManager):
         coeffs,
         units,
         enabled,
-        identifier="",
+        identifier="test",
         save_path="",
     ):
         if save_path == "":
@@ -43,9 +43,9 @@ class AcqManager(SpkManager, LFPManager):
         self.file.create_dataset("acqs", data=acqs)
         self.file.create_dataset("coeffs", data=coeffs)
         self.file.create_dataset("sample_rate", data=sample_rates)
-        self.set_file_attr("id", data=identifier)
         self.file.create_dataset("units", data=units)
         self.file.create_dataset("enabled", data=enabled)
+        self.set_file_attr("id", identifier)
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])
         self.close()
@@ -275,7 +275,7 @@ class AcqManager(SpkManager, LFPManager):
         self.open()
         if dataset in self.file:
             if rows is None and columns is None:
-                file_dataset = self.file[dataset]
+                file_dataset = self.file[dataset][()]
                 self.close()
             elif columns is None:
                 if isinstance(rows, int):

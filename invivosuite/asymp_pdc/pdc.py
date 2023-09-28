@@ -255,3 +255,29 @@ def fastasymalg(
                 den = den.T
             else:
                 den = np.sum(num)
+        Phi[:, :, ff] = num / den
+
+        if alpha != 0:
+            if metric == "gamma_group":
+                F1 = 0.5 * np.array([[1, 1j, -1j, 1]])
+                HEcov = X * ecov
+                miu1 = np.sum(HEcov * X, 1)
+                miu2 = np.sum(HEcov * np.conj(X), 1)
+                temp = np.kron(np.eye(p), X.T) * invgamma
+                Gp_gamma_1 = temp * np.kron(np.eye(p), X)
+                Gp_gamma_2 = temp * np.kron(np.eye(p), np.conj(X))
+
+                T_th_1 = np.zeros((1, nchannels))
+                T_th_2 = T_th_1.copy()
+                T_th_3 = T_th_1.copy()
+                P2 = np.zeros((2, 2, nchannels))
+                P1 = P2.copy()
+                for j in range(0,nchannels):
+                    tempj_1 = Gp_gamma_1[j:nchannels:nchannels*p, :
+                                                    j:nchannels:nchannels*p]
+                    tempj_2 = Gp_gamma_2[j:nchannels:nchannels*p, :
+                                                            j:nchannels:nchannels*p]
+                    P2[:,:,j] = F1*C*tempj_2*C.T*F1
+                    P1[:,:,j] = F1*C*tempj_1*C.T*F1.T
+                    
+                    T_th_1(j) = np.real(np.trace(P2[:,:,j])) #trace (P2)
