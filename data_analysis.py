@@ -26,26 +26,42 @@ parent_path = r"D:\in_vivo_ephys\acqs"
 acqs = load_hdf5_acqs(parent_path)
 
 # %%
-raw_data = []
+burst_data = []
 bands = {
     "theta": [4, 10],
     "low_gamma": [30, 50],
     "high_gamma": [70, 80],
     "beta": [12, 28],
 }
-for acq in acqs:
-    raw_data.append(acq.lfp_burst_stats(0, bands))
+for acq in acqs[7:]:
+    stats = acq.lfp_burst_stats(bands)
+    burst_data.extend(acq.lfp_burst_stats(bands))
 
 # %%
+id_list = []
+for acq in acqs:
+    temp_dict = {}
+    temp_dict["id"] = acq.get_file_attr("id")
+    temp_dict["sex"] = acq.get_file_attr("sex")
+    temp_dict["genotype"] = acq.get_file_attr("genotype")
+    temp_dict["date"] = acq.get_file_attr("date")
+    id_list.append(temp_dict)
+
 data = []
-for i in raw_data:
+for i, j in zip(raw_data, id_list):
     temp_dict = {}
     mean_data = {f"{key}_mean": value.mean() for key, value in i.items()}
     std_data = {f"{key}_std": value.std() for key, value in i.items()}
     temp_dict.update(mean_data)
     temp_dict.update(std_data)
+    temp_dict.update(j)
     data.append(temp_dict)
 
+# %%
+burst_df = pd.DataFrame(burst_data)
+burst_df.to_excel(
+    r"C:\Users\LarsNelson\OneDrive - University of Pittsburgh\exp_data\Shank3B\Shank3B_in_vivo\burst_data.xlsx"
+)
 
 # %%
 f, cwt = acqs[-1].sxx(0, "cwt")
@@ -78,23 +94,6 @@ def whitening_matrix(data, distances, um=200):
         W_local = (u @ np.diag(1 / np.sqrt(s + 1e-8))) @ vh
         W[inds, i] = W_local[:, i]
     return W, M
-
-
-# %%
-burst_psdm = []
-for index, i in enumerate(bursts):
-    f, p = lfp.multitaper(
-        acq[int(i[0]) : int(i[1])],
-        k=5,
-        nw=3,
-        fs=1000,
-        nperseg=acq[int(i[0]) : int(i[1])].size,
-        noverlap=0,
-        nfft=2**13,
-        ret_type="pxx",
-    )
-    burst_psdm.append(p)
-    plt.plot(p, alpha=0.5, c="black")
 
 
 # %%

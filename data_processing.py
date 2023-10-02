@@ -97,8 +97,13 @@ for i in acqs:
     )
 
 # %%
-acq = acqs[18].acq(0, "lfp")
-ste = lfp.short_time_energy(acq, window="hamming", wlen=0.2, fs=1000)
+# Setting some random attributes
+for i in acqs:
+    s_temp = i.file_path.stem.split("_")
+    i.set_file_attr("date", f"{s_temp[0]}_{s_temp[1]}_{s_temp[2]}")
+    i.set_file_attr("sex", s_temp[3])
+    i.set_file_attr("id", s_temp[4])
+    i.set_file_attr("genotype", s_temp[5])
 
 # %%
 for index, i in enumerate(acqs[18:]):
@@ -140,7 +145,17 @@ for index, i in enumerate(acqs):
         max_end=0.300,
         max_int=0.200,
     )
-x = np.median(np.abs(x - np.median(x)))
+
+# %%
+bands = {
+    "theta": (4, 10),
+    "low_gamma": (30, 50),
+    "high_gamma": (70, 80),
+    "beta": (12, 28),
+}
+for index, i in enumerate(acqs):
+    print(index)
+    i.calc_all_pdi(bands)
 
 # %%
 g = np.zeros((128, 128))

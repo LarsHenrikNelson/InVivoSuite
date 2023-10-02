@@ -247,28 +247,23 @@ class LFPManager:
         return hil_acq
 
     def calc_all_pdi(
-        self, acq_num: int, freq_dict: dict, nthreads: int = 4, size: int = 5000
+        self,
+        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        size: int = 5000,
     ):
-        self.open()
-        lfp_grp = self.file["lfp"]
-        array = self.acq(acq_num, "lfp")
-        pxx_grp = self.file.get("cwt")
-        if not self.file.get("pdi"):
-            pdi_grp = self.file.create_group("pdi")
-        else:
-            pdi_grp = self.file["pdi"]
-        freqs, cwt = lfp.create_cwt(
-            array, lfp_grp.attrs["sample_rate"], **pxx_grp.attrs, nthreads=nthreads
-        )
-        cohy = lfp.binned_cohy(cwt, size)
-        for key, value in freq_dict.items():
-            pdi = lfp.phase_discontinuity_index(
-                cohy,
+        pdi_dict = {key: np.zeros(self.num_channels) for key in freq_dict.keys()}
+        for i in range(self.num_channels):
+            freqs, cwt = self.sxx(i, "cwt")
+            pdi_temp = lfp.phase_discontinuity_index(
+                cwt,
                 freqs,
-                value[0],
-                value[1],
+                freq_dict,
+                size,
             )
-            self.set_grp_attr(pdi_grp, key, pdi)
+            for key, value in pdi_temp.items():
+                pdi_dict[key][i] = value
+        for key, value in pdi_dict.items():
+            self.set_grp_dataset("pdi", key, value)
 
     def get_short_time_energy(
         self,
@@ -421,22 +416,60 @@ class LFPManager:
         self.close()
         return burst_baseline
 
-    def lfp_burst_stats(
-        self, acq_num, bands, map_channel: bool = False, electrode: str = "None"
+    def lfp_burst_stats_channel(
+        self,
+        acq_num: int,
+        bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        calc_average: bool = True,
+        map_channel: bool = False,
+        electrode: str = "None",
     ):
+        b_stats = {"channel": acq_num}
         if map_channel:
             acq_num = self.get_mapped_channel(electrode, acq_num)
-        if electrode != "None":
-            data = self.get_grp_dataset("electrode", electrode)
-            acq_num += data[0]
+        b_stats["mapped_channel"] = acq_num
         acq = self.acq(acq_num, "lfp")
         bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
         fs = self.get_grp_attr("lfp", "sample_rate")
         baseline = self.get_burst_baseline(
             acq_num, map_channel=map_channel, electrode=electrode
         )
-        b_stats = lfp.burst_stats(acq, bursts, baseline, bands, fs)
+        temp = lfp.burst_stats(acq, bursts, baseline, bands, fs)
+        if calc_average:
+            mean_data = {
+                f"{key}_mean": value.mean()
+                for key, value in temp.items()
+                if not isinstance(value, int)
+            }
+            std_data = {
+                f"{key}_std": value.std()
+                for key, value in temp.items()
+                if not isinstance(value, int)
+            }
+            b_stats.update(mean_data)
+            b_stats.update(std_data)
+        else:
+            b_stats.update(temp)
         return b_stats
+
+    def lfp_burst_stats(
+        self,
+        bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        calc_average: bool = True,
+        map_channel: bool = False,
+        electrode: str = "None",
+    ):
+        total_data = []
+        for i in range(self.num_channels):
+            data = self.lfp_burst_stats_channel(
+                i,
+                bands=bands,
+                calc_average=calc_average,
+                map_channel=map_channel,
+                electrode=electrode,
+            )
+            total_data.append(data)
+        return total_data
 
     def set_freq_bands(self, freq_dict):
         for key, value in freq_dict.items():

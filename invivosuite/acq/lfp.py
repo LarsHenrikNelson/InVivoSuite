@@ -302,14 +302,14 @@ def synchrony_hilbert(arrays):
     return syn_matrix
 
 
-def phase_synchrony(array_1, array_2):
+def phase_synchrony(array_1: np.ndarray, array_2: np.ndarray):
     al1 = np.angle(array_1, deg=False)
     al2 = np.angle(array_2, deg=False)
     synchrony = 1 - np.sin(np.abs(al1 - al2) / 2)
     return synchrony
 
 
-def stepped_cwt_cohy(cwt, size):
+def stepped_cwt_cohy(cwt: np.ndarray, size: int):
     noverlap = 0
     nperseg = size
     step = nperseg - noverlap
@@ -333,24 +333,29 @@ def stepped_cwt_cohy(cwt, size):
     return coh
 
 
-def phase_discontinuity_index(coh, freqs, lower_limit, upper_limit, tol=0.01):
+def phase_discontinuity_index(
+    cwt: np.ndarray,
+    freqs: np.ndarray,
+    freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+    size: int = 5000,
+    tol: float = 0.01,
+) -> dict[str, float]:
+    pdi = {}
+    coh = stepped_cwt_cohy(cwt, size)
     coh = np.diff(np.angle(coh))
-    coh.shape
-    f_lim = np.where((freqs <= upper_limit) & (freqs >= lower_limit))[0]
-    g = coh[f_lim]
-    g = g.flatten()
-    power2 = np.int(np.ceil(np.log2(g.size)))
-    bw = np.cov(g)
-    min_g = g.min() - bw * tol
-    max_g = g.max() + bw * tol
-    x = np.linspace(min_g, max_g, num=2**power2)
-    # max_g = g.max()
-    # min_g = g.min()
-    # x = np.linspace(min_g - abs(min_g * tol), max_g + max_g * tol, num=2**power2)
-    y = KDEpy.FFTKDE(bw="ISJ").fit(g).evaluate(x)
-    args1 = np.where((x > np.pi / 5) | (x < -np.pi / 5))[0]
-    args2 = np.where((x <= np.pi / 5) & (x >= -np.pi / 5))[0]
-    pdi = np.sum(y[args1]) / np.sum(y[args2])
+    for key, value in freq_dict.items():
+        f_lim = np.where((freqs <= value[1]) & (freqs >= value[0]))[0]
+        g = coh[f_lim]
+        g = g.flatten()
+        power2 = int(np.ceil(np.log2(g.size)))
+        bw = np.cov(g)
+        min_g = g.min() - bw * tol
+        max_g = g.max() + bw * tol
+        x = np.linspace(min_g, max_g, num=2**power2)
+        y = KDEpy.FFTKDE(bw="ISJ").fit(g).evaluate(x)
+        args1 = np.where((x > np.pi / 5) | (x < -np.pi / 5))[0]
+        args2 = np.where((x <= np.pi / 5) & (x >= -np.pi / 5))[0]
+        pdi[key] = np.sum(y[args1]) / np.sum(y[args2])
     return pdi
 
 
@@ -813,18 +818,19 @@ def seg_pxx(
         raise ValueError("NFFT must be longer than the longest burst.")
     burst_pxx = np.zeros((segments.shape[0], NFFT // 2 + 1))
     for index, i in enumerate(segments):
-        freq, pxx, _ = multitaper(
-            acq[i[0] : i[1]],
-            fs=fs,
-            NW=NW,
-            BW=BW,
-            adaptive=adaptive,
-            jackknife=jackknife,
-            low_bias=low_bias,
-            sides=sides,
-            NFFT=NFFT,
-        )
-        burst_pxx[index] = pxx
+        if (acq[i[0] : i[1]]).size > 200:
+            freq, pxx, _ = multitaper(
+                acq[i[0] : i[1]],
+                fs=fs,
+                NW=NW,
+                BW=BW,
+                adaptive=adaptive,
+                jackknife=jackknife,
+                low_bias=low_bias,
+                sides=sides,
+                NFFT=NFFT,
+            )
+            burst_pxx[index] = pxx
     return freq, burst_pxx
 
 
@@ -878,8 +884,8 @@ def burst_stats(
     fs: float,
 ):
     output_dict = {}
-    output_dict["ave_len"] = bursts[:, 1] - bursts[:, 0] / fs
-    output_dict["iei"] = np.mean(np.diff(bursts[:, 0])) / fs
+    output_dict["len"] = (bursts[:, 1] - bursts[:, 0]) / fs
+    output_dict["iei"] = np.diff(bursts[:, 0]) / fs
     freqs, bursts_pxx = seg_pxx(acq, bursts, fs)
     _, baseline_pxx = seg_pxx(acq, baseline_seg, fs)
     p_dict = burst_power_bands(
@@ -887,10 +893,10 @@ def burst_stats(
         freqs,
         band_dict,
     )
-    p_dict = {f"baseline_{key}": value for key, value in p_dict.items()}
+    p_dict = {f"burst_{key}": value for key, value in p_dict.items()}
     output_dict.update(p_dict)
     b_dict = burst_power_bands(
-        bursts_pxx,
+        baseline_pxx,
         freqs,
         band_dict,
     )
