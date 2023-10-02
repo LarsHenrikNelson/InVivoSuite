@@ -25,23 +25,26 @@ from invivosuite.acq import lfp, load_hdf5_acqs
 parent_path = r"D:\in_vivo_ephys\acqs"
 acqs = load_hdf5_acqs(parent_path)
 
+# %%
+raw_data = []
+bands = {
+    "theta": [4, 10],
+    "low_gamma": [30, 50],
+    "high_gamma": [70, 80],
+    "beta": [12, 28],
+}
+for acq in acqs:
+    raw_data.append(acq.lfp_burst_stats(0, bands))
 
 # %%
-acq = acqs[2].acq(0, "lfp")
-bursts = acqs[2].get_lfp_burst_indexes(0)
-baselines = acqs[2].get_burst_baseline(0)
-
-# %%
-bands={"theta": [4, 10], "low_gamma": [30, 50], "high_gamma": [70, 80], "beta": [12, 28]}
-b_stats = acqs[-1].lfp_burst_stats(0, bands)
-
-#%%
-n_features = len(b_stats.p_dict)+5
-n_samples = 122
-output_dict = 
-for i in b_stats:
-    if isinstance(i, dict):
-        for key, value in i.items():
+data = []
+for i in raw_data:
+    temp_dict = {}
+    mean_data = {f"{key}_mean": value.mean() for key, value in i.items()}
+    std_data = {f"{key}_std": value.std() for key, value in i.items()}
+    temp_dict.update(mean_data)
+    temp_dict.update(std_data)
+    data.append(temp_dict)
 
 
 # %%
@@ -56,6 +59,7 @@ hil_gamma = acqs[-1].hilbert(0, highpass=50, lowpass=70, resample_freq=1000)
 low_gamma = acqs[-1].hilbert(0, highpass=30, lowpass=50, resample_freq=1000)
 high_gamma = acqs[-1].hilbert(0, highpass=70, lowpass=80, resample_freq=1000)
 theta = acqs[-1].hilbert(0, highpass=4, lowpass=10, resample_freq=1000)
+
 
 # %%
 def whitening_matrix(data, distances, um=200):

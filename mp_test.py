@@ -17,21 +17,24 @@ def multi_func(file_path):
         max_len=20.0,
         min_burst_int=0.2,
         wlen=0.2,
-        threshold=5,
+        threshold=2.0,
         pre=3.0,
         post=3.0,
         order=0.1,
         method="spline",
         tol=0.001,
-        deg=90,
+        deg=30,
     )
     return True
 
 
 if __name__ == "__main__":
     file_paths = list(Path(r"D:\in_vivo_ephys\acqs").rglob("*.hdf5"))
-    # Use only half of processors otherwise your computer will be really slow
-    pool = mp.Pool(int(mp.cpu_count() // 2))
+    file_paths = file_paths[:18]
+    # Use only 1/4 of processors otherwise your computer will be really slow
+    # and thermal throttle. Computer has 2x number of physical cores because
+    # of multithreading
+    pool = mp.Pool(int(mp.cpu_count() // 4))
     with mp.Pool() as pool:
         result = pool.map(multi_func, file_paths)
         print(result)

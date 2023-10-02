@@ -76,7 +76,7 @@ recoding which is pulled from the pl2 file.
 """
 for i in acqs:
     i.set_start(0)
-    i.set_end(240000000)
+    i.set_end(40000 * 60 * 10)
 
 # %%
 """
@@ -85,8 +85,8 @@ ACC and DMS file. This attribute needs to be set to work with the spike
 data.
 """
 for i in acqs:
-    i.set_electrode("electrodes", "acc", [64, 127])
-    i.set_electrode("electrodes", "dms", [0, 63])
+    i.set_electrode("acc", [64, 127])
+    i.set_electrode("dms", [0, 63])
 
 
 # %%
@@ -97,21 +97,25 @@ for i in acqs:
     )
 
 # %%
-for index, i in enumerate(acqs[:1]):
-    print(index)
+acq = acqs[18].acq(0, "lfp")
+ste = lfp.short_time_energy(acq, window="hamming", wlen=0.2, fs=1000)
+
+# %%
+for index, i in enumerate(acqs[18:]):
+    print(index + 18)
     i.find_lfp_bursts(
         window="hamming",
         min_len=0.2,
         max_len=20.0,
         min_burst_int=0.2,
         wlen=0.2,
-        threshold=10,
+        threshold=2.0,
         pre=3.0,
         post=3.0,
         order=0.1,
         method="spline",
         tol=0.001,
-        deg=90,
+        deg=30,
     )
 
 # %%

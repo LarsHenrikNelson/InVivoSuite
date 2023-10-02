@@ -48,12 +48,10 @@ def load_pl2_acqs(
             data = pl2_ad(pl2_path, i)
             enabled[i] = 1
             if acqs is None:
-                if end is None:
-                    size = data.ad.size - start
-                else:
-                    size = end - start
-                acqs = np.zeros((channels, size), np.int16)
-            acqs[i] = data.ad[:size]
+                if end is None or end > data.ad.size:
+                    end = data.ad.size
+                acqs = np.zeros((channels, start - end), np.int16)
+            acqs[i] = data.ad[start:end]
             fs[i] = data.adfrequency
             coeffs[i] = data.coeff
             units.append(ad_info.m_Units)

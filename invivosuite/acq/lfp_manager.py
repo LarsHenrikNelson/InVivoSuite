@@ -316,12 +316,24 @@ class LFPManager:
         return se_array
 
     def get_ste_baseline(
+        self,
         ste: np.ndarray,
-        tol: float = 0.001,
-        method: Literal["spline", "fixed", "polynomial"] = "spline",
-        deg: int = 90,
+        tol: Union[float, None] = None,
+        method: Union[Literal["spline", "fixed", "polynomial"], None] = None,
+        deg: Union[int, None] = None,
+        threshold: Union[float, None] = None,
     ):
-        ste_baseline = lfp.find_ste_baseline(ste, tol, method, deg)
+        if tol is None:
+            tol = self.get_grp_attr("lfp_bursts", "tol")
+        if method is None:
+            method = self.get_grp_attr("lfp_bursts", "method")
+        if deg is None:
+            deg = self.get_grp_attr("lfp_bursts", "deg")
+        if threshold is None:
+            threshold = self.get_grp_attr("lfp_bursts", "threshold")
+        ste_baseline = lfp.ste_baseline(
+            ste=ste, tol=tol, method=method, deg=deg, threshold=threshold
+        )
         return ste_baseline
 
     def find_lfp_bursts(
@@ -360,9 +372,7 @@ class LFPManager:
                 value = "None"
             self.set_grp_attr("lfp_bursts", key, value)
 
-        self.open()
         fs = self.get_grp_attr("lfp", "sample_rate")
-        self.close()
         for i in range(self.num_channels):
             acq_i = self.acq(
                 i,

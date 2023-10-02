@@ -470,24 +470,36 @@ def phase_slope_index(
     return psi
 
 
+@njit(cache=True)
+def convolve(array, window):
+    # This a tiny bit faster than scipy version
+    output = np.zeros(array.size + window.size - 1)
+    for i in range(array.size):
+        for j in range(window.size):
+            output[i + j] += array[i] * window[j]
+    return output
+
+
 def short_time_energy(
     array, window: Windows = "hamming", wlen: int = 0.2, fs: Union[float, int] = 1000.0
 ):
     wlen = int(wlen * fs)
     win_array = signal.get_window(window, wlen)
     win_array /= win_array.sum()
-    se_array = signal.convolve(array**2, win_array, mode="full")
+    se_array = convolve(array**2, win_array)
     se_array = se_array[wlen // 2 : array.size + wlen // 2]
     return se_array
 
 
-def derivative_baseline(array, window, wlen, fs):
+def derivative_baseline(
+    array: np.ndarray, window: str, wlen: float, fs: Union[float, int]
+):
     temp = np.gradient(array)
     wlen = int(wlen * fs)
     window = window
     win_array = signal.get_window(window, wlen)
     win_array /= win_array.sum()
-    se_array = signal.convolve(temp, win_array, mode="full")
+    se_array = convolve(temp, win_array)
     se_array = se_array[wlen // 2 : temp.size + wlen // 2]
     baseline = np.cumsum(se_array)
     return baseline
@@ -498,6 +510,7 @@ def kde_baseline(
     tol: float = 0.001,
     method: Literal["spline", "fixed", "polynomial"] = "spline",
     deg: int = 90,
+    threshold: float = 2.0,
 ):
     baseline_x = np.arange(0, ste.size, 1)
     power2 = int(np.ceil(np.log2(ste.size)))
@@ -511,13 +524,18 @@ def kde_baseline(
     max_ste = ste.max() + bw * tol
     x = np.linspace(min_ste, max_ste, num=2**power2)
     y = KDEpy.FFTKDE(kernel="biweight", bw="ISJ").fit(ste, weights=None).evaluate(x)
-    max_index = y.argmax()
-    ste_max = x[0] - x[max_index]
+
+    # Log tranform distribution since it is all positive values.
+    # Find the mean and std.
+    mean_x = np.sum(np.log10(x) * y / np.sum(y))
+    stand_dev = np.sqrt(np.sum(((np.log10(x) - mean_x) ** 2) * (y / np.sum(y))))
+
+    # Find the max accepted baseline value by back-transforming
+    ste_max = 10 ** (mean_x + threshold * stand_dev)
     indices = np.where(ste < ste_max)[0]
-    # max_index = (y.argmax() * 2) + 1
-    # indices = np.where(ste < max_index)[0]
     temp = ste[indices]
     if method == "fixed":
+        max_index = np.where(x > 10 ** (mean_x))[0][0]
         baseline = np.full(ste.size, x[max_index])
     elif method == "spline":
         knots = np.linspace(0, temp.size, num=deg + 2, dtype=int)[1:-2]
@@ -619,6 +637,20 @@ def _find_bursts(
     return bursts
 
 
+def ste_baseline(ste, tol, deg, threshold, method):
+    if method == "derivative":
+        baseline = derivative_baseline(ste, tol=tol, method=method, deg=deg)
+        baseline *= np.std(baseline) * threshold
+    else:
+        # Multiplying baseline by threshold value accentuates
+        # the curves of the baseline. Adding a threshold value
+        # Just moves the baseline up.
+        baseline = kde_baseline(
+            ste, tol=tol, method=method, deg=deg, threshold=threshold
+        )
+    return baseline
+
+
 def find_bursts(
     acq,
     window: Windows = "hamming",
@@ -644,8 +676,9 @@ def find_bursts(
         # Multiplying baseline by threshold value accentuates
         # the curves of the baseline. Adding a threshold value
         # Just moves the baseline up.
-        baseline = kde_baseline(ste, tol=tol, method=method, deg=deg)
-        baseline *= threshold
+        baseline = kde_baseline(
+            ste, tol=tol, method=method, deg=deg, threshold=threshold
+        )
     bursts = _find_bursts(
         ste=ste,
         baseline=baseline,
@@ -767,7 +800,7 @@ def seg_pxx(
     NW: Union[float, None] = 2.5,
     BW: Union[float, None] = None,
     adaptive=False,
-    jackknife=True,
+    jackknife=False,
     low_bias=True,
     sides="default",
     NFFT=None,
@@ -854,7 +887,15 @@ def burst_stats(
         freqs,
         band_dict,
     )
+    p_dict = {f"baseline_{key}": value for key, value in p_dict.items()}
     output_dict.update(p_dict)
+    b_dict = burst_power_bands(
+        bursts_pxx,
+        freqs,
+        band_dict,
+    )
+    b_dict = {f"baseline_{key}": value for key, value in b_dict.items()}
+    output_dict.update(b_dict)
     output_dict["intra_iei"] = burst_iei(bursts, acq, fs)
     output_dict["flatness"] = burst_flatness(bursts, acq)
     output_dict["rms"] = bursts_rms(bursts, acq)

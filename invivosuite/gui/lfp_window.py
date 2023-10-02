@@ -133,7 +133,9 @@ class LFPWidget(QWidget):
             window=window,
             fs=fs,
         )
+        baseline = self.exp_manager[id].get_ste_baseline(ste)
         self.ste_plot.plot(x=x, y=ste)
+        self.ste_plot.plot(x=x, y=baseline, pen="r")
         if self.plot_bursts.isChecked():
             b = self.exp_manager[id].get_lfp_burst_indexes(
                 num - 1, map_channel=self.channel_map.isChecked()
