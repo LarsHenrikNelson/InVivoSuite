@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "invivosuite"
+description = "In vivo electrophysiology analysis package for analyzing LFPs and spikes from Kilosort."
+readme = "README.md"
+authors = [{ name = "Lars Henrik Nelson", email = "larshnelson@protonmail.com" }]
+dynamic = ["2023.10.06"]
+keywords = ["electrophysiology", "analysis"]
+dependencies = [
+    "fcwt",
+    "h5py",
+    "KDEpy",
+    "numba",
+    "numpy",
+    "PySide6",
+    "pyqtgraph",
+    "qdarkstyle",
+    "scipy",
+    "statsmodels",
+]
+requires-python = ">=3.9"
+license = {text = 'GNU General Public License v3 (GPLv3)'}
+
+[project.optional-dependencies]
+plotting = [
+    "matplotlib",
+]
+
+[project.urls]
+Homepage = "https://github.com/LarsHenrikNelson/InVivoSuite"

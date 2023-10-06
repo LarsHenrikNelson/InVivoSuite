@@ -448,7 +448,10 @@ def filter_array(
     low_width: Union[int, float, None] = None,
     window: Windows = "hann",
     polyorder: Union[int, None] = None,
+    remove_mean: bool = False,
 ):
+    if remove_mean:
+        array -= array.mean()
     if filter_type == "median":
         filtered_array = median_filter(array=array, order=order)
     elif filter_type == "bessel":

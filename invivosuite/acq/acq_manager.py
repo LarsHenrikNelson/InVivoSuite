@@ -146,6 +146,36 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
+    def compute_cmr(self):
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        nchans = self.num_channels
+        cmr = np.zeros((nchans, end - start))
+        means = self.get_file_dataset("means")
+        means = means.reshape((nchans, 1))
+        for i in range((start - end) // 1000):
+            start = int(start + i * 1000)
+            stop = int(start + i * 1000) + 1000
+            array = self.get_file_dataset(
+                "acqs", columns=(start, stop)
+            ) * self.get_file_dataset("coeffs")
+            array -= means
+            cmr[start:stop] = array.median(axis=0)
+        cmr[end // 1000 :] = array[end // 1000 :].median(axis=1)
+        return cmr
+
+    def compute_channel_means(self):
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        nchans = self.num_channels
+        means = np.zeros(nchans)
+        for i in range(nchans):
+            array = self.get_file_dataset(
+                "acqs", rows=i, columns=(start, end)
+            ) * self.get_file_dataset("coeffs", rows=i)
+            means[i] = array.mean()
+        self.set_file_dataset("chan_means", data=means)
+
     def acq(
         self,
         acq_num: int,
@@ -163,6 +193,7 @@ class AcqManager(SpkManager, LFPManager):
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
+        array -= array.mean()
         if acq_type == "raw":
             return array
         filter_dict = self.get_filter(acq_type)
@@ -293,10 +324,10 @@ class AcqManager(SpkManager, LFPManager):
                     self.close()
             elif rows is None:
                 if isinstance(columns, int):
-                    file_dataset = self.file[dataset][columns]
+                    file_dataset = self.file[dataset][:, columns]
                     self.close()
                 else:
-                    file_dataset = self.file[dataset][columns[0] : columns[1]]
+                    file_dataset = self.file[dataset][:, columns[0] : columns[1]]
                     self.close()
             else:
                 if isinstance(columns, int) and isinstance(rows, int):
