@@ -71,6 +71,13 @@ class AcqManager(SpkManager, LFPManager):
         return channels
 
     @property
+    def shape(self):
+        self.open()
+        shape = self.file["acqs"].shape
+        self.close()
+        return shape
+
+    @property
     def id(self):
         self.open()
         id = self.file.attrs["id"]
@@ -370,38 +377,32 @@ class AcqManager(SpkManager, LFPManager):
 
     def save_to_bin(
         self,
-        acqs: Union[str, tuple[int, int], None] = None,
+        rows: Union[int, tuple[int, int], list[int, int], None] = None,
+        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+        electrode: Union[str, None] = None,
         save_path=None,
-        map_channels=False,
     ):
-        self.open()
-        start = self.file.attrs["start"]
-        end = self.file.attrs["end"]
-        if acqs is None:
-            shape = self.file["acqs"].shape
-            acqs = [0]
-            acqs.append(shape[0])
-        elif isinstance(acqs, str):
-            data = self.get_grp_dataset("electrodes", acqs)
-            acqs = []
-            acqs.append(data[0])
-            acqs.append(data[1] + 1)
+        if electrode is None:
+            if rows is None:
+                rows = (0, self.shape[0])
+            if columns is None:
+                try:
+                    start = self.get_file_attr("start")
+                    end = self.get_file_attr("end")
+                    columns = (start, end)
+                except Exception:
+                    columns = (0, self.shape[1])
         else:
-            raise AttributeError("acqs must be string, tuple[int, int] or None.")
-        if map_channels and self.file.get("channel_map"):
-            acqs = np.zeros((shape[0], end - start))
-            channel_map = self.file["channel_map"][()]
-            for i in range(shape[1]):
-                acqs[i] = self.file["acqs"][channel_map[i], start:end]
-        else:
-            acqs = np.asarray(
-                self.file["acqs"][acqs[0] : acqs[1], start:end],
-                dtype=np.int16,
-                order="C",
-            )
-        self.close()
-
-        # Need to transpose to (n_samples, n_channels) fo kilosort
+            if columns is None:
+                try:
+                    start = self.get_file_attr("start")
+                    end = self.get_file_attr("end")
+                    columns = (start, end)
+                except Exception:
+                    columns = (0, self.shape[1])
+            if rows is None:
+                rows = (0, self.shape[0])
+        acqs = self.get_file_dataset("acqs", rows, columns)
         acqs = acqs.T
         if save_path is None:
             save_path = Path(self.file_path).with_suffix(".bin")

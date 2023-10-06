@@ -89,7 +89,7 @@ class LFPManager:
         window: Union[str, tuple[str, float]] = ("tukey", 0.25),
         scaling: str = "density",
     ):
-        self.set_set_spectral_settings(
+        self.set_spectral_settings(
             "welch",
             nperseg=nperseg,
             noverlap=noverlap,

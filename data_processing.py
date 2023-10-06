@@ -9,13 +9,13 @@ from invivosuite.acq import AcqManager, load_pl2_acqs, load_hdf5_acqs
 
 # %%
 # Use this if creating hdf5 acquisitions for the first time.
-pl2_paths = list(Path(r"E:\Lars\Shank3B_P16\2023_08_25").rglob("*.pl2"))
+pl2_paths = list(Path(r"E:\Lars\Shank3B_P16\2023_08_25").rglob("*.pl2"))[1:3]
 save_path = r"D:\in_vivo_ephys\acqs\2023_08_25"
 # If you want multiple save paths just create a list of filepaths
 
 # %%
 acqs = []
-for file_path in pl2_paths[1:3]:
+for file_path in pl2_paths:
     acq_manager = load_pl2_acqs(str(file_path), save_path, end=40000 * 60 * 12)
     acqs.append(acq_manager)
 
@@ -85,8 +85,8 @@ ACC and DMS file. This attribute needs to be set to work with the spike
 data.
 """
 for i in acqs:
-    i.set_electrode("acc", [64, 127])
-    i.set_electrode("dms", [0, 63])
+    i.set_electrode("acc", [64, 128])
+    i.set_electrode("dms", [0, 64])
 
 
 # %%
@@ -133,6 +133,10 @@ for i in acqs:
         norm=True,
         nthreads=-1,
     )
+
+# %%
+for i in acqs:
+    i.set_welch(nperseg=2048, noverlap=1000, window=("tukey", 0.25), scaling="density")
 
 # %%
 # I recommend
@@ -408,3 +412,18 @@ for i in fls:
         )
         grp["cortex_dms_gamma"][...] = np.abs(cortex_dms_gamma)
     i.close()
+
+# %%
+from invivosuite.acq import lfp, spike, load_hdf5_acqs, SpikeModel
+from pathlib import Path
+
+# %%
+p = list(Path(r"E:\Lars\in_vivo_ephys\DMS_kilosort").glob("*"))
+
+
+# %%
+spk_models = []
+for i in p[:-7]:
+    spk_models.append(SpikeModel(i))
+
+# %%

@@ -2,10 +2,9 @@ import collections
 import math
 
 import fcwt
-from KDEpy import TreeKDE
-from numba import jit
 import numpy as np
-import pandas as pd
+from KDEpy import TreeKDE
+from numba import njit
 from scipy import signal
 from sklearn.decomposition import PCA
 
@@ -33,7 +32,7 @@ def find_spikes(
     return spikes
 
 
-@jit(nopython=True)
+@njit()
 def clean_spikes(array, spikes, spike_start, spike_end, p_threshold):
     clean_spikes = []
     for i in spikes:
@@ -46,7 +45,7 @@ def clean_spikes(array, spikes, spike_start, spike_end, p_threshold):
     return np.array(clean_spikes)
 
 
-@jit(nopython=True)
+@njit()
 def create_binary_spikes(spikes, size):
     if len(spikes) > 0:
         binary_spikes = np.zeros(shape=(size,))
@@ -56,7 +55,7 @@ def create_binary_spikes(spikes, size):
         AttributeError("There are no spikes in the acquisition.")
 
 
-@jit(nopython=True)
+@njit()
 def bin_spikes(spikes, binary_size, nperseg, size):
     step_index = np.arange(0, binary_size, nperseg)
     binned_spikes = np.empty(shape=step_index.size)
@@ -73,7 +72,7 @@ def bin_spikes(spikes, binary_size, nperseg, size):
 SpkParams = collections.namedtuple("SpkParams", ["peak", "lmi", "rmi", "lm", "rm"])
 
 
-@jit(nopython=True)
+@njit()
 def spike_parameters(spikes):
     data = np.empty((len(spikes), 10))
     for index, i in enumerate(spikes):
@@ -107,7 +106,7 @@ def spike_parameters(spikes):
     return data, labels
 
 
-@jit(nopython=True)
+@njit()
 def get_spikes(array, spikes, spike_start=50, spike_end=50):
     spike_array = np.zeros((len(spikes), spike_start + spike_end))
     for index, i in enumerate(spikes):
@@ -138,7 +137,7 @@ def get_spike_freq(acq_list: list):
     return spk_freq
 
 
-@jit(nopython=True)
+@njit()
 def find_bursts(spikes, freq):
     bursts = []
     mean_isi = 1 / freq
@@ -163,7 +162,7 @@ def find_bursts(spikes, freq):
     return bursts
 
 
-@jit(nopython=True)
+@njit()
 def find_fwd_burst(freq, burst: np.ndarray):
     snurprise = []
     for i in range(3, len(burst)):
@@ -174,7 +173,7 @@ def find_fwd_burst(freq, burst: np.ndarray):
     return burst[: 3 + b]
 
 
-@jit(nopython=True)
+@njit()
 def find_bwk_burst(freq, burst: np.ndarray):
     snurprise = []
     for i in range(3, len(burst)):
@@ -185,7 +184,7 @@ def find_bwk_burst(freq, burst: np.ndarray):
     return burst[: 3 + b]
 
 
-@jit(nopython=True)
+@njit()
 def poisson_surp(r, burst):
     rT = r * (burst[-1] - burst[0])
     e_rT = np.exp(-rT)
@@ -213,52 +212,6 @@ def find_isi_max(spikes):
     return max_isi
 
 
-def max_int_bursts(
-    spikes,
-    freq,
-    fs,
-    min_count=5,
-    min_dur=0,
-    max_start=None,
-    max_end=None,
-    max_int=None,
-    output_type="index",
-):
-    bursts = []
-    spike_temp = spikes / fs
-    if max_start is None:
-        max_start = (1 / freq) / 2
-    if max_end is None:
-        max_end = 1 / freq
-    if max_int is None:
-        max_int = max_end
-    i = 0
-    while i < spike_temp.size - 2:
-        if spike_temp[i + 1] - spike_temp[i] < max_start:
-            bur = []
-            bur.extend((i, i + 1))
-            i += 1
-            add_spikes = True
-            while add_spikes and i < spike_temp.size - 2:
-                if spike_temp[i + 1] - spike_temp[i] <= max_end:
-                    bur.append(i + 1)
-                    i += 1
-                else:
-                    add_spikes = False
-                    if (len(bur) >= min_count) and (
-                        spike_temp[bur[-1]] - spike_temp[bur[0]] > min_dur
-                    ):
-                        bursts.append(np.array(bur))
-        else:
-            i += 1
-    bursts = clean_max_int_bursts(spikes, bursts, max_int)
-    if output_type == "time":
-        bursts = [np.array([spikes[j] for j in i]) / fs for i in bursts]
-    elif output_type == "sample":
-        bursts = [np.array([spikes[j] for j in i]) for i in bursts]
-    return bursts
-
-
 def clean_max_int_bursts(spikes, bursts, max_int):
     cleaned_bursts = []
     i = 1
@@ -273,8 +226,54 @@ def clean_max_int_bursts(spikes, bursts, max_int):
     return cleaned_bursts
 
 
-def intra_burst_iei(bursts):
-    if len(bursts) == 0:
+def max_int_bursts(
+    spikes,
+    fs,
+    min_count=5,
+    min_dur=0,
+    max_start=None,
+    max_end=None,
+    max_int=None,
+    output_type="index",
+):
+    bursts = []
+    spike_temp = spikes / fs
+    freq = 1 / np.mean(np.diff(spike_temp))
+    if max_start is None:
+        max_start = 1 / freq / 2
+    if max_end is None:
+        max_end = 1 / freq
+    if max_int is None:
+        max_int = max_end
+    i = 0
+    while i < spike_temp.size - min_count:
+        if (spike_temp[i + 1] - spike_temp[i]) < max_start:
+            bur = []
+            bur.extend((i, i + 1))
+            i += 1
+            add_spikes = True
+            while add_spikes and i < (spike_temp.size - 2):
+                if (spike_temp[i + 1] - spike_temp[i]) <= max_end:
+                    bur.append(i + 1)
+                    i += 1
+                else:
+                    add_spikes = False
+                    if (len(bur) >= min_count) and (
+                        (spike_temp[bur[-1]] - spike_temp[bur[0]]) > min_dur
+                    ):
+                        bursts.append(np.array(bur))
+        else:
+            i += 1
+    bursts = clean_max_int_bursts(spikes, bursts, max_int)
+    if output_type == "time":
+        bursts = [np.array([spikes[j] for j in i]) / fs for i in bursts]
+    elif output_type == "sample":
+        bursts = [np.array([spikes[j] for j in i]) for i in bursts]
+    return bursts
+
+
+def ave_inter_burst_iei(bursts):
+    if len(bursts) <= 1:
         return 0
     diff = []
     for i in range(1, len(bursts)):
@@ -282,7 +281,7 @@ def intra_burst_iei(bursts):
     return np.mean(diff)
 
 
-def ave_spikes_burst(bursts):
+def ave_spikes_burst(bursts: list):
     if len(bursts) == 0:
         return 0
     ave = 0
@@ -291,7 +290,19 @@ def ave_spikes_burst(bursts):
     return ave / len(bursts)
 
 
-def ave_iei_burst(bursts):
+def ave_intra_burst_iei(bursts: list) -> float:
+    """Get the average iei from each burst. Does not correct for sampling rate.
+
+    Parameters
+    ----------
+    bursts : list-like
+        A list of bursts
+
+    Returns
+    -------
+    float
+        The average iei of all the bursts
+    """
     if len(bursts) == 0:
         return 0
     ave = 0
@@ -309,13 +320,14 @@ def ave_burst_len(bursts):
     return ave / len(bursts)
 
 
-def get_burst_data(attrs, acqs):
-    data = np.empty((len(acqs), len(attrs)))
-    for ith, i in enumerate(attrs):
-        for jth, j in enumerate(acqs):
-            data[jth, ith] = j.file.attrs[i]
-    df = pd.DataFrame(data=data, columns=attrs)
-    return df
+def get_burst_data(bursts):
+    data_dict = {}
+    data_dict["num_bursts"] = len(bursts)
+    data_dict["ave_burst_len"] = ave_burst_len(bursts)
+    data_dict["intra_burst_iei"] = ave_intra_burst_iei(bursts)
+    data_dict["ave_spks_burst"] = ave_spikes_burst(bursts)
+    data_dict["inter_burst_iei"] = ave_inter_burst_iei(bursts)
+    return data_dict
 
 
 def get_spike_cwt(spikes, fs=40000, f0=300, f1=1500, fn=100, bandwidth=2.0):
@@ -333,9 +345,9 @@ def get_spike_cwt(spikes, fs=40000, f0=300, f1=1500, fn=100, bandwidth=2.0):
     return data
 
 
-def compute_whitening_matrix(acqs):
-    acqs = acqs - np.mean(acqs, axis=1)
-    cov = (acqs.T @ acqs).data.shape[0]
+# def compute_whitening_matrix(acqs):
+#     acqs = acqs - np.mean(acqs, axis=1)
+#     cov = (acqs.T @ acqs).data.shape[0]
 
 
 if __name__ == "__main__":
@@ -348,4 +360,3 @@ if __name__ == "__main__":
     create_binary_spikes()
     clean_spikes()
     max_int_bursts()
-    get_burst_data()

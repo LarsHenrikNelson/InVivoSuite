@@ -50,7 +50,7 @@ def load_pl2_acqs(
             if acqs is None:
                 if end is None or end > data.ad.size:
                     end = data.ad.size
-                acqs = np.zeros((channels, start - end), np.int16)
+                acqs = np.zeros((channels, end - start), np.int16)
             acqs[i] = data.ad[start:end]
             fs[i] = data.adfrequency
             coeffs[i] = data.coeff

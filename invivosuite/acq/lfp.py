@@ -188,9 +188,7 @@ def get_max_from_burst(array):
     return maximums
 
 
-def get_ave_band_power(
-    self, band, lower_limit, upper_limit, window="hann", type="welch"
-):
+def get_ave_band_power(self, lower_limit, upper_limit, window="hann", type="welch"):
     if type != "welch":
         psd = signal.periodogram(self.array, window=window, fs=self.sample_rate)
     else:
@@ -282,16 +280,6 @@ def synchrony_cwt(
 
 
 def synchrony_hilbert(arrays):
-    """This functions computes the pairwise synchrony using the
-    hilbert transform. The arrays need to be prefiltered to the
-    frequency band of interest.
-
-    Args:
-        arrays (np.ndarray): A numpy array of shape(signals, time)
-
-    Returns:
-        np.ndarray: Array of shape(signals, signals)
-    """
     syn_matrix = np.zeros((arrays.shape[0], arrays.shape[0]))
     for i in range(arrays.shape[0]):
         al1 = np.angle(signal.hilbert(arrays[i]), deg=False)
