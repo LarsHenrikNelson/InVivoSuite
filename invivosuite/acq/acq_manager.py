@@ -64,7 +64,7 @@ class AcqManager(SpkManager, LFPManager):
         return resampled
 
     @property
-    def num_channels(self):
+    def n_chans(self):
         self.open()
         channels = self.file["acqs"].shape[0]
         self.close()
@@ -146,40 +146,55 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
-    def compute_cmr(self):
+    def compute_cmr(self, electrode: str = "None", bin_size: int = 0):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        nchans = self.num_channels
-        cmr = np.zeros((nchans, end - start))
-        means = self.get_file_dataset("means")
-        means = means.reshape((nchans, 1))
-        for i in range((start - end) // 1000):
-            start = int(start + i * 1000)
-            stop = int(start + i * 1000) + 1000
+        if electrode == "None":
+            chans = (0, self.n_chans)
+        else:
+            chans = self.get_grp_dataset("electrodes", electrode)
+        if bin_size != 0:
+            cmr = np.zeros(end - start)
+            for i in range((start - end) // bin_size):
+                begin = int(start + i * 1000)
+                stop = int(start + i * 1000) + 1000
+                array = self.get_file_dataset(
+                    "acqs", rows=chans, columns=(begin, stop)
+                ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
+                means = array.mean(axis=1)
+                array -= means
+                cmr[begin:stop] = np.median(array, axis=0)
+            get_the_rest = (start - end) % 1000
+            cmr[-get_the_rest:] = np.median(array[-get_the_rest:], axis=0)
+            self.set_grp_dataset("cmr", electrode, cmr)
+        else:
             array = self.get_file_dataset(
-                "acqs", columns=(start, stop)
-            ) * self.get_file_dataset("coeffs")
+                "acqs", rows=chans, columns=(start, end)
+            ) * self.get_file_dataset("coeffs", rows=chans).reshape(
+                (chans[1] - chans[0], 1)
+            )
+            means = array.mean(axis=1).reshape((array.shape[0], 1))
             array -= means
-            cmr[start:stop] = array.median(axis=0)
-        cmr[end // 1000 :] = array[end // 1000 :].median(axis=1)
-        return cmr
+            cmr = np.median(array, axis=0)
+            self.set_grp_dataset("cmr", electrode, cmr)
 
-    def compute_channel_means(self):
-        start = self.get_file_attr("start")
-        end = self.get_file_attr("end")
-        nchans = self.num_channels
-        means = np.zeros(nchans)
-        for i in range(nchans):
-            array = self.get_file_dataset(
-                "acqs", rows=i, columns=(start, end)
-            ) * self.get_file_dataset("coeffs", rows=i)
-            means[i] = array.mean()
-        self.set_file_dataset("chan_means", data=means)
+    # def compute_channel_means(self):
+    #     start = self.get_file_attr("start")
+    #     end = self.get_file_attr("end")
+    #     nchans = self.n_chans
+    #     means = np.zeros(nchans)
+    #     for i in range(nchans):
+    #         array = self.get_file_dataset(
+    #             "acqs", rows=i, columns=(start, end)
+    #         ) * self.get_file_dataset("coeffs", rows=i)
+    #         means[i] = array.mean()
+    #     self.set_file_dataset("chan_means", data=means)
 
     def acq(
         self,
         acq_num: int,
         acq_type: Literal["spike", "lfp", "raw"],
+        cmr: bool = True,
         map_channel: bool = False,
         electrode: str = "None",
     ):
@@ -188,11 +203,14 @@ class AcqManager(SpkManager, LFPManager):
         if map_channel:
             acq_num = self.get_mapped_channel(electrode, acq_num)
         if electrode != "None":
-            data = self.get_grp_dataset("electrode", electrode)
-            acq_num += data[0]
+            data = self.get_grp_dataset("electrodes", electrode)
+            acq_num = int(acq_num + data[0])
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
+        if cmr:
+            median = self.get_grp_dataset("cmr", electrode)
+            array -= median
         array -= array.mean()
         if acq_type == "raw":
             return array
@@ -266,19 +284,26 @@ class AcqManager(SpkManager, LFPManager):
             grp.create_dataset(name, data=data)
         self.close()
 
-    def get_grp_dataset(self, grp, data):
+    def get_grp_dataset(
+        self,
+        grp,
+        dataset,
+        rows: Union[int, tuple[int, int], list[int, int], None] = None,
+        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+    ):
         self.open()
         if grp in self.file:
-            if data in self.file[grp]:
-                grp_data = self.file[grp][data][()]
+            if dataset in self.file[grp]:
+                group = self.file[grp]
+                file_dataset = self._get_data(group, dataset, rows, columns)
                 self.close()
+                return file_dataset
             else:
                 self.close()
-                raise AttributeError(f"{data} does not exist.")
+                raise AttributeError(f"{dataset} does not exist.")
         else:
             self.close()
             raise AttributeError(f"{grp} does not exist.")
-        return grp_data
 
     def get_grp_attr(self, grp_name, name):
         self.open()
@@ -312,41 +337,73 @@ class AcqManager(SpkManager, LFPManager):
     ):
         self.open()
         if dataset in self.file:
-            if rows is None and columns is None:
-                file_dataset = self.file[dataset][()]
-                self.close()
-            elif columns is None:
-                if isinstance(rows, int):
-                    file_dataset = self.file[dataset][rows]
-                    self.close()
-                else:
-                    file_dataset = self.file[dataset][rows[0] : rows[1]]
-                    self.close()
-            elif rows is None:
-                if isinstance(columns, int):
-                    file_dataset = self.file[dataset][:, columns]
-                    self.close()
-                else:
-                    file_dataset = self.file[dataset][:, columns[0] : columns[1]]
-                    self.close()
-            else:
-                if isinstance(columns, int) and isinstance(rows, int):
-                    file_dataset = self.file[dataset][rows, columns]
-                    self.close()
-                elif isinstance(columns, int) and not isinstance(rows, int):
-                    file_dataset = self.file[dataset][rows[0] : rows[1], columns]
-                    self.close()
-                elif not isinstance(columns, int) and isinstance(rows, int):
-                    file_dataset = self.file[dataset][rows, columns[0] : columns[1]]
-                    self.close()
-                else:
-                    file_dataset = self.file[dataset][
-                        rows[0] : rows[1], columns[0] : columns[1]
-                    ]
-                    self.close()
+            file_dataset = self._get_data(self.file, dataset, rows, columns)
+            self.close()
+            return file_dataset
+            # if rows is None and columns is None:
+            #     file_dataset = self.file[dataset][()]
+            #     self.close()
+            # elif columns is None:
+            #     if isinstance(rows, int):
+            #         file_dataset = self.file[dataset][rows]
+            #         self.close()
+            #     else:
+            #         file_dataset = self.file[dataset][rows[0] : rows[1]]
+            #         self.close()
+            # elif rows is None:
+            #     if isinstance(columns, int):
+            #         file_dataset = self.file[dataset][:, columns]
+            #         self.close()
+            #     else:
+            #         file_dataset = self.file[dataset][:, columns[0] : columns[1]]
+            #         self.close()
+            # else:
+            #     if isinstance(columns, int) and isinstance(rows, int):
+            #         file_dataset = self.file[dataset][rows, columns]
+            #         self.close()
+            #     elif isinstance(columns, int) and not isinstance(rows, int):
+            #         file_dataset = self.file[dataset][rows[0] : rows[1], columns]
+            #         self.close()
+            #     elif not isinstance(columns, int) and isinstance(rows, int):
+            #         file_dataset = self.file[dataset][rows, columns[0] : columns[1]]
+            #         self.close()
+            #     else:
+            #         file_dataset = self.file[dataset][
+            #             rows[0] : rows[1], columns[0] : columns[1]
+            #         ]
+            #         self.close()
         else:
             self.close()
             raise KeyError(f"{dataset} does not exist.")
+
+    def _get_data(
+        self,
+        grp,
+        dataset: str,
+        rows: Union[int, tuple[int, int], list[int, int], None] = None,
+        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+    ):
+        if rows is None and columns is None:
+            file_dataset = grp[dataset][()]
+        elif columns is None:
+            if isinstance(rows, int):
+                file_dataset = grp[dataset][rows]
+            else:
+                file_dataset = grp[dataset][rows[0] : rows[1]]
+        elif rows is None:
+            if isinstance(columns, int):
+                file_dataset = grp[dataset][:, columns]
+            else:
+                file_dataset = grp[dataset][:, columns[0] : columns[1]]
+        else:
+            if isinstance(columns, int) and isinstance(rows, int):
+                file_dataset = grp[dataset][rows, columns]
+            elif isinstance(columns, int) and not isinstance(rows, int):
+                file_dataset = grp[dataset][rows[0] : rows[1], columns]
+            elif not isinstance(columns, int) and isinstance(rows, int):
+                file_dataset = grp[dataset][rows, columns[0] : columns[1]]
+            else:
+                file_dataset = grp[dataset][rows[0] : rows[1], columns[0] : columns[1]]
         return file_dataset
 
     def get_grp_attrs(self, grp_name: str):

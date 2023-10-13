@@ -463,14 +463,14 @@ def phase_slope_index(
     return psi
 
 
-@njit(cache=True)
-def convolve(array, window):
-    # This a tiny bit faster than scipy version
-    output = np.zeros(array.size + window.size - 1)
-    for i in range(array.size):
-        for j in range(window.size):
-            output[i + j] += array[i] * window[j]
-    return output
+# @njit(cache=True)
+# def convolve(array, window):
+#     # This a tiny bit faster than scipy version
+#     output = np.zeros(array.size + window.size - 1)
+#     for i in range(array.size):
+#         for j in range(window.size):
+#             output[i + j] += array[i] * window[j]
+#     return output
 
 
 def short_time_energy(
@@ -479,22 +479,27 @@ def short_time_energy(
     wlen = int(wlen * fs)
     win_array = signal.get_window(window, wlen)
     win_array /= win_array.sum()
-    se_array = convolve(array**2, win_array)
+    se_array = signal.convolve(array**2, win_array)
     se_array = se_array[wlen // 2 : array.size + wlen // 2]
     return se_array
 
 
 def derivative_baseline(
-    array: np.ndarray, window: str, wlen: float, fs: Union[float, int]
+    array: np.ndarray,
+    window: str,
+    wlen: float,
+    fs: Union[float, int],
+    threshold: float = 3.0,
 ):
     temp = np.gradient(array)
     wlen = int(wlen * fs)
     window = window
     win_array = signal.get_window(window, wlen)
     win_array /= win_array.sum()
-    se_array = convolve(temp, win_array)
+    se_array = signal.convolve(temp, win_array)
     se_array = se_array[wlen // 2 : temp.size + wlen // 2]
     baseline = np.cumsum(se_array)
+    baseline += np.std(baseline) * threshold
     return baseline
 
 
@@ -503,7 +508,7 @@ def kde_baseline(
     tol: float = 0.001,
     method: Literal["spline", "fixed", "polynomial"] = "spline",
     deg: int = 90,
-    threshold: float = 2.0,
+    threshold: float = 3.0,
 ):
     baseline_x = np.arange(0, ste.size, 1)
     power2 = int(np.ceil(np.log2(ste.size)))
@@ -524,7 +529,7 @@ def kde_baseline(
     stand_dev = np.sqrt(np.sum(((np.log10(x) - mean_x) ** 2) * (y / np.sum(y))))
 
     # Find the max accepted baseline value by back-transforming
-    ste_max = 10 ** (mean_x + threshold * stand_dev)
+    ste_max = 10 ** (mean_x + 3 * stand_dev)
     indices = np.where(ste < ste_max)[0]
     temp = ste[indices]
     if method == "fixed":
@@ -546,6 +551,7 @@ def kde_baseline(
         baseline = poly(baseline_x)
     else:
         raise ValueError("method must be: fixed, spline, polynomial,")
+    baseline += np.std(baseline) * threshold
     return baseline
 
 
@@ -630,20 +636,6 @@ def _find_bursts(
     return bursts
 
 
-def ste_baseline(ste, tol, deg, threshold, method):
-    if method == "derivative":
-        baseline = derivative_baseline(ste, tol=tol, method=method, deg=deg)
-        baseline *= np.std(baseline) * threshold
-    else:
-        # Multiplying baseline by threshold value accentuates
-        # the curves of the baseline. Adding a threshold value
-        # Just moves the baseline up.
-        baseline = kde_baseline(
-            ste, tol=tol, method=method, deg=deg, threshold=threshold
-        )
-    return baseline
-
-
 def find_bursts(
     acq,
     window: Windows = "hamming",
@@ -663,8 +655,9 @@ def find_bursts(
 ):
     ste = short_time_energy(acq, window=window, wlen=wlen, fs=fs)
     if method == "derivative":
-        baseline = derivative_baseline(ste, tol=tol, method=method, deg=deg)
-        baseline *= np.std(baseline) * threshold
+        baseline = derivative_baseline(
+            ste, window=window, wlen=tol, fs=fs, threshold=threshold
+        )
     else:
         # Multiplying baseline by threshold value accentuates
         # the curves of the baseline. Adding a threshold value
