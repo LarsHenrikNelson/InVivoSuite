@@ -127,19 +127,17 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
+        cmr: bool = False,
         map_channel: bool = False,
         electrode: str = "None",
     ):
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
-        if map_channel:
-            acq_num = self.get_mapped_channel(electrode, acq_num)
-        if electrode != "None":
-            data = self.get_grp_dataset("electrodes", electrode)
-            acq_num += data[0]
         fs = self.get_grp_attr("lfp", "sample_rate")
-        array = self.acq(acq_num, "lfp")
+        array = self.acq(
+            acq_num, "lfp", cmr=cmr, electrode=electrode, map_channel=map_channel
+        )
         if pxx_type == "multitaper":
             freqs, pxx = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":

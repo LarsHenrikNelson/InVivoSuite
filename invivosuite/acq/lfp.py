@@ -19,7 +19,7 @@ __all__ = [
     "calc_all_freq_corrs",
     "corr_freqs",
     "create_all_freq_windows",
-    "get_ave_freq_window",
+    "get_freq_window",
     "synchrony_cwt",
     "phase_synchrony",
     "phase_discontinuity_index",
@@ -120,10 +120,22 @@ def find_logpx_baseline(
     return f[ind], px[ind], rline
 
 
-def get_ave_freq_window(pxx, freqs, lower_limit, upper_limit):
+def get_freq_window(
+    pxx: np.ndarray,
+    freqs: np.ndarray,
+    lower_limit: float,
+    upper_limit: float,
+    log_transform: bool = True,
+    window_type: Literal["sum", "mean"] = "sum",
+):
     f_lim = np.where((freqs <= upper_limit) & (freqs >= lower_limit))
     pxx_freq = pxx[f_lim]
-    ave = np.mean(pxx_freq, axis=0)
+    if log_transform:
+        pxx_freq = np.log10(pxx_freq)
+    if window_type == "sum":
+        ave = np.sum(pxx_freq, axis=0)
+    elif window_type == "mean":
+        ave = np.mean(pxx_freq, axis=0)
     return ave
 
 
@@ -132,7 +144,7 @@ def create_all_freq_windows(freq_dict, freqs, pxx):
         pxx = np.abs(pxx)
     bands = {}
     for key, value in freq_dict.items():
-        bands[key] = get_ave_freq_window(pxx, freqs, value[0], value[1])
+        bands[key] = get_freq_window(pxx, freqs, value[0], value[1])
     return bands
 
 
