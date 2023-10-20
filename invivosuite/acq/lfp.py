@@ -485,6 +485,16 @@ def phase_slope_index(
 #     return output
 
 
+@njit()
+def corr(acq1, acq2, cutoff):
+    output = np.zeros(cutoff * 2)
+    for i in range(cutoff):
+        output[cutoff - i] = np.corrcoef(acq2[i:], acq1[: acq1.size - i])[0, 1]
+    for i in range(cutoff):
+        output[i + cutoff] = np.corrcoef(acq1[i:], acq2[: acq2.size - i])[0, 1]
+    return output
+
+
 def short_time_energy(
     array, window: Windows = "hamming", wlen: int = 0.2, fs: Union[float, int] = 1000.0
 ):
