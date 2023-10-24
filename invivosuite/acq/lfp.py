@@ -365,13 +365,22 @@ def coherence(
     fs=1000,
     noverlap=1000,
     nperseg=10000,
-    nfft=10000,
+    nfft: Union[int, None] = None,
     window="hamming",
     ret_type: Literal[
-        "icohere", "mscohere", "lcohere2019", "icohere2019", "cohy", "plv", "iplv"
+        "icohere",
+        "mscohere1",
+        "mscohere2",
+        "lcohere2019",
+        "icohere2019",
+        "cohy",
+        "plv",
+        "iplv",
     ] = "icohere",
 ):
     # Modified version of scipy to work with the imaginary part of coherence
+    acq1 = np.asarray(acq1)
+    acq2 = np.asarray(acq2)
     step = nperseg - noverlap
     shape = acq1.shape[:-1] + ((acq1.shape[-1] - noverlap) // step, nperseg)
     strides = acq1.strides[:-1] + (step * acq1.strides[-1], acq1.strides[-1])
@@ -379,10 +388,13 @@ def coherence(
     scale = 1.0 / (fs * (win * win).sum())
     temp1 = np.lib.stride_tricks.as_strided(acq1, shape=shape, strides=strides)
     temp2 = np.lib.stride_tricks.as_strided(acq2, shape=shape, strides=strides)
-    temp1 -= temp1.mean(axis=1).reshape((temp1.shape[0], 1))
-    temp2 -= temp2.mean(axis=1).reshape((temp2.shape[0], 1))
+    temp1 = temp1 - temp1.mean(axis=1, keepdims=True)
+    temp2 = temp2 - temp2.mean(axis=1, keepdims=True)
     temp1 *= win
     temp2 *= win
+    if nfft is None:
+        nfft = nperseg
+    freqs = fft.rfftfreq(nfft, 1 / fs)
     fft1 = fft.rfft(temp1, n=nfft)
     fft2 = fft.rfft(temp2, n=nfft)
     sxx = fft1 * np.conjugate(fft1)
@@ -396,25 +408,25 @@ def coherence(
     sxy = sxy.mean(axis=0)
     if ret_type == "icohere2019":
         # See Nolte et. al. 2004
-        return np.abs((sxy / (np.sqrt(sxx.real * sxy.real) + 1e-18)).imag)
+        output = np.abs((sxy / (np.sqrt(sxx.real * sxy.real) + 1e-18)).imag)
     if ret_type == "icohere":
         # This is from Brainstorm
         cohy = sxy / np.sqrt(sxx * syy)
-        return (cohy.imag**2) / ((1 - cohy.real**2) + 1e-18)
+        output = (cohy.imag**2) / ((1 - cohy.real**2) + 1e-18)
     elif ret_type == "lcohere2019":
         # This is from Brainstorm
         cohy = sxy / np.sqrt(sxx * syy)
-        return np.abs(cohy.imag) / (np.sqrt(1 - cohy.real**2) + 1e-18)
+        output = np.abs(cohy.imag) / (np.sqrt(1 - cohy.real**2) + 1e-18)
     elif ret_type == "mscohere1":
-        return (np.abs(sxy) ** 2) / (sxx.real * syy.real)
+        output = (np.abs(sxy) ** 2) / (sxx.real * syy.real)
     elif ret_type == "mscohere2":
-        return np.abs(sxy) / np.sqrt(sxx.real * syy.real)
+        output = np.abs(sxy) / np.sqrt(sxx.real * syy.real)
     elif ret_type == "cohy":
         cohy = sxy / np.sqrt((sxx * syy) + 1e-18)
-        return cohy
+        output = cohy
     elif ret_type == "plv":
         plv = np.abs(sxy / np.sqrt(sxy))
-        return plv
+        output = plv
     elif ret_type == "iplv":
         acc = sxy / np.sqrt((sxx * syy) + 1e-18)
         iplv = np.abs(acc.imag)
@@ -423,17 +435,17 @@ def coherence(
         mask = np.abs(rplv) == 1
         rplv[mask] = 0
         ciplv = iplv / np.sqrt(1 - rplv**2)
-        return ciplv
+        output = ciplv
     # elif ret_type == "pli":
     #     pli = np.abs(np.sign(sxy.imag))
-    #     return cohy
+    #     output = cohy
     # elif ret_type == "upli":
     #     pli = np.abs(np.sign(sxy.imag))
     #     upli = pli**2 - 1
-    #     return upli
+    #     output = upli
     # elif ret_type == "dpli":
     #     dpli = np.heaviside(np.imag(sxy), 0.5)
-    #     return dpli
+    #     output = dpli
     # elif ret_type == "wpli":
     #     num = np.abs(sxy.imag)
     #     denom = np.abs(sxy.imag)
@@ -441,7 +453,7 @@ def coherence(
     #     denom[z_denom] = 1.0
     #     con = num / denom
     #     con[z_denom] = 0.0
-    #     return con
+    #     output = con
     # elif ret_type == "dwpli":
     #     sum_abs_im_csd = np.abs(sxy.imag)
     #     sum_sq_im_csd = (sxy.imag) ** 2
@@ -450,7 +462,7 @@ def coherence(
     #     denom[z_denom] = 1.0
     #     con = (sxy**2 - sum_sq_im_csd) / denom
     #     con[z_denom] = 0.0
-    #     return con
+    #     output = con
     # elif ret_type == "ppc":
     #     denom = np.abs(sxy)
     #     z_denom = np.where(denom == 0.0)
@@ -462,6 +474,7 @@ def coherence(
         AttributeError(
             "Return type must be icohere, icohere2019, lcohere2019, mscohere or cohy"
         )
+    return freqs, output
 
 
 def phase_slope_index(
