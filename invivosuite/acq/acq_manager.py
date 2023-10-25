@@ -146,13 +146,13 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
-    def compute_cmr(self, electrode: str = "None", bin_size: int = 0):
+    def compute_cmr(self, probe: str = "None", bin_size: int = 0):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        if electrode == "None":
+        if probe == "None":
             chans = (0, self.n_chans)
         else:
-            chans = self.get_grp_dataset("electrodes", electrode)
+            chans = self.get_grp_dataset("probes", probe)
         if bin_size != 0:
             cmr = np.zeros(end - start)
             for i in range((start - end) // bin_size):
@@ -166,7 +166,7 @@ class AcqManager(SpkManager, LFPManager):
                 cmr[begin:stop] = np.median(array, axis=0)
             get_the_rest = (start - end) % 1000
             cmr[-get_the_rest:] = np.median(array[-get_the_rest:], axis=0)
-            self.set_grp_dataset("cmr", electrode, cmr)
+            self.set_grp_dataset("cmr", probe, cmr)
         else:
             array = self.get_file_dataset(
                 "acqs", rows=chans, columns=(start, end)
@@ -176,7 +176,7 @@ class AcqManager(SpkManager, LFPManager):
             means = array.mean(axis=1).reshape((array.shape[0], 1))
             array -= means
             cmr = np.median(array, axis=0)
-            self.set_grp_dataset("cmr", electrode, cmr)
+            self.set_grp_dataset("cmr", probe, cmr)
 
     # def compute_channel_means(self):
     #     start = self.get_file_attr("start")
@@ -196,20 +196,16 @@ class AcqManager(SpkManager, LFPManager):
         acq_type: Literal["spike", "lfp", "raw"],
         cmr: bool = True,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        if map_channel:
-            acq_num = self.get_mapped_channel(electrode, acq_num)
-        if electrode != "None":
-            data = self.get_grp_dataset("electrodes", electrode)
-            acq_num = int(acq_num + data[0])
+        acq_num = self.get_mapped_channel(0, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
         if cmr:
-            median = self.get_grp_dataset("cmr", electrode)
+            median = self.get_grp_dataset("cmr", probe)
             array -= median
         array -= array.mean()
         if acq_type == "raw":
@@ -418,7 +414,7 @@ class AcqManager(SpkManager, LFPManager):
             raise KeyError(f"{grp_name} settings do not exist in file. Use set_pxx")
 
     def set_channel_map_from_file(
-        self, map_path: Union[str, Path], electrode: str = "None"
+        self, map_path: Union[str, Path], probe: str = "None"
     ):
         path = Path(map_path)
         if path.suffix == ".xlsx":
@@ -433,29 +429,35 @@ class AcqManager(SpkManager, LFPManager):
             raise ValueError("File can only inlude one column or row.")
         if chan_map.ndim > 1:
             chan_map = chan_map.flatten()
-        self.set_grp_dataset("channel_maps", electrode, data=chan_map)
+        self.set_grp_dataset("channel_maps", probe, data=chan_map)
 
-    def set_channel_map_from_array(self, chan_map, electrode: str = "None"):
+    def set_channel_map_from_array(self, chan_map, probe: str = "None"):
         if chan_map.ndim > 1 and chan_map.shape[1] > 1 and chan_map.shape[0] > 1:
             raise ValueError("File can only inlude one column or row.")
         if chan_map.ndim > 1:
             chan_map = chan_map.flatten()
-        self.set_grp_dataset("channel_maps", electrode, data=chan_map)
+        self.set_grp_dataset("channel_maps", probe, data=chan_map)
 
     def set_channel_map(
-        self, chan_map: Union[str, Path, np.ndarray], electrode: str = "None"
+        self, chan_map: Union[str, Path, np.ndarray], probe: str = "None"
     ):
         if isinstance(chan_map, str) or isinstance(chan_map, Path):
-            self.set_channel_map_from_file(chan_map, electrode)
+            self.set_channel_map_from_file(chan_map, probe)
         elif isinstance(chan_map, np.ndarray):
-            self.set_channel_map_from_array(chan_map, electrode)
+            self.set_channel_map_from_array(chan_map, probe)
         else:
             raise ValueError(f"{chan_map} chan_map must be str, Path or np.ndarray")
 
-    def get_mapped_channel(self, channel: int, electrode: str):
-        channel_map = self.get_grp_dataset(electrode, "channel_map")
-        mapped_channel = channel_map[channel]
-        return mapped_channel
+    def get_mapped_channel(
+        self, channel: int, probe: str = "None", map_channel: bool = False
+    ):
+        if probe != "None" and map_channel:
+            channel_map = self.get_grp_dataset("channel_maps", probe)
+            channel = channel_map[channel]
+        if probe != "None":
+            data = self.get_grp_dataset("probes", probe)
+            channel = int(channel + data[0])
+        return channel
 
     def set_spike_data(self, dir, id):
         if self.file.get(id):
@@ -467,10 +469,10 @@ class AcqManager(SpkManager, LFPManager):
         self,
         rows: Union[int, tuple[int, int], list[int, int], None] = None,
         columns: Union[int, tuple[int, int], list[int, int], None] = None,
-        electrode: Union[str, None] = None,
+        probe: Union[str, None] = None,
         save_path=None,
     ):
-        if electrode is None:
+        if probe is None:
             if rows is None:
                 rows = (0, self.shape[0])
             if columns is None:
@@ -511,5 +513,5 @@ class AcqManager(SpkManager, LFPManager):
     def set_end(self, end):
         self.set_file_attr("end", end)
 
-    def set_electrode(self, electrode: str, array: np.array):
-        self.set_grp_dataset("electrodes", electrode, array)
+    def set_probe(self, probe: str, array: np.array):
+        self.set_grp_dataset("probes", probe, array)
