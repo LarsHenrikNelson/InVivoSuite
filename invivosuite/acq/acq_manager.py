@@ -200,7 +200,7 @@ class AcqManager(SpkManager, LFPManager):
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        acq_num = self.get_mapped_channel(0, probe=probe, map_channel=map_channel)
+        acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
