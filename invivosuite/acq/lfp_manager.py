@@ -129,15 +129,13 @@ class LFPManager:
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
         cmr: bool = False,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
     ):
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
-        array = self.acq(
-            acq_num, "lfp", cmr=cmr, electrode=electrode, map_channel=map_channel
-        )
+        array = self.acq(acq_num, "lfp", cmr=cmr, probe=probe, map_channel=map_channel)
         if pxx_type == "multitaper":
             freqs, pxx = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":
@@ -169,19 +167,15 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "spectrogram"],
+        cmr: bool = False,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
     ):
         pxx_attrs = self.get_grp_attrs(pxx_type)
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
-        if map_channel:
-            acq_num = self.get_mapped_channel(electrode, acq_num)
-        if electrode != "None":
-            data = self.get_grp_dataset("electrodes", electrode)
-            acq_num += data[0]
         fs = self.get_grp_attr("lfp", "sample_rate")
-        array = self.acq(acq_num, "lfp")
+        array = self.acq(acq_num, "lfp", probe=probe, cmr=cmr, map_channel=map_channel)
         if pxx_type == "cwt":
             cpuc = os.cpu_count()
             if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
@@ -203,7 +197,7 @@ class LFPManager:
         self,
         acq_num: int,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
         filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = 4,
         highpass: Union[int, float, None] = None,
@@ -219,9 +213,9 @@ class LFPManager:
         end = self.get_file_attr("end")
         sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
         if map_channel:
-            acq_num = self.get_mapped_channel(electrode, acq_num)
-        if electrode != "None":
-            data = self.get_grp_dataset("electrodes", electrode)
+            acq_num = self.get_mapped_channel(probe, acq_num)
+        if probe != "None":
+            data = self.get_grp_dataset("probes", probe)
             acq_num += data[0]
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
@@ -247,19 +241,40 @@ class LFPManager:
     def calc_all_pdi(
         self,
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        cmr: bool = False,
+        map_channel: bool = False,
         size: int = 5000,
     ):
         pdi_dict = {key: np.zeros(self.n_chans) for key in freq_dict.keys()}
-        for i in range(self.n_chans):
-            freqs, cwt = self.sxx(i, "cwt")
-            pdi_temp = lfp.phase_discontinuity_index(
-                cwt,
-                freqs,
-                freq_dict,
-                size,
-            )
-            for key, value in pdi_temp.items():
-                pdi_dict[key][i] = value
+        if self.probes is None:
+            for i in range(self.n_chans):
+                freqs, cwt = self.sxx(
+                    i, "cwt", cmr=False, map_channel=map_channel, probe="None"
+                )
+                pdi_temp = lfp.phase_discontinuity_index(
+                    cwt,
+                    freqs,
+                    freq_dict,
+                    size,
+                )
+                for key, value in pdi_temp.items():
+                    pdi_dict[key][i] = value
+        else:
+            probes = self.probes
+            for region in probes:
+                start = self.get_grp_dataset("probes", region)[0]
+                for i in range(0, 64):
+                    freqs, cwt = self.sxx(
+                        i, "cwt", cmr=cmr, map_channel=map_channel, probe=region
+                    )
+                    pdi_temp = lfp.phase_discontinuity_index(
+                        cwt,
+                        freqs,
+                        freq_dict,
+                        size,
+                    )
+                    for key, value in pdi_temp.items():
+                        pdi_dict[key][start + i] = value
         for key, value in pdi_dict.items():
             self.set_grp_dataset("pdi", key, value)
 
@@ -390,18 +405,18 @@ class LFPManager:
             self.set_grp_dataset("lfp_bursts", str(i), bursts)
 
     def get_lfp_burst_indexes(
-        self, acq_num: int, map_channel: bool = False, electrode: str = "None"
+        self, acq_num: int, map_channel: bool = False, probe: str = "None"
     ):
         if map_channel:
-            acq_num = self.get_mapped_channel(acq_num, electrode)
+            acq_num = self.get_mapped_channel(acq_num, probe)
         indexes = self.get_grp_dataset("lfp_bursts", str(acq_num))
         return indexes
 
     def get_burst_baseline(
-        self, acq_num: int, map_channel: bool = False, electrode: str = "None"
+        self, acq_num: int, map_channel: bool = False, probe: str = "None"
     ):
         if map_channel:
-            acq_num = self.get_mapped_channel(acq_num, electrode)
+            acq_num = self.get_mapped_channel(acq_num, probe)
         bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
@@ -419,17 +434,17 @@ class LFPManager:
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
     ):
         b_stats = {"channel": acq_num}
         if map_channel:
-            acq_num = self.get_mapped_channel(electrode, acq_num)
+            acq_num = self.get_mapped_channel(probe, acq_num)
         b_stats["mapped_channel"] = acq_num
         acq = self.acq(acq_num, "lfp")
         bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
         fs = self.get_grp_attr("lfp", "sample_rate")
         baseline = self.get_burst_baseline(
-            acq_num, map_channel=map_channel, electrode=electrode
+            acq_num, map_channel=map_channel, probe=probe
         )
         temp = lfp.burst_stats(acq, bursts, baseline, bands, fs)
         if calc_average:
@@ -454,7 +469,7 @@ class LFPManager:
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
         map_channel: bool = False,
-        electrode: str = "None",
+        probe: str = "None",
     ):
         total_data = []
         for i in range(self.n_chans):
@@ -463,7 +478,7 @@ class LFPManager:
                 bands=bands,
                 calc_average=calc_average,
                 map_channel=map_channel,
-                electrode=electrode,
+                probe=probe,
             )
             total_data.append(data)
         return total_data

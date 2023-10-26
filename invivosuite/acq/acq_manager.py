@@ -84,6 +84,16 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return id
 
+    @property
+    def probes(self):
+        self.open()
+        if "probes" in self.file:
+            p = list(self.file["probes"].keys())
+            self.close()
+            return p
+        else:
+            return None
+
     # def channel_map(self):
     #     self.open()
     #     if self.file.get("channel_map"):
