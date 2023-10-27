@@ -156,26 +156,37 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
-    def compute_cmr(self, probe: str = "None", bin_size: int = 0):
+    def compute_cmr(self, probe: str = "none", nchunks: int = 0):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        if probe == "None":
+        if probe == "none":
             chans = (0, self.n_chans)
         else:
             chans = self.get_grp_dataset("probes", probe)
-        if bin_size != 0:
+        if nchunks != 0:
             cmr = np.zeros(end - start)
-            for i in range((start - end) // bin_size):
-                begin = int(start + i * 1000)
-                stop = int(start + i * 1000) + 1000
+            means = np.zeros((chans[1], 1))
+            for i in range(chans[1]):
+                array = self.get_file_dataset(
+                    "acqs", rows=i, columns=(start, end)
+                ) * self.get_file_dataset("coeffs", rows=i)
+                means[i] = array.mean()
+            for i in range((end - start) // nchunks):
+                begin = int(start + i * nchunks)
+                stop = int(start + i * nchunks) + nchunks
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
-                means = array.mean(axis=1)
                 array -= means
                 cmr[begin:stop] = np.median(array, axis=0)
-            get_the_rest = (start - end) % 1000
-            cmr[-get_the_rest:] = np.median(array[-get_the_rest:], axis=0)
+            get_the_rest = (start - end) % nchunks
+            if get_the_rest > 0:
+                array = self.get_file_dataset(
+                    "acqs", rows=chans, columns=(end - get_the_rest, end)
+                ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
+                means = array.mean(axis=1, keepdims=True)
+                array -= means
+                cmr[(end - get_the_rest) :] = np.median(array[-get_the_rest:], axis=0)
             self.set_grp_dataset("cmr", probe, cmr)
         else:
             array = self.get_file_dataset(
@@ -346,38 +357,6 @@ class AcqManager(SpkManager, LFPManager):
             file_dataset = self._get_data(self.file, dataset, rows, columns)
             self.close()
             return file_dataset
-            # if rows is None and columns is None:
-            #     file_dataset = self.file[dataset][()]
-            #     self.close()
-            # elif columns is None:
-            #     if isinstance(rows, int):
-            #         file_dataset = self.file[dataset][rows]
-            #         self.close()
-            #     else:
-            #         file_dataset = self.file[dataset][rows[0] : rows[1]]
-            #         self.close()
-            # elif rows is None:
-            #     if isinstance(columns, int):
-            #         file_dataset = self.file[dataset][:, columns]
-            #         self.close()
-            #     else:
-            #         file_dataset = self.file[dataset][:, columns[0] : columns[1]]
-            #         self.close()
-            # else:
-            #     if isinstance(columns, int) and isinstance(rows, int):
-            #         file_dataset = self.file[dataset][rows, columns]
-            #         self.close()
-            #     elif isinstance(columns, int) and not isinstance(rows, int):
-            #         file_dataset = self.file[dataset][rows[0] : rows[1], columns]
-            #         self.close()
-            #     elif not isinstance(columns, int) and isinstance(rows, int):
-            #         file_dataset = self.file[dataset][rows, columns[0] : columns[1]]
-            #         self.close()
-            #     else:
-            #         file_dataset = self.file[dataset][
-            #             rows[0] : rows[1], columns[0] : columns[1]
-            #         ]
-            #         self.close()
         else:
             self.close()
             raise KeyError(f"{dataset} does not exist.")

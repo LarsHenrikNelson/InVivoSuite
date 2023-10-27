@@ -129,7 +129,7 @@ class LFPManager:
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
         cmr: bool = False,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
     ):
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if acq_num > self.n_chans:
@@ -169,7 +169,7 @@ class LFPManager:
         pxx_type: Literal["cwt", "spectrogram"],
         cmr: bool = False,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
     ):
         pxx_attrs = self.get_grp_attrs(pxx_type)
         if acq_num > self.n_chans:
@@ -197,7 +197,7 @@ class LFPManager:
         self,
         acq_num: int,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
         filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = 4,
         highpass: Union[int, float, None] = None,
@@ -214,7 +214,7 @@ class LFPManager:
         sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
         if map_channel:
             acq_num = self.get_mapped_channel(probe, acq_num)
-        if probe != "None":
+        if probe != "none":
             data = self.get_grp_dataset("probes", probe)
             acq_num += data[0]
         array = self.get_file_dataset(
@@ -249,7 +249,7 @@ class LFPManager:
         if self.probes is None:
             for i in range(self.n_chans):
                 freqs, cwt = self.sxx(
-                    i, "cwt", cmr=False, map_channel=map_channel, probe="None"
+                    i, "cwt", cmr=False, map_channel=map_channel, probe="none"
                 )
                 pdi_temp = lfp.phase_discontinuity_index(
                     cwt,
@@ -379,7 +379,7 @@ class LFPManager:
         }
         for key, value in input_dict.items():
             if value is None:
-                value = "None"
+                value = "none"
             self.set_grp_attr("lfp_bursts", key, value)
 
         fs = self.get_grp_attr("lfp", "sample_rate")
@@ -405,7 +405,7 @@ class LFPManager:
             self.set_grp_dataset("lfp_bursts", str(i), bursts)
 
     def get_lfp_burst_indexes(
-        self, acq_num: int, map_channel: bool = False, probe: str = "None"
+        self, acq_num: int, map_channel: bool = False, probe: str = "none"
     ):
         if map_channel:
             acq_num = self.get_mapped_channel(acq_num, probe)
@@ -413,7 +413,7 @@ class LFPManager:
         return indexes
 
     def get_burst_baseline(
-        self, acq_num: int, map_channel: bool = False, probe: str = "None"
+        self, acq_num: int, map_channel: bool = False, probe: str = "none"
     ):
         if map_channel:
             acq_num = self.get_mapped_channel(acq_num, probe)
@@ -434,7 +434,7 @@ class LFPManager:
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
     ):
         b_stats = {"channel": acq_num}
         if map_channel:
@@ -469,7 +469,7 @@ class LFPManager:
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
     ):
         total_data = []
         for i in range(self.n_chans):
