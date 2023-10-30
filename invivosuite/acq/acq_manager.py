@@ -156,14 +156,14 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
-    def compute_cmr(self, probe: str = "none", nchunks: int = 0):
+    def compute_cmr(self, probe: str = "none", bin_size: int = 0):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
         if probe == "none":
             chans = (0, self.n_chans)
         else:
             chans = self.get_grp_dataset("probes", probe)
-        if nchunks != 0:
+        if bin_size != 0:
             cmr = np.zeros(end - start)
             means = np.zeros((chans[1], 1))
             for i in range(chans[1]):
@@ -171,15 +171,15 @@ class AcqManager(SpkManager, LFPManager):
                     "acqs", rows=i, columns=(start, end)
                 ) * self.get_file_dataset("coeffs", rows=i)
                 means[i] = array.mean()
-            for i in range((end - start) // nchunks):
-                begin = int(start + i * nchunks)
-                stop = int(start + i * nchunks) + nchunks
+            for i in range((end - start) // bin_size):
+                begin = int(start + i * bin_size)
+                stop = int(start + i * bin_size) + bin_size
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
                 array -= means
                 cmr[begin:stop] = np.median(array, axis=0)
-            get_the_rest = (start - end) % nchunks
+            get_the_rest = (start - end) % bin_size
             if get_the_rest > 0:
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(end - get_the_rest, end)
