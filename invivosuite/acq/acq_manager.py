@@ -215,9 +215,10 @@ class AcqManager(SpkManager, LFPManager):
         self,
         acq_num: int,
         acq_type: Literal["spike", "lfp", "raw"],
+        cmr_probe: str,
         cmr: bool = True,
         map_channel: bool = False,
-        probe: str = "None",
+        probe: str = "none",
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
@@ -226,7 +227,7 @@ class AcqManager(SpkManager, LFPManager):
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
         if cmr:
-            median = self.get_grp_dataset("cmr", probe)
+            median = self.get_grp_dataset("cmr", cmr_probe)
             array -= median
         array -= array.mean()
         if acq_type == "raw":

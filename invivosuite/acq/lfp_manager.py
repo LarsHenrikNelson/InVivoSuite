@@ -127,7 +127,8 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        cmr: bool = False,
+        cmr_probe: str,
+        cmr: bool = True,
         map_channel: bool = False,
         probe: str = "none",
     ):
@@ -135,7 +136,14 @@ class LFPManager:
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
-        array = self.acq(acq_num, "lfp", cmr=cmr, probe=probe, map_channel=map_channel)
+        array = self.acq(
+            acq_num,
+            "lfp",
+            cmr=cmr,
+            cmr_probe=cmr_probe,
+            probe=probe,
+            map_channel=map_channel,
+        )
         if pxx_type == "multitaper":
             freqs, pxx = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":
@@ -167,7 +175,8 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "spectrogram"],
-        cmr: bool = False,
+        cmr_probe: str,
+        cmr: bool = True,
         map_channel: bool = False,
         probe: str = "none",
     ):
@@ -175,7 +184,14 @@ class LFPManager:
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
-        array = self.acq(acq_num, "lfp", probe=probe, cmr=cmr, map_channel=map_channel)
+        array = self.acq(
+            acq_num,
+            "lfp",
+            probe=probe,
+            cmr_probe=cmr_probe,
+            cmr=cmr,
+            map_channel=map_channel,
+        )
         if pxx_type == "cwt":
             cpuc = os.cpu_count()
             if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
