@@ -45,7 +45,6 @@ def clean_spikes(array, spikes, spike_start, spike_end, p_threshold):
     return np.array(clean_spikes)
 
 
-@njit()
 def create_binary_spikes(spikes, size):
     if len(spikes) > 0:
         binary_spikes = np.zeros(shape=(size,))
@@ -55,7 +54,6 @@ def create_binary_spikes(spikes, size):
         AttributeError("There are no spikes in the acquisition.")
 
 
-@njit()
 def bin_spikes(spikes, binary_size, nperseg):
     binary_spikes = create_binary_spikes(spikes, binary_size)
     binned_spikes = _bin_spikes(binary_spikes, nperseg)
