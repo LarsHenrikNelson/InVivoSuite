@@ -174,13 +174,13 @@ class LFPManager:
     def sxx(
         self,
         acq_num: int,
-        pxx_type: Literal["cwt", "spectrogram"],
+        sxx_type: Literal["cwt", "spectrogram"],
         cmr_probe: str,
         cmr: bool = True,
         map_channel: bool = False,
         probe: str = "none",
     ):
-        pxx_attrs = self.get_grp_attrs(pxx_type)
+        sxx_attrs = self.get_grp_attrs(sxx_type)
         if acq_num > self.n_chans:
             raise ValueError(f"{acq_num} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
@@ -192,20 +192,20 @@ class LFPManager:
             cmr=cmr,
             map_channel=map_channel,
         )
-        if pxx_type == "cwt":
+        if sxx_type == "cwt":
             cpuc = os.cpu_count()
-            if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
-                pxx_attrs["nthreads"] = cpuc
+            if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > cpuc:
+                sxx_attrs["nthreads"] = cpuc
             freqs, sxx = fcwt.cwt(
                 array,
                 int(fs),
-                int(pxx_attrs["f0"]),
-                int(pxx_attrs["f1"]),
-                int(pxx_attrs["fn"]),
-                pxx_attrs["nthreads"],
-                str(pxx_attrs["scaling"]),
+                int(sxx_attrs["f0"]),
+                int(sxx_attrs["f1"]),
+                int(sxx_attrs["fn"]),
+                sxx_attrs["nthreads"],
+                str(sxx_attrs["scaling"]),
                 False,
-                bool(pxx_attrs["norm"]),
+                bool(sxx_attrs["norm"]),
             )
         return freqs, sxx
 

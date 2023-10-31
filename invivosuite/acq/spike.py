@@ -56,17 +56,27 @@ def create_binary_spikes(spikes, size):
 
 
 @njit()
-def bin_spikes(spikes, binary_size, nperseg, size):
-    step_index = np.arange(0, binary_size, nperseg)
-    binned_spikes = np.empty(shape=step_index.size)
+def bin_spikes(spikes, binary_size, nperseg):
     binary_spikes = create_binary_spikes(spikes, binary_size)
-    for index, i in enumerate(step_index):
-        if (i + nperseg) <= size:
-            j = i + nperseg
-        else:
-            j = size
-        binned_spikes[index] = np.sum(binary_spikes[i:j])
+    binned_spikes = _bin_spikes(binary_spikes, nperseg)
     return binned_spikes
+
+
+def _bin_spikes(binary_spks, bin_size):
+    noverlap = 0
+    nperseg = bin_size
+    step = nperseg - noverlap
+    shape = binary_spks.shape[:-1] + (
+        (binary_spks.shape[-1] - noverlap) // step,
+        nperseg,
+    )
+    strides = binary_spks.strides[:-1] + (
+        step * binary_spks.strides[-1],
+        binary_spks.strides[-1],
+    )
+    temp = np.lib.stride_tricks.as_strided(binary_spks, shape=shape, strides=strides)
+    output = temp.sum(axis=1)
+    return output
 
 
 SpkParams = collections.namedtuple("SpkParams", ["peak", "lmi", "rmi", "lm", "rm"])

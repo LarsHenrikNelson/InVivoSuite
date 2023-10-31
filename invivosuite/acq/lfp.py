@@ -498,12 +498,12 @@ def phase_slope_index(
 #     return output
 
 
-@njit()
-def corr(acq1, acq2, cutoff):
+@njit(parallel=True)
+def cross_corr(acq1, acq2, cutoff):
     output = np.zeros(cutoff * 2)
-    for i in range(cutoff):
+    for i in prange(cutoff):
         output[cutoff - i] = np.corrcoef(acq2[i:], acq1[: acq1.size - i])[0, 1]
-    for i in range(cutoff):
+    for i in prange(cutoff):
         output[i + cutoff] = np.corrcoef(acq1[i:], acq2[: acq2.size - i])[0, 1]
     return output
 
