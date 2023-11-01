@@ -6,6 +6,7 @@ import numpy as np
 from KDEpy import TreeKDE
 from numba import njit
 from scipy import signal
+from scipy import fft
 from sklearn.decomposition import PCA
 
 
@@ -54,12 +55,6 @@ def create_binary_spikes(spikes, size):
         AttributeError("There are no spikes in the acquisition.")
 
 
-def bin_spikes(spikes, binary_size, nperseg):
-    binary_spikes = create_binary_spikes(spikes, binary_size)
-    binned_spikes = _bin_spikes(binary_spikes, nperseg)
-    return binned_spikes
-
-
 def _bin_spikes(binary_spks, bin_size):
     noverlap = 0
     nperseg = bin_size
@@ -75,6 +70,25 @@ def _bin_spikes(binary_spks, bin_size):
     temp = np.lib.stride_tricks.as_strided(binary_spks, shape=shape, strides=strides)
     output = temp.sum(axis=1)
     return output
+
+
+def bin_spikes(spikes, binary_size, nperseg):
+    binary_spikes = create_binary_spikes(spikes, binary_size)
+    binned_spikes = _bin_spikes(binary_spikes, nperseg)
+    return binned_spikes
+
+
+def is_ngb(xcorr_array, fs):
+    out_fft = fft.rfft(xcorr_array)
+    val = 1.0 / (xcorr_array.size * 1 / fs)
+    N = xcorr_array.size // 2 + 1
+    freqs = np.arange(0, N, dtype=int) * val
+    ngb_indexes = np.where((freqs >= 50) & (freqs <= 70))[0]
+    wb_indexes = np.where((freqs >= 40) & (freqs <= 300))[0]
+    if np.max(out_fft[ngb_indexes]) > np.max(out_fft[wb_indexes]):
+        return True
+    else:
+        return False
 
 
 SpkParams = collections.namedtuple("SpkParams", ["peak", "lmi", "rmi", "lm", "rm"])

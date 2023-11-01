@@ -3,6 +3,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .spike_metrics import calculate_metrics
+
 
 class SpikeModel:
     def __init__(self, directory, n_channels=64, offset=0):
@@ -24,6 +26,7 @@ class SpikeModel:
         self._load_channel_map()
         self._load_channel_positions()
         self._load_channel_shanks()
+        self._load_amplitudes()
         self._create_merge_map()
         self._load_rec()
         self._set_best_channels()
@@ -67,6 +70,9 @@ class SpikeModel:
             str(self.directory / "channel_map.npy"), "r+"
         ).squeeze()
         self.n_channels = self.channel_mapping.shape[0]
+
+    def _load_amplitudes(self):
+        self.amplitudes = np.load(str(self.directory / "amplitudes.npy"), "r+")
 
     def _load_channel_shanks(self):
         self.channel_shanks = np.zeros(self.n_channels, dtype=np.int32)
@@ -194,6 +200,17 @@ class SpikeModel:
                 wmi=self.wmi,
             )
         return best_channel
+
+    def calculate_spk_metrics(self, fs, isi_threshold, min_isi):
+        fs /= 1000
+        labels, m = calculate_metrics(
+            self.spike_times / fs,
+            self.spike_clusters,
+            self.amplitudes,
+            isi_threshold,
+            min_isi,
+        )
+        return labels, m
 
 
 def _unwhiten(wmi, x, channel_ids=None):
