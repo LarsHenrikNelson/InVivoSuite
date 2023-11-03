@@ -9,6 +9,7 @@ from scipy import signal
 from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
+from .utils import envelopes_idx
 
 
 class AcqManager(SpkManager, LFPManager):
@@ -260,6 +261,10 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return acq
 
+    def envelope(self, acq: np.ndarray, interp: bool = True):
+        env_min, env_max = envelopes_idx(acq, interp=interp)
+        return env_min, env_max
+
     def set_file_attr(self, attr, data):
         self.open()
         if attr not in self.file.attrs:
@@ -455,7 +460,7 @@ class AcqManager(SpkManager, LFPManager):
         else:
             raise AttributeError("Must set name for spike first.")
 
-    def save_to_bin(
+    def save_kilosort_bin(
         self,
         rows: Union[int, tuple[int, int], list[int, int], None] = None,
         columns: Union[int, tuple[int, int], list[int, int], None] = None,
@@ -464,24 +469,20 @@ class AcqManager(SpkManager, LFPManager):
     ):
         if probe is None:
             if rows is None:
-                rows = (0, self.shape[0])
+                rows = (0, self.shape[1])
             if columns is None:
-                try:
-                    start = self.get_file_attr("start")
-                    end = self.get_file_attr("end")
-                    columns = (start, end)
-                except Exception:
-                    columns = (0, self.shape[1])
+                start = self.get_file_attr("start")
+                end = self.get_file_attr("end")
+                columns = (start, end)
         else:
             if columns is None:
-                try:
-                    start = self.get_file_attr("start")
-                    end = self.get_file_attr("end")
-                    columns = (start, end)
-                except Exception:
-                    columns = (0, self.shape[1])
-            if rows is None:
-                rows = (0, self.shape[0])
+                start = self.get_file_attr("start")
+                end = self.get_file_attr("end")
+                columns = (start, end)
+            if rows is None and probe is None:
+                rows = (0, self.shape[1])
+            elif probe is not None:
+                rows = self.get_grp_dataset("probes", probe)
         acqs = self.get_file_dataset("acqs", rows, columns)
         acqs = acqs.T
         if save_path is None:

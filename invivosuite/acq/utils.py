@@ -1,4 +1,4 @@
-from scipy import fft
+from scipy import fft, interpolate
 import numpy as np
 from numba import njit, prange
 
@@ -54,3 +54,76 @@ def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
     for i in prange(cutoff):
         output[i + cutoff] = np.corrcoef(acq1[i:], acq2[: acq2.size - i])[0, 1]
     return output
+
+
+@njit()
+def envelopes_idx(
+    s: np.ndarray, dmin: int = 1, dmax: int = 1, split: bool = False, interp=True
+):
+    """
+    Input :
+    s: 1d-array, data signal from which to extract high and low envelopes
+    dmin, dmax: int, optional, size of chunks, use this if the size of the input signal is too big
+    split: bool, optional, if True, split the signal in half along its mean, might help to generate the envelope in some cases
+    Output :
+    lmin,lmax : high/low envelope idx of input signal s
+    """
+
+    # locals min
+    lmin = (np.diff(np.sign(np.diff(s))) > 0).nonzero()[0] + 1
+    # locals max
+    lmax = (np.diff(np.sign(np.diff(s))) < 0).nonzero()[0] + 1
+
+    if split:
+        # s_mid is zero if s centered around x-axis or more generally mean of signal
+        s_mid = np.mean(s)
+        # pre-sorting of locals min based on relative position with respect to s_mid
+        lmin = lmin[s[lmin] < s_mid]
+        # pre-sorting of local max based on relative position with respect to s_mid
+        lmax = lmax[s[lmax] > s_mid]
+
+    # global min of dmin-chunks of locals min
+    lmin = lmin[
+        [i + np.argmin(s[lmin[i : i + dmin]]) for i in range(0, len(lmin), dmin)]
+    ]
+    # global max of dmax-chunks of locals max
+    lmax = lmax[
+        [i + np.argmax(s[lmax[i : i + dmax]]) for i in range(0, len(lmax), dmax)]
+    ]
+    if interp:
+        max_size = lmax.size
+        max_start = 0
+        max_end = -1
+        if lmax[-1] + 1 != s.size:
+            max_size += 1
+            max_end = s.size - 1
+        if lmax[0] != 0:
+            max_start += 1
+            max_size += 1
+        lmax = np.zeros(max_size)
+        lmax[max_start:] = lmax
+        if max_end != -1:
+            lmax[-1] = max_end
+
+        min_size = lmax.size
+        min_start = 0
+        min_end = -1
+        if lmax[-1] + 1 != s.size:
+            min_size += 1
+            max_end = s.size - 1
+        if lmax[0] != 0:
+            min_size += 1
+            min_start += 1
+        lmin = np.zeros(max_size)
+        lmin[max_start:] = lmin
+        if min_end != -1:
+            lmin[-1] = min_end
+
+        cs_max = interpolate.CubicSpline(lmax, s[lmax])
+        cs_min = interpolate.CubicSpline(lmin, s[lmin])
+
+        x = np.arange(s.size)
+        lmax = cs_max(x)
+        lmin = cs_min(x)
+
+    return lmin, lmax

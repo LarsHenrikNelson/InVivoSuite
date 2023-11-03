@@ -196,7 +196,7 @@ def calculate_amplitude_cutoff(spike_clusters, amplitudes, total_units):
     return amplitude_cutoffs
 
 
-def calculate_metrics(spike_times, spike_clusters, amplitudes, isi_threshold, min_isi):
+def calculate_metrics(spike_times, spike_clusters, amplitudes, isi_threshold, min_isi, acqs):
     """Calculate metrics for all units on one probe
 
     Inputs:
