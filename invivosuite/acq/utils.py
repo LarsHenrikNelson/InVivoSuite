@@ -3,7 +3,7 @@ import numpy as np
 from numba import njit, prange
 
 
-def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray):
+def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
     array_2 = np.ascontiguousarray(array_2[::-1])
 
     shape = array_1.size + array_2.size - 1
@@ -12,7 +12,10 @@ def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray):
     sp1 = fft.rfft(array_1, fshape)
     sp2 = fft.rfft(array_2, fshape)
 
-    ret = fft.irfft(sp1 * sp2, fshape)
+    if not circular:
+        ret = fft.irfft(sp1 * sp2, fshape)
+    else:
+        ret = fft.irfft(sp1 * np.conjugate(sp2), fshape)
 
     return ret[:shape]
 
@@ -23,12 +26,17 @@ def xcorr_lag(
     lag: int,
     norm: bool = True,
     mode: str = "fft",
+    remove_mean=False,
+    circular=False,
 ):
+    if remove_mean:
+        array_1 = array_1 - array_1.mean()
+        array_2 = array_2 - array_2.mean()
     if norm:
         array_1 = array_1 / np.sqrt(array_1.dot(array_1))
         array_2 = array_2 / np.sqrt(array_2.dot(array_2))
     if mode == "fft":
-        output = xcorr_fft(array_1, array_2)
+        output = xcorr_fft(array_1, array_2, circular=circular)
     else:
         output = np.correlate(array_1, array_2, mode="full")
     lags = np.linspace(-lag, lag, num=lag * 2)

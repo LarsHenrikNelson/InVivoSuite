@@ -31,6 +31,7 @@ class SpikeModel:
         self._load_rec()
         self._set_best_channels()
         self._map_template_channels()
+        self._create_chan_clusters()
 
     def _load_sparse_templates(self):
         self.sparse_templates = np.load(str(self.directory / "templates.npy"), "r+")
@@ -50,6 +51,11 @@ class SpikeModel:
     def _load_spike_clusters(self):
         self.spike_clusters = np.load(str(self.directory / "spike_clusters.npy"), "r+")
         self.cluster_ids = np.unique(self.spike_clusters)
+
+    def _create_chan_clusters(self):
+        self.chan_clusters = defaultdict(list)
+        for cluster, chan in zip(self.cluster_ids, self.cluster_channels):
+            self.chan_clusters[chan].append(cluster)
 
     def _load_spike_times(self):
         self.spike_times = np.load(str(self.directory / "spike_times.npy"), "r+")

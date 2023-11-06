@@ -355,7 +355,7 @@ class LFPManager:
             deg = self.get_grp_attr("lfp_bursts", "deg")
         if threshold is None:
             threshold = self.get_grp_attr("lfp_bursts", "threshold")
-        baseline = lfp.ste_baseline(
+        baseline = lfp.kde_baseline(
             ste, method=method, tol=tol, deg=deg, threshold=threshold
         )
         return baseline
@@ -399,26 +399,32 @@ class LFPManager:
             self.set_grp_attr("lfp_bursts", key, value)
 
         fs = self.get_grp_attr("lfp", "sample_rate")
-        for i in range(self.n_chans):
-            acq_i = self.acq(i, "lfp", cmr=cmr)
-            bursts = lfp.find_bursts(
-                acq_i,
-                window=window,
-                min_len=min_len,
-                max_len=max_len,
-                min_burst_int=min_burst_int,
-                minimum_peaks=minimum_peaks,
-                wlen=wlen,
-                threshold=threshold,
-                fs=fs,
-                pre=pre,
-                post=post,
-                order=order,
-                method=method,
-                tol=tol,
-                deg=deg,
-            )
-            self.set_grp_dataset("lfp_bursts", str(i), bursts)
+        probes = self.probes
+        for region in probes:
+            start = self.get_grp_dataset("probes", region)[0]
+            for i in range(0, 64):
+                print(region, i)
+                acq_i = self.acq(
+                    i, "lfp", cmr=cmr, cmr_probe=region, map_channel=False, probe=region
+                )
+                bursts = lfp.find_bursts(
+                    acq_i,
+                    window=window,
+                    min_len=min_len,
+                    max_len=max_len,
+                    min_burst_int=min_burst_int,
+                    minimum_peaks=minimum_peaks,
+                    wlen=wlen,
+                    threshold=threshold,
+                    fs=fs,
+                    pre=pre,
+                    post=post,
+                    order=order,
+                    method=method,
+                    tol=tol,
+                    deg=deg,
+                )
+                self.set_grp_dataset("lfp_bursts", str(int(i + start)), bursts)
 
     def get_lfp_burst_indexes(
         self, acq_num: int, map_channel: bool = False, probe: str = "none"

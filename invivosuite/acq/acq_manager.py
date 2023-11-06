@@ -444,14 +444,16 @@ class AcqManager(SpkManager, LFPManager):
             raise ValueError(f"{chan_map} chan_map must be str, Path or np.ndarray")
 
     def get_mapped_channel(
-        self, channel: int, probe: str = "None", map_channel: bool = False
+        self, channel: int, probe: str = "none", map_channel: bool = False
     ):
-        if probe != "None" and map_channel:
+        if probe != "none" and map_channel:
             channel_map = self.get_grp_dataset("channel_maps", probe)
             channel = channel_map[channel]
-        if probe != "None":
+        elif probe != "none":
             data = self.get_grp_dataset("probes", probe)
             channel = int(channel + data[0])
+        else:
+            channel = channel
         return channel
 
     def set_spike_data(self, dir, id):

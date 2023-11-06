@@ -333,6 +333,14 @@ def stepped_cwt_cohy(cwt: np.ndarray, size: int):
     return coh
 
 
+def shifted_cwt_cohy(cwt: np.ndarray, size: int):
+    sxy = cwt[:, :-size] * np.conjugate(cwt[:, size:])
+    sxx = cwt[:, :-size] * np.conjugate(cwt[:, :-size])
+    syy = cwt[:, size:] * np.conjugate(cwt[:, size:])
+    coh = sxy / np.sqrt(sxx * syy + 1e-8)
+    return coh
+
+
 def phase_discontinuity_index(
     cwt: np.ndarray,
     freqs: np.ndarray,

@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QSpinBox,
@@ -52,6 +53,12 @@ class LFPWidget(QWidget):
 
         self.channel_map = QCheckBox()
         self.plot_check_list.addRow("Map channels", self.channel_map)
+
+        self.cmr = QCheckBox()
+        self.plot_check_list.addRow("CMR", self.cmr)
+
+        self.cmr_probe = QLineEdit()
+        self.plot_check_list.addRow("CMR probe", self.cmr_probe)
 
         self.plot_layout = QVBoxLayout()
         self.main_layout.addLayout(self.plot_layout)
@@ -109,7 +116,7 @@ class LFPWidget(QWidget):
 
     def set_acq_spinbox(self):
         id = self.load_widget.getAcqID()
-        channels = self.exp_manager[id].num_channels
+        channels = self.exp_manager[id].n_chans
         self.plot_spinbox.setRange(1, channels)
 
     def plot_acq(self, num):
@@ -118,7 +125,11 @@ class LFPWidget(QWidget):
         self.ste_plot.clear()
         id = self.load_widget.getAcqID()
         acq = self.exp_manager[id].acq(
-            num - 1, "lfp", map_channel=self.channel_map.isChecked()
+            num - 1,
+            "lfp",
+            map_channel=self.channel_map.isChecked(),
+            cmr_probe=self.cmr_probe.text(),
+            cmr=self.cmr.isChecked(),
         )
         x = np.arange(acq.size) / 1000
         self.main_plot.plot(x=x, y=acq, name="main")
