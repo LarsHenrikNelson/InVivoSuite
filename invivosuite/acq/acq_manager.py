@@ -225,8 +225,8 @@ class AcqManager(SpkManager, LFPManager):
         end = self.get_file_attr("end")
         acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
-            "acqs", rows=acq_num, columns=(start, end)
-        ) * self.get_file_dataset("coeffs", rows=acq_num)
+            "acqs", rows=int(acq_num), columns=(start, end)
+        ) * self.get_file_dataset("coeffs", rows=int(acq_num))
         if cmr:
             median = self.get_grp_dataset("cmr", cmr_probe)
             array -= median
@@ -234,7 +234,7 @@ class AcqManager(SpkManager, LFPManager):
         if acq_type == "raw":
             return array
         filter_dict = self.get_filter(acq_type)
-        sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
+        sample_rate = self.get_file_dataset("sample_rate", rows=int(acq_num))
         acq = filter_array(
             array,
             sample_rate=sample_rate,
@@ -446,14 +446,15 @@ class AcqManager(SpkManager, LFPManager):
     def get_mapped_channel(
         self, channel: int, probe: str = "none", map_channel: bool = False
     ):
+        probe = probe.lower()
         if probe != "none" and map_channel:
             channel_map = self.get_grp_dataset("channel_maps", probe)
             channel = channel_map[channel]
+            data = self.get_grp_dataset("probes", probe)
+            channel = int(channel + data[0])
         elif probe != "none":
             data = self.get_grp_dataset("probes", probe)
             channel = int(channel + data[0])
-        else:
-            channel = channel
         return channel
 
     def set_spike_data(self, dir, id):

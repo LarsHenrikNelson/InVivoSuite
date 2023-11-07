@@ -403,7 +403,6 @@ class LFPManager:
         for region in probes:
             start = self.get_grp_dataset("probes", region)[0]
             for i in range(0, 64):
-                print(region, i)
                 acq_i = self.acq(
                     i, "lfp", cmr=cmr, cmr_probe=region, map_channel=False, probe=region
                 )
