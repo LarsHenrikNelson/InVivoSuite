@@ -1,4 +1,4 @@
-from scipy import fft, interpolate
+from scipy import fft, interpolate, optimize
 import numpy as np
 from numba import njit, prange
 
@@ -135,3 +135,14 @@ def envelopes_idx(
         lmin = cs_min(x)
 
     return lmin, lmax
+
+
+def sinfunc(t, A, w, p, c):
+    return A * np.sin(w * t + p) + c
+
+
+def fit_sine(x, y):
+    popt, _ = optimize.curve_fit(sinfunc, x, y)
+    A, w, p, c = popt
+    output = sinfunc(x, A, w, p, c)
+    return output
