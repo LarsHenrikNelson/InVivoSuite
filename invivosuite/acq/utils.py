@@ -1,6 +1,7 @@
-from scipy import fft, interpolate, optimize
 import numpy as np
 from numba import njit, prange
+from numpy.random import default_rng
+from scipy import fft, interpolate, optimize
 
 
 def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
@@ -145,4 +146,35 @@ def fit_sine(x, y):
     popt, _ = optimize.curve_fit(sinfunc, x, y)
     A, w, p, c = popt
     output = sinfunc(x, A, w, p, c)
-    return output
+    return output, popt
+
+
+@njit(cache=True)
+def ppc_numba(spike_phases):
+    outer_sums = np.zeros(spike_phases.size - 1)
+    array1 = np.zeros(2)
+    array2 = np.zeros(2)
+    for index1 in range(0, spike_phases.size - 1):
+        temp_sum = np.zeros(spike_phases.size - index1 + 1)
+        array1[0] = np.cos(spike_phases[index1])
+        array1[1] = np.sin(spike_phases[index1])
+        for index2 in range(index1 + 1, spike_phases.size):
+            array2[0] = np.cos(spike_phases[index2])
+            array2[1] = np.sin(spike_phases[index2])
+            dp = np.dot(array1, array2)
+            temp_sum[index2 - index1] = dp
+        outer_sums[index1] = temp_sum.sum()
+    dp_sum = np.sum(outer_sums)
+    ppc_output = dp_sum / int(len(spike_phases) * (len(spike_phases) - 1) / 2)
+    return ppc_output
+
+
+def ppc_sampled(spike_phases, size, iterations, seed=42):
+    rng = default_rng(seed)
+    output_array = np.zeros(iterations)
+    for i in range(iterations):
+        spk_sampled = np.ascontiguousarray(
+            rng.choice(spike_phases, size=size, replace=False)
+        )
+        output_array[i] = ppc_numba(spk_sampled)
+    return output_array.mean()
