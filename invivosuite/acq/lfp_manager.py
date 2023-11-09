@@ -259,13 +259,20 @@ class LFPManager:
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
         cmr: bool = False,
         map_channel: bool = False,
-        size: int = 5000,
+        size: int = 2000,
     ):
         pdi_dict = {key: np.zeros(self.n_chans) for key in freq_dict.keys()}
-        if self.probes is None:
-            for i in range(self.n_chans):
+        probes = self.probes
+        for region in probes:
+            start = self.get_grp_dataset("probes", region)[0]
+            for i in range(0, 64):
                 freqs, cwt = self.sxx(
-                    i, "cwt", cmr=False, map_channel=map_channel, probe="none"
+                    i,
+                    "cwt",
+                    cmr=cmr,
+                    map_channel=map_channel,
+                    probe=region,
+                    cmr_probe=region,
                 )
                 pdi_temp = lfp.phase_discontinuity_index(
                     cwt,
@@ -274,23 +281,7 @@ class LFPManager:
                     size,
                 )
                 for key, value in pdi_temp.items():
-                    pdi_dict[key][i] = value
-        else:
-            probes = self.probes
-            for region in probes:
-                start = self.get_grp_dataset("probes", region)[0]
-                for i in range(0, 64):
-                    freqs, cwt = self.sxx(
-                        i, "cwt", cmr=cmr, map_channel=map_channel, probe=region
-                    )
-                    pdi_temp = lfp.phase_discontinuity_index(
-                        cwt,
-                        freqs,
-                        freq_dict,
-                        size,
-                    )
-                    for key, value in pdi_temp.items():
-                        pdi_dict[key][start + i] = value
+                    pdi_dict[key][start + i] = value
         for key, value in pdi_dict.items():
             self.set_grp_dataset("pdi", key, value)
 
