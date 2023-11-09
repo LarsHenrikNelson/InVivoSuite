@@ -212,6 +212,8 @@ class LFPManager:
     def hilbert(
         self,
         acq_num: int,
+        cmr_probe: str,
+        cmr: bool = True,
         map_channel: bool = False,
         probe: str = "none",
         filter_type: Filters = "butterworth_zero",
@@ -228,14 +230,14 @@ class LFPManager:
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
         sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
-        if map_channel:
-            acq_num = self.get_mapped_channel(probe, acq_num)
-        if probe != "none":
-            data = self.get_grp_dataset("probes", probe)
-            acq_num += data[0]
+        acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
+        array -= array.mean()
+        if cmr:
+            median = self.get_grp_dataset("cmr", cmr_probe)
+            array -= median
         acq = filter_array(
             array,
             filter_type=filter_type,

@@ -227,10 +227,10 @@ class AcqManager(SpkManager, LFPManager):
         array = self.get_file_dataset(
             "acqs", rows=int(acq_num), columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=int(acq_num))
+        array -= array.mean()
         if cmr:
             median = self.get_grp_dataset("cmr", cmr_probe)
             array -= median
-        array -= array.mean()
         if acq_type == "raw":
             return array
         filter_dict = self.get_filter(acq_type)
