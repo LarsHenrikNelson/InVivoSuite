@@ -127,8 +127,8 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        cmr_probe: str,
         cmr: bool = True,
+        cmr_probe: str = "none",
         map_channel: bool = False,
         probe: str = "none",
     ):
@@ -175,8 +175,8 @@ class LFPManager:
         self,
         acq_num: int,
         sxx_type: Literal["cwt", "spectrogram"],
-        cmr_probe: str,
         cmr: bool = True,
+        cmr_probe: str = "none",
         map_channel: bool = False,
         probe: str = "none",
     ):

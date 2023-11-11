@@ -216,8 +216,8 @@ class AcqManager(SpkManager, LFPManager):
         self,
         acq_num: int,
         acq_type: Literal["spike", "lfp", "raw"],
-        cmr_probe: str,
         cmr: bool = True,
+        cmr_probe: str = "none",
         map_channel: bool = False,
         probe: str = "none",
     ):
