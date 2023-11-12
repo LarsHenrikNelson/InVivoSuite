@@ -157,9 +157,20 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return input_dict
 
-    def compute_cmr(self, probe: str = "none", bin_size: int = 0):
+    def compute_virtual_ref(
+        self,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        probe: str = "none",
+        bin_size: int = 0,
+    ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
+        if ref_type == "cmr":
+            ref = np.median
+        elif ref_type == "car":
+            ref = np.mean
+        else:
+            raise AttributeError("ref_type must be cmr or car.")
         if probe == "none":
             chans = (0, self.n_chans)
         else:
@@ -179,7 +190,7 @@ class AcqManager(SpkManager, LFPManager):
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
                 array -= means
-                cmr[begin:stop] = np.median(array, axis=0)
+                cmr[begin:stop] = ref(array, axis=0)
             get_the_rest = (start - end) % bin_size
             if get_the_rest > 0:
                 array = self.get_file_dataset(
@@ -187,8 +198,8 @@ class AcqManager(SpkManager, LFPManager):
                 ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
                 means = array.mean(axis=1, keepdims=True)
                 array -= means
-                cmr[(end - get_the_rest) :] = np.median(array[-get_the_rest:], axis=0)
-            self.set_grp_dataset("cmr", probe, cmr)
+                cmr[(end - get_the_rest) :] = ref(array[-get_the_rest:], axis=0)
+            self.set_grp_dataset(ref_type, probe, cmr)
         else:
             array = self.get_file_dataset(
                 "acqs", rows=chans, columns=(start, end)
@@ -197,8 +208,8 @@ class AcqManager(SpkManager, LFPManager):
             )
             means = array.mean(axis=1).reshape((array.shape[0], 1))
             array -= means
-            cmr = np.median(array, axis=0)
-            self.set_grp_dataset("cmr", probe, cmr)
+            cmr = ref(array, axis=0)
+            self.set_grp_dataset(ref_type, probe, cmr)
 
     # def compute_channel_means(self):
     #     start = self.get_file_attr("start")

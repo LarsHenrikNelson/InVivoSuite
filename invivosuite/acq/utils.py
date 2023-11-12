@@ -65,7 +65,6 @@ def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
     return output
 
 
-@njit()
 def envelopes_idx(
     s: np.ndarray, dmin: int = 1, dmax: int = 1, split: bool = False, interp=True
 ):
