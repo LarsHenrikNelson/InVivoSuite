@@ -148,6 +148,46 @@ def fit_sine(x, y):
     return output, popt
 
 
+@njit()
+def bin_data_sorted(data: np.ndarray, bins: np.ndarray):
+    """Similar to Numpy's digitize or search_all function
+    but reduces some of the steps and is more straight forward.
+    The function assumes that the bins and data are sorted in
+    the same manner (i.e. ascending or descending). Useful for
+    computing bin sizes for histograms or spike-phase plots.
+    The size of the binned data will 1 shorter than the number
+    of bins. Uses bins[i] <= value < bins[i+1].
+
+    Args:
+        data (np.ndarray): Numpy array of sorted values
+        bins (np.nadarray): Numpy array of sorted values
+
+    Returns:
+        _type_: _description_
+    """
+    binned_data = np.zeros(bins.size - 1)
+    index = 0
+    for i in data:
+        if i >= bins[index] and i < bins[int(index + 1)]:
+            binned_data[index] += 1
+        else:
+            if index < binned_data.size:
+                binned_data[index] += 1
+                index += 1
+            else:
+                binned_data[binned_data.size - 1] += 1
+    return binned_data
+
+
+@njit()
+def binned_data_unsorted(data: np.ndarray, bins: np.ndarray, func: callable):
+    binned_data = np.zeros(bins.size - 1)
+    for i in range(bins.size - 1):
+        indexes = np.where((data >= bins[i]) & (data < bins[i + 1]))
+        binned_data = func(data[indexes])
+    return binned_data
+
+
 @njit(cache=True)
 def ppc_numba(spike_phases):
     outer_sums = np.zeros(spike_phases.size - 1)
@@ -169,6 +209,17 @@ def ppc_numba(spike_phases):
 
 
 def ppc_sampled(spike_phases, size, iterations, seed=42):
+    """This
+
+    Args:
+        spike_phases (_type_): _description_
+        size (_type_): _description_
+        iterations (_type_): _description_
+        seed (int, optional): _description_. Defaults to 42.
+
+    Returns:
+        _type_: _description_
+    """
     rng = default_rng(seed)
     output_array = np.zeros(iterations)
     for i in range(iterations):

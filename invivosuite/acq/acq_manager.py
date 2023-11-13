@@ -49,6 +49,7 @@ class AcqManager(SpkManager, LFPManager):
         self.set_file_attr("id", identifier)
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])
+        self.set_probe("all", [0, acqs.shape[0]])
         self.close()
 
     def open_hdf5_file(self, file_path):
@@ -160,7 +161,7 @@ class AcqManager(SpkManager, LFPManager):
     def compute_virtual_ref(
         self,
         ref_type: Literal["cmr", "car"] = "cmr",
-        probe: str = "none",
+        probe: str = "all",
         bin_size: int = 0,
     ):
         start = self.get_file_attr("start")
@@ -171,7 +172,7 @@ class AcqManager(SpkManager, LFPManager):
             ref = np.mean
         else:
             raise AttributeError("ref_type must be cmr or car.")
-        if probe == "none":
+        if probe == "all":
             chans = (0, self.n_chans)
         else:
             chans = self.get_grp_dataset("probes", probe)
@@ -227,10 +228,11 @@ class AcqManager(SpkManager, LFPManager):
         self,
         acq_num: int,
         acq_type: Literal["spike", "lfp", "raw"],
-        cmr: bool = True,
-        cmr_probe: str = "none",
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
         map_channel: bool = False,
-        probe: str = "none",
+        probe: str = "all",
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
@@ -239,8 +241,8 @@ class AcqManager(SpkManager, LFPManager):
             "acqs", rows=int(acq_num), columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=int(acq_num))
         array -= array.mean()
-        if cmr:
-            median = self.get_grp_dataset("cmr", cmr_probe)
+        if ref:
+            median = self.get_grp_dataset(ref_type, ref_probe)
             array -= median
         if acq_type == "raw":
             return array

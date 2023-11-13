@@ -127,10 +127,11 @@ class LFPManager:
         self,
         acq_num: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        cmr: bool = True,
-        cmr_probe: str = "none",
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
         map_channel: bool = False,
-        probe: str = "none",
+        probe: str = "all",
     ):
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if acq_num > self.n_chans:
@@ -139,8 +140,9 @@ class LFPManager:
         array = self.acq(
             acq_num,
             "lfp",
-            cmr=cmr,
-            cmr_probe=cmr_probe,
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
             probe=probe,
             map_channel=map_channel,
         )
@@ -175,10 +177,11 @@ class LFPManager:
         self,
         acq_num: int,
         sxx_type: Literal["cwt", "spectrogram"],
-        cmr: bool = True,
-        cmr_probe: str = "none",
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
         map_channel: bool = False,
-        probe: str = "none",
+        probe: str = "all",
     ):
         sxx_attrs = self.get_grp_attrs(sxx_type)
         if acq_num > self.n_chans:
@@ -187,9 +190,10 @@ class LFPManager:
         array = self.acq(
             acq_num,
             "lfp",
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
             probe=probe,
-            cmr_probe=cmr_probe,
-            cmr=cmr,
             map_channel=map_channel,
         )
         if sxx_type == "cwt":
@@ -212,10 +216,11 @@ class LFPManager:
     def hilbert(
         self,
         acq_num: int,
-        cmr_probe: str,
-        cmr: bool = True,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
         map_channel: bool = False,
-        probe: str = "none",
+        probe: str = "all",
         filter_type: Filters = "butterworth_zero",
         order: Union[None, int] = 4,
         highpass: Union[int, float, None] = None,
@@ -224,7 +229,7 @@ class LFPManager:
         low_width: Union[int, float, None] = None,
         window: Windows = "hann",
         polyorder: Union[int, None] = 0,
-        resample_freq=None,
+        resample_freq: float = 1000.0,
         up_sample=3,
     ):
         start = self.get_file_attr("start")
@@ -235,9 +240,9 @@ class LFPManager:
             "acqs", rows=acq_num, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=acq_num)
         array -= array.mean()
-        if cmr:
-            median = self.get_grp_dataset("cmr", cmr_probe)
-            array -= median
+        if ref:
+            ref_data = self.get_grp_dataset(ref_type, ref_probe)
+            array -= ref_data
         acq = filter_array(
             array,
             filter_type=filter_type,
@@ -259,7 +264,9 @@ class LFPManager:
     def calc_all_pdi(
         self,
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
-        cmr: bool = False,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
         map_channel: bool = False,
         size: int = 2000,
     ):
@@ -271,10 +278,11 @@ class LFPManager:
                 freqs, cwt = self.sxx(
                     i,
                     "cwt",
-                    cmr=cmr,
+                    ref=ref,
+                    ref_type=ref_type,
+                    ref_probe=ref_probe,
                     map_channel=map_channel,
                     probe=region,
-                    cmr_probe=region,
                 )
                 pdi_temp = lfp.phase_discontinuity_index(
                     cwt,
@@ -284,17 +292,19 @@ class LFPManager:
                 )
                 for key, value in pdi_temp.items():
                     pdi_dict[key][start + i] = value
-        for key, value in pdi_dict.items():
-            self.set_grp_dataset("pdi", key, value)
+        return pdi_dict
 
     def get_short_time_energy(
         self,
-        acq: Union[None, np.ndarray] = None,
         acq_num: Union[None, int] = None,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
         window: str = "hamming",
         wlen: float = 0.2,
         fs: Union[float, int, None] = None,
-        map_channel: bool = False,
     ):
         """This is a convience function to test out different short time energy settings
         or get the short time energy of an specific acquisition.
@@ -316,19 +326,16 @@ class LFPManager:
         Returns:
             np.ndarray: The short time energy
         """
-        if acq is None and acq_num is None:
-            raise AttributeError(
-                "An acquisition or acquisition number must be supplied"
-            )
-        if acq is not None:
-            if fs is None:
-                raise AttributeError("fs must be supplied if using acq argument.")
-        else:
-            self.open()
-            if map_channel and self.file.get("channel_map"):
-                acq_num = self.file["channel_map"][acq_num]
-            acq = self.acq(acq_num, "lfp")
-            fs = self.get_grp_attr("lfp", "sample_rate")
+        acq = self.acq(
+            acq_num,
+            "lfp",
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            probe=probe,
+            map_channel=map_channel,
+        )
+        fs = self.get_grp_attr("lfp", "sample_rate")
         se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
         return se_array
 

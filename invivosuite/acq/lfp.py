@@ -1,5 +1,5 @@
 from itertools import combinations
-from typing import Literal, Union, TypeAlias
+from typing import Literal, TypeAlias, Union
 
 import fcwt
 import KDEpy
@@ -10,7 +10,6 @@ from numpy.polynomial import Polynomial
 from scipy import fft, interpolate, signal
 
 from .tapered_spectra import multitaper
-
 
 __all__ = [
     "get_ave_band_power",
@@ -26,7 +25,7 @@ __all__ = [
     "stepped_cwt_cohy",
     "find_bursts",
     "short_time_energy",
-    "coherence",
+    "stationary_spectrum",
     "get_pairwise_coh",
     "kde_baseline",
     "derivative_baseline",
@@ -309,6 +308,38 @@ def phase_synchrony(array_1: np.ndarray, array_2: np.ndarray):
     return synchrony
 
 
+@njit()
+def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
+    """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
+    for a good explanation and implementation.
+
+    Args:
+        phi (np.ndarray): The computed angle of an analytic signal
+        amp (np.ndarray): The computed amplitude of an analytic signal
+        steps (int): number of bins for binning the data
+
+    Returns:
+        _type_: _description_
+    """
+    dt = np.pi * 2 / steps
+    lower = -np.pi
+    upper = -np.pi + dt
+    output_bins = np.linspace(-np.pi + dt, np.pi - dt, num=steps)
+    binned_data = np.zeros(steps)
+    for i in range(steps):
+        indexes = np.where((phi < upper) & (phi >= lower))
+        binned_data[i] = np.mean(amp[indexes])
+        lower += dt
+        upper += dt
+    return output_bins, binned_data
+
+
+def instantaneous_frequency(analytic_signal, fs):
+    factor = fs / (2 * np.pi)
+    output = factor * np.gradient(np.unwrap(np.angle(analytic_signal)))
+    return output
+
+
 def stepped_cwt_cohy(cwt: np.ndarray, size: int):
     noverlap = 0
     nperseg = size
@@ -341,6 +372,21 @@ def shifted_cwt_cohy(cwt: np.ndarray, size: int):
     return coh
 
 
+def phase_lag_value(acqs, plv_type: Literal["plv, iplv, ciplv"] = "ciplv"):
+    acqs = acqs / np.abs(acqs)
+    sxy = acqs @ acqs.T
+    if plv_type == "ciplv":
+        top = sxy.imag / acqs.shape[1]
+        bottom = np.sqrt((sxy.real / acqs.shape[1]) ** 2)
+        return top / bottom
+    elif plv_type == "iplv":
+        return sxy.imag / acqs.shape[1]
+    elif plv_type == "plv":
+        return np.abs(sxy / acqs.shape[1])
+    else:
+        raise AttributeError("plv_type not recogized.")
+
+
 def phase_discontinuity_index(
     cwt: np.ndarray,
     freqs: np.ndarray,
@@ -367,14 +413,14 @@ def phase_discontinuity_index(
     return pdi
 
 
-def coherence(
-    acq1,
-    acq2,
-    fs=1000,
-    noverlap=1000,
-    nperseg=10000,
+def stationary_spectrum(
+    acq1: np.ndarray,
+    acq2: np.ndarray,
+    fs: Union[float, int] = 1000,
+    noverlap: int = 1000,
+    nperseg: int = 10000,
     nfft: Union[int, None] = None,
-    window="hamming",
+    window: Union[str, tuple] = "hamming",
     ret_type: Literal[
         "icohere",
         "mscohere1",
@@ -382,9 +428,8 @@ def coherence(
         "lcohere2019",
         "icohere2019",
         "cohy",
-        "plv",
-        "iplv",
     ] = "icohere",
+    scaling: Literal["density", "spectrum"] = "density",
 ):
     # Modified version of scipy to work with the imaginary part of coherence
     acq1 = np.asarray(acq1)
@@ -393,7 +438,10 @@ def coherence(
     shape = acq1.shape[:-1] + ((acq1.shape[-1] - noverlap) // step, nperseg)
     strides = acq1.strides[:-1] + (step * acq1.strides[-1], acq1.strides[-1])
     win = signal.get_window(window, nperseg)
-    scale = 1.0 / (fs * (win * win).sum())
+    if scaling == "density":
+        scale = 1.0 / (fs * (win * win).sum())
+    else:
+        scale = 1.0
     temp1 = np.lib.stride_tricks.as_strided(acq1, shape=shape, strides=strides)
     temp2 = np.lib.stride_tricks.as_strided(acq2, shape=shape, strides=strides)
     temp1 = temp1 - temp1.mean(axis=1, keepdims=True)
@@ -430,20 +478,19 @@ def coherence(
     elif ret_type == "mscohere2":
         output = np.abs(sxy) / np.sqrt(sxx.real * syy.real)
     elif ret_type == "cohy":
-        cohy = sxy / np.sqrt((sxx * syy) + 1e-18)
-        output = cohy
-    elif ret_type == "plv":
-        plv = np.abs(sxy / np.sqrt(sxy))
-        output = plv
-    elif ret_type == "iplv":
-        acc = sxy / np.sqrt((sxx * syy) + 1e-18)
-        iplv = np.abs(acc.imag)
-        rplv = acc.real
-        rplv = np.clip(plv, -1, 1)
-        mask = np.abs(rplv) == 1
-        rplv[mask] = 0
-        ciplv = iplv / np.sqrt(1 - rplv**2)
-        output = ciplv
+        output = sxy / np.sqrt((sxx * syy) + 1e-18)
+    # elif ret_type == "plv":
+    #     plv = np.abs(sxy / np.sqrt(sxy))
+    #     output = plv
+    # elif ret_type == "ciplv":
+    #     acc = sxy / np.sqrt((sxx * syy) + 1e-18)
+    #     iplv = np.abs(acc.imag)
+    #     rplv = acc.real
+    #     rplv = np.clip(plv, -1, 1)
+    #     mask = np.abs(rplv) == 1
+    #     rplv[mask] = 0
+    #     ciplv = iplv / np.sqrt(1 - rplv**2)
+    #     output = ciplv
     # elif ret_type == "pli":
     #     pli = np.abs(np.sign(sxy.imag))
     #     output = cohy
@@ -486,13 +533,27 @@ def coherence(
 
 
 def phase_slope_index(
-    cohy,
-    fs=1000,
-    f_band=[4, 10],
-):
-    freqs = np.linspace(0, fs * 0.5, cohy.size)
+    cohy: np.ndarray[np.dtype[np.complex_]],
+    freqs: Union[np.ndarray[np.dtype[float], np.dtype[int]], list[Union[float, int]]],
+    f_band: Union[tuple[float, float], tuple[int, int]],
+) -> float:
+    """Calculates the phase slope index
+    See: Nolte, G. et al. Robustly Estimating the Flow Direction of Information in Complex Physical Systems. Phys. Rev. Lett. 100, 234101 (2008).
+
+    Args:
+        cohy (np.ndarray of complex values): A 1D numpy array.
+        freqs (list or np.ndarray of floats or ints): A 1D list or numpy array of floats or ints.
+        f_band (tuple): A tuple containing the lower and upper frequency limit.
+
+    Returns:
+        float: Phase slope index
+    """
+    if f_band[0] > f_band[1]:
+        f_band = (f_band[1], f_band[0])
+    if len(cohy.shape) > 1:
+        cohy = cohy.flatten()
     f_ind = np.where((freqs > f_band[0]) & (freqs < f_band[1]))[0]
-    psi = np.sum(np.conj(cohy[f_ind[0] : f_ind[-2]] * cohy[f_ind[1] : f_ind[-1]]).imag)
+    psi = np.sum(np.conj(cohy[f_ind[0] : f_ind[-2]] * cohy[f_ind[1] : f_ind[-1]])).imag
     return psi
 
 
@@ -741,7 +802,7 @@ def get_pairwise_coh(
     b = np.where((f <= 30) & (f > 12))[0]
     for i in range(len(acqs)):
         for j in range(i, len(acqs)):
-            imag_coh = coherence(acqs[i], acqs[j], ret_type=ret_type)
+            imag_coh = stationary_spectrum(acqs[i], acqs[j], ret_type=ret_type)
             # _, imag_coh = signal.coherence(
             #     acq1, acqs[j], window="hamming", nperseg=10000, noverlap=1000
             # )
