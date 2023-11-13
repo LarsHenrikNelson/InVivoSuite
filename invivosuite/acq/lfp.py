@@ -1,12 +1,17 @@
+import functools
+import os
 from itertools import combinations
 from typing import Literal, TypeAlias, Union
 
 import fcwt
+
+import joblib
 import KDEpy
 import numpy as np
 import statsmodels.api as sm
 from numba import njit, prange
 from numpy.polynomial import Polynomial
+from numpy.random import default_rng
 from scipy import fft, interpolate, signal
 
 from .tapered_spectra import multitaper
@@ -308,7 +313,6 @@ def phase_synchrony(array_1: np.ndarray, array_2: np.ndarray):
     return synchrony
 
 
-@njit()
 def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
     """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
     for a good explanation and implementation.
@@ -332,6 +336,54 @@ def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
         lower += dt
         upper += dt
     return output_bins, binned_data
+
+
+def rand_cfc(phi, amp, steps, num):
+    rng = default_rng(num)
+    indexes = rng.integers(0, amp.size, size=amp.size)
+    amp_rand = amp[indexes]
+    _, temp = cross_frequency_coupling(phi, amp_rand, steps)
+    output = temp.max() - temp.min()
+    return output
+
+
+def cfc_pvalue(
+    phi: np.ndarray,
+    amp: np.ndarray,
+    steps: int,
+    iterations: int = 1000,
+    seed: int = 42,
+    parallel: bool = False,
+    threads: int = -1,
+):
+    if not parallel:
+        rng = default_rng(seed)
+        output = np.zeros(iterations)
+        for i in range(iterations):
+            indexes = rng.integers(0, amp.size, size=amp.size)
+            amp_rand = amp[indexes]
+            _, temp = cross_frequency_coupling(phi, amp_rand, steps)
+            output[i] = temp.max() - temp.min()
+    else:
+        pfunc = functools.partial(rand_cfc, phi=phi, amp=amp, steps=steps)
+        indexes = np.arange(0, iterations)
+        if threads == -1:
+            threads = os.cpu_count()
+        output = joblib.Parallel(n_jobs=threads)(
+            joblib.delayed(pfunc)(num=i) for i in range(iterations)
+        )
+        output = list(output)
+
+        # with mp.Pool(threads) as p:
+        #     output = [
+        #         p.map(
+        #             functools.partial(rand_cfc, phi=phi, amp=amp, steps=steps), indexes
+        #         )
+        #     ]
+    _, cfc_data = cross_frequency_coupling(phi, amp, steps)
+    cfc_range = cfc_data.max() - cfc_data.min()
+    num_above = np.where(output > cfc_range)[0]
+    return num_above.size / iterations
 
 
 def instantaneous_frequency(analytic_signal, fs):
