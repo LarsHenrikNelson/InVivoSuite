@@ -1,5 +1,6 @@
 import collections
 import math
+from typing import Union
 
 import fcwt
 import numpy as np
@@ -8,6 +9,172 @@ from numba import njit
 from scipy import signal
 from scipy import fft
 from sklearn.decomposition import PCA
+
+
+@njit()
+def run_P(spk_1: np.ndarray, spk_2: np.ndarray, dt: Union[int, float]) -> int:
+    Nab = 0
+    j = 0
+    for i in range(0, spk_1.size):
+        while j < spk_2.size:
+            if np.abs(spk_1[i] - spk_2[j]) <= dt:
+                Nab = Nab + 1
+                break
+            elif spk_2[j] > spk_1[i]:
+                break
+            else:
+                j += 1
+    return Nab
+
+
+@njit()
+def run_T(
+    spk_train: np.ndarray,
+    dt: Union[float, int],
+    start: Union[float, int],
+    stop: Union[float, int],
+) -> float:
+    i = 0
+    time_A = 2 * spk_train.size * dt
+    if spk_train.size == 1:
+        if spk_train[0] - start < dt:
+            time_A = time_A - start + spk_train[0] - dt
+        elif (spk_train[0] + dt) > stop:
+            time_A = time_A - spk_train[0] - dt + stop
+    else:
+        for i in range(0, spk_train.size - 1):
+            diff = spk_train[i + 1] - spk_train[i]
+            if diff < (2 * dt):
+                time_A = time_A - 2 * dt + diff
+            i += 1
+        if (spk_train[0] - start) < dt:
+            time_A = time_A - start + spk_train[0] - dt
+        if (stop - spk_train[-1]) < dt:
+            time_A = time_A - spk_train[-1] - dt + stop
+    return time_A
+
+
+def sttc(
+    spk_1: np.nadarray,
+    spk_2: np.ndarray,
+    dt: Union[float, int],
+    start: Union[float, int],
+    stop: Union[float, int],
+) -> float:
+    """This is a Numba accelerated version of spike timing tiling coefficient.
+    It is faster than Elephants version by about 50 times. This adds up when
+    there are 10000+ comparisons to make.
+
+    Args:
+        spk_1 (np.ndarray): _description_
+        spk_2 (np.ndarray): _description_
+        dt (int, float): _description_
+        start (int, float): _description_
+        stop (int, float): _description_
+
+    Returns:
+        float: _description_
+    """
+    if spk_1.size == 0 or spk_2.size == 0:
+        return np.nan
+    else:
+        if np.issubdtype(spk_1.dtype, np.unsignedinteger):
+            spk_1 = spk_1.astype(int)
+        if np.issubdtype(spk_2.dtype, np.unsignedinteger):
+            spk_2 = spk_2.astype(int)
+        dt = float(dt)
+        T = stop - start
+        TA = run_T(spk_1, dt, start, stop)
+        TA /= T
+        TB = run_T(spk_2, dt, start, stop)
+        TB /= T
+        PA = run_P(spk_1, spk_2, dt)
+        PA /= spk_1.size
+        PB = run_P(spk_2, spk_1, dt)
+        PB /= spk_2.size
+        if PA * TB == 1 and PB * TA == 1:
+            index = 1.0
+        elif PA * TB == 1:
+            index = 0.5 + 0.5 * (PB - TA) / (1 - PB * TA)
+        elif PB * TA == 1:
+            index = 0.5 + 0.5 * (PA - TB) / (1 - PA * TB)
+        else:
+            index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
+        return index
+
+
+def run_p(
+    spiketrain_j: np.ndarray,
+    spiketrain_i: np.ndarray,
+    dt: Union[int, float],
+) -> float:
+    # Create a boolean array where each element represents whether a spike
+    # in spiketrain_j lies within +- dt of any spike in spiketrain_i.
+    tiled_spikes_j = np.isclose(
+        spiketrain_j[:, np.newaxis],
+        spiketrain_i,
+        atol=dt,
+    )
+    # Determine which spikes in spiketrain_j satisfy the time window
+    # condition.
+    tiled_spike_indices = np.any(tiled_spikes_j, axis=1)
+    # Extract the spike times in spiketrain_j that satisfy the condition.
+    tiled_spikes_j = spiketrain_j[tiled_spike_indices]
+    # Calculate the ratio of matching spikes in j to the total spikes in j.
+    return len(tiled_spikes_j) / len(spiketrain_j)
+
+
+def run_t(spiketrain: np.ndarray, dt: int, t_start, t_stop) -> float:
+    dt = dt
+    sorted_spikes = spiketrain
+
+    diff_spikes = np.diff(sorted_spikes)
+
+    overlap_durations = diff_spikes[diff_spikes <= 2 * dt]
+    covered_time_overlap = np.sum(overlap_durations)
+
+    non_overlap_durations = diff_spikes[diff_spikes > 2 * dt]
+    covered_time_non_overlap = len(non_overlap_durations) * 2 * dt
+
+    if sorted_spikes[0] - t_start < dt:
+        covered_time_overlap += sorted_spikes[0] - t_start
+    else:
+        covered_time_non_overlap += dt
+    if t_stop - sorted_spikes[-1] < dt:
+        covered_time_overlap += t_stop - sorted_spikes[-1]
+    else:
+        covered_time_non_overlap += dt
+
+    total_time_covered = covered_time_overlap + covered_time_non_overlap
+    total_time = t_stop - t_start
+
+    return total_time_covered / total_time
+
+
+def sttc_ele(spiketrain_i, spiketrain_j, dt, start, stop):
+    if len(spiketrain_i) == 0 or len(spiketrain_j) == 0:
+        index = np.nan
+    else:
+        TA = run_t(spiketrain_j, dt, start, stop)
+        TB = run_t(spiketrain_i, dt, start, stop)
+        PA = run_p(spiketrain_j, spiketrain_i, dt)
+        PB = run_p(spiketrain_i, spiketrain_j, dt)
+
+        # check if the P and T values are 1 to avoid division by zero
+        # This only happens for TA = PB = 1 and/or TB = PA = 1,
+        # which leads to 0/0 in the calculation of the index.
+        # In those cases, every spike in the train with P = 1
+        # is within dt of a spike in the other train,
+        # so we set the respective (partial) index to 1.
+        if PA * TB == 1 and PB * TA == 1:
+            index = 1.0
+        elif PA * TB == 1:
+            index = 0.5 + 0.5 * (PB - TA) / (1 - PB * TA)
+        elif PB * TA == 1:
+            index = 0.5 + 0.5 * (PA - TB) / (1 - PA * TB)
+        else:
+            index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
+    return index
 
 
 def find_spikes(
