@@ -55,7 +55,7 @@ def run_T(
 
 
 def sttc(
-    spk_1: np.nadarray,
+    spk_1: np.ndarray,
     spk_2: np.ndarray,
     dt: Union[float, int],
     start: Union[float, int],
