@@ -17,7 +17,11 @@ def run_P(spk_1: np.ndarray, spk_2: np.ndarray, dt: Union[int, float]) -> int:
     j = 0
     for i in range(0, spk_1.size):
         while j < spk_2.size:
-            if np.abs(spk_1[i] - spk_2[j]) <= dt:
+            if spk_1[i] < spk_2[j]:
+                temp = spk_2[j] - spk_1[i]
+            else:
+                temp = spk_1[i] - spk_2[j]
+            if np.abs(temp) <= dt:
                 Nab = Nab + 1
                 break
             elif spk_2[j] > spk_1[i]:
@@ -78,10 +82,6 @@ def sttc(
     if spk_1.size == 0 or spk_2.size == 0:
         return np.nan
     else:
-        if np.issubdtype(spk_1.dtype, np.unsignedinteger):
-            spk_1 = spk_1.astype(int)
-        if np.issubdtype(spk_2.dtype, np.unsignedinteger):
-            spk_2 = spk_2.astype(int)
         dt = float(dt)
         T = stop - start
         TA = run_T(spk_1, dt, start, stop)
@@ -99,7 +99,9 @@ def sttc(
         elif PB * TA == 1:
             index = 0.5 + 0.5 * (PA - TB) / (1 - PA * TB)
         else:
-            index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
+            index = (0.5 * ((PA - TB) / (1 - PA * TB))) + (
+                0.5 * ((PB - TA) / (1 - PB * TA))
+            )
         return index
 
 
@@ -114,6 +116,7 @@ def run_p(
         spiketrain_j[:, np.newaxis],
         spiketrain_i,
         atol=dt,
+        rtol=0,
     )
     # Determine which spikes in spiketrain_j satisfy the time window
     # condition.
