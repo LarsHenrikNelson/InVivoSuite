@@ -1,5 +1,6 @@
 import numpy as np
-from scipy import ndimage
+
+from . import utils
 
 """These are from 
 https://github.com/AllenInstitute/ecephys_spike_sorting/blob/master/ecephys_spike_sorting/modules/quality_metrics/metrics.py
@@ -58,7 +59,12 @@ def firing_rate(spike_train, min_time=None, max_time=None):
     return fr
 
 
-def amplitude_cutoff(amplitudes, num_histogram_bins=500, histogram_smoothing_value=3):
+def amplitude_cutoff(
+    amplitudes: np.ndarray,
+    kernel: str = "biweight",
+    bw_method: str = "ISJ",
+    tol: float = 0.001,
+):
     """Calculate approximate fraction of spikes missing from a distribution of amplitudes
 
     Assumes the amplitude histogram is symmetric (not valid in the presence of drift)
@@ -78,10 +84,11 @@ def amplitude_cutoff(amplitudes, num_histogram_bins=500, histogram_smoothing_val
 
     """
 
-    h, b = np.histogram(amplitudes, num_histogram_bins, density=True)
+    # h, b = np.histogram(amplitudes, num_histogram_bins, density=True)
 
-    pdf = ndimage.gaussian_filter1d(h, histogram_smoothing_value)
-    support = b[:-1]
+    # pdf = ndimage.gaussian_filter1d(h, histogram_smoothing_value)
+    # support = b[:-1]
+    x, pdf = utils.kde(amplitudes, kernel, bw_method, tol)
 
     peak_index = np.argmax(pdf)
     G = np.argmin(np.abs(pdf[peak_index:] - pdf[0])) + peak_index
@@ -196,7 +203,9 @@ def calculate_amplitude_cutoff(spike_clusters, amplitudes, total_units):
     return amplitude_cutoffs
 
 
-def calculate_metrics(spike_times, spike_clusters, amplitudes, isi_threshold, min_isi, acqs):
+def calculate_metrics(
+    spike_times, spike_clusters, amplitudes, isi_threshold, min_isi, acqs
+):
     """Calculate metrics for all units on one probe
 
     Inputs:

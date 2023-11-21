@@ -1,3 +1,4 @@
+import KDEpy
 import numpy as np
 from numba import njit, prange
 from numpy.random import default_rng
@@ -45,13 +46,13 @@ def xcorr_lag(
     return lags, output[int(mid - lag) : int(mid + lag)]
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True)
 def convolve(array: np.ndarray, window: np.ndarray):
     # This a tiny bit faster than scipy version
     output = np.zeros(array.size + window.size - 1)
-    for i in range(array.size):
-        for j in range(window.size):
-            output[i + j] += array[i] * window[j]
+    for i in prange(window.size):
+        for j in range(array.size):
+            output[i + j] += array[j] * window[i]
     return output
 
 
@@ -228,3 +229,22 @@ def ppc_sampled(spike_phases, size, iterations, seed=42):
         )
         output_array[i] = ppc_numba(spk_sampled)
     return output_array.mean()
+
+
+def kde(
+    array: np.ndarray,
+    kernel: str = "biweight",
+    bw_method: str = "ISJ",
+    tol: float = 0.001,
+):
+    if array.ndim > 1:
+        array = array.flatten()
+    power2 = int(np.ceil(np.log2(array.size)))
+
+    # Calculating x comes from Seaborn KDE
+    bw = np.cov(array)
+    min_array = array.min() - bw * tol
+    max_array = array.max() + bw * tol
+    x = np.linspace(min_array, max_array, num=2**power2)
+    y = KDEpy.FFTKDE(kernel=kernel, bw=bw_method).fit(array, weights=None).evaluate(x)
+    return x, y

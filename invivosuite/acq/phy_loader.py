@@ -130,6 +130,11 @@ class SpikeModel:
         indexes = self.spike_times[spike_ids].flatten()
         return indexes
 
+    def get_cluster_amplitudes(self, cluster_id):
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        amplitudes = self.amplitudes[spike_ids].flatten()
+        return amplitudes
+
     def get_cluster_spike_times(self, cluster_id):
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         times = self.spike_times[spike_ids].flatten() / 40000
