@@ -5,6 +5,21 @@ from numpy.random import default_rng
 from scipy import fft, interpolate, optimize
 
 
+def xconv_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
+    shape = array_1.size + array_2.size - 1
+    fshape = fft.next_fast_len(shape)
+
+    sp1 = fft.rfft(array_1, fshape)
+    sp2 = fft.rfft(array_2, fshape)
+
+    if not circular:
+        ret = fft.irfft(sp1 * sp2, fshape)
+    else:
+        ret = fft.irfft(sp1 * np.conjugate(sp2), fshape)
+
+    return ret[:shape]
+
+
 def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
     array_2 = np.ascontiguousarray(array_2[::-1])
 
@@ -47,12 +62,22 @@ def xcorr_lag(
 
 
 @njit(cache=True, parallel=True)
-def convolve(array: np.ndarray, window: np.ndarray):
+def convolve_loop(array_1: np.ndarray, array_2: np.ndarray):
     # This a tiny bit faster than scipy version
-    output = np.zeros(array.size + window.size - 1)
-    for i in prange(window.size):
-        for j in range(array.size):
-            output[i + j] += array[j] * window[i]
+    output = np.zeros(array_1.size + array_2.size - 1)
+    for i in prange(array_2.size):
+        for j in range(array_1.size):
+            output[i + j] += array_1[j] * array_2[i]
+    return output
+
+
+def convolve(
+    array_1: np.ndarray, array_2: np.ndarray, mode: str = "fft", circular: bool = False
+):
+    if mode == "fft":
+        output = xconv_fft(array_1, array_2, circular=circular)
+    else:
+        output = convolve(array_1, array_2)
     return output
 
 
