@@ -7,7 +7,7 @@ from scipy import signal
 
 from . import lfp
 from .filtering_functions import Filters, Windows, filter_array
-from .tapered_spectra import multitaper
+from ..spectral import multitaper
 
 
 class LFPManager:

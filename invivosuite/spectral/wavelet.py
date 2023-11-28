@@ -1,12 +1,16 @@
 from typing import Literal
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from scipy import fft
 
+__all__ = ["create_wavelets", "compute_cwt"]
 
-@njit(cache=True)
-def create_wavelets(freqs, fs, n_cycles=7, sigma=-1, zero_mean: bool = True, ord=1):
+
+@njit(cache=True, parallel=True)
+def create_wavelets(
+    freqs, fs, n_cycles=7, sigma=-1, zero_mean: bool = True, ord: Literal[1, 2] = 1
+):
     """Compute Morlet wavelets for the given frequency range.
 
     Parameters
@@ -42,33 +46,38 @@ def create_wavelets(freqs, fs, n_cycles=7, sigma=-1, zero_mean: bool = True, ord
         n_cycles = np.array([n_cycles])
     inv_fs = 1.0 / fs
     index = 0
-    for f in freqs:
-        # Calculate sigma, sigma_t is similar to STDEV
+    sigma_t = np.zeros(freqs.size)
+    max_value = 0
+    for i in range(freqs.size):
         if sigma == -1:
-            sigma_t = n_cycles[index] / (2.0 * np.pi * f)
+            sigma_t[i] = n_cycles[index] / (2.0 * np.pi * freqs[i])
         else:
-            sigma_t = n_cycles[index] / (2.0 * np.pi * sigma)
+            sigma_t[i] = n_cycles[index] / (2.0 * np.pi * sigma)
+        num_values = int((5.0 * sigma_t) // inv_fs)
+        max_value = np.maximum(num_values * 2 + 1, max_value)
 
+    # Preallocate array since wavelets will zeropadded anyways
+    t = np.zeros((freqs.size, max_value))
+
+    for j in prange(freqs.size):
         # Go 5 STDEVs out on each side
         num_values = int((5.0 * sigma_t) // inv_fs)
-        t = np.zeros(num_values * 2 + 1)
         for i in range(1, num_values + 1):
-            t[i + num_values] = t[i - 1 + num_values] + inv_fs
-            t[num_values - i] = t[num_values - i + 1] + inv_fs * -1.0
+            t[j, i + num_values] = t[j, i - 1 + num_values] + inv_fs
+            t[j, num_values - i] = t[j, num_values - i + 1] + inv_fs * -1.0
 
         # Could also do
         # oscillation.imag = np.sin(2.0 * np.pi* f * t)
         # oscillation.real = np.cos(2.0 * np.pi* f * t)
 
-        oscillation = np.exp(2.0 * 1j * np.pi * f * t)
+        t[j] = np.exp(2.0 * 1j * np.pi * freqs[j] * t[j])
 
         if zero_mean:
-            real_offset = np.exp(-2 * (np.pi * f * sigma_t) ** 2)
-            oscillation -= real_offset
+            real_offset = np.exp(-2 * (np.pi * freqs[j] * sigma_t) ** 2)
+            t[j] -= real_offset
         gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
-        oscillation *= gaussian_env
-        oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation.flatten(), ord=ord)
-        Ws.append(oscillation)
+        t[j] *= gaussian_env
+        t[j] /= np.sqrt(0.5) * np.linalg.norm(t[j], ord=ord)
         if n_cycles.size != 1:
             index += 1
     return Ws

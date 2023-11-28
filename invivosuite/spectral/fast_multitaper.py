@@ -6,7 +6,7 @@ from scipy import fft
 from .tapered_spectra import dpss_windows
 
 
-def multitaper(
+def fast_multitaper(
     acq: np.ndarray,
     k: int = 5,
     nw: int = 3,
@@ -58,13 +58,13 @@ def multitaper(
     strides = acq.strides[:-1] + (step * acq.strides[-1], acq.strides[-1])
     temp = np.lib.stride_tricks.as_strided(acq, shape=shape, strides=strides)
 
-    # Neither of these functions work with very large nperseg
+    # Neither of these functions work with very large nperseg, at least on windows
     # tapers, eigenvalues = signal.windows.dpss(nperseg, nw, k, return_ratios=True)
     # tapers, eigenvalues = dpss(nperseg, NW=3, k=5)
 
     tapers, eigenvalues = dpss_windows(nperseg, nw, k)
-
     tapers = tapers.T
+
     p = np.zeros((temp.shape[0], k, temp.shape[1]))
     for i in range(k):
         p[:, i, :] = temp * tapers[i]

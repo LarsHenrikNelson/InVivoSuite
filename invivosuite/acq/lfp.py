@@ -14,7 +14,7 @@ from numpy.polynomial import Polynomial
 from numpy.random import default_rng
 from scipy import fft, interpolate, signal
 
-from .tapered_spectra import multitaper
+from ..spectral import multitaper
 
 __all__ = [
     "get_ave_band_power",
