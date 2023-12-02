@@ -12,13 +12,16 @@ keywords = ["electrophysiology", "analysis"]
 dependencies = [
     "fcwt",
     "h5py",
+    "joblib",
     "KDEpy",
+    "matplotlib",
     "numba",
     "numpy",
     "PySide6",
     "pyqtgraph",
     "qdarkstyle",
     "scipy",
+    "scikit-learn",
     "statsmodels"
 ]
 requires-python = ">=3.9"

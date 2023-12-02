@@ -457,7 +457,7 @@ def phase_discontinuity_index(
         bw = np.cov(g)
         min_g = g.min() - bw * tol
         max_g = g.max() + bw * tol
-        x = np.linspace(min_g, max_g, num=2**power2)
+        x = np.linspace(min_g, max_g, num=1 << power2)
         y = KDEpy.FFTKDE(bw="ISJ").fit(g).evaluate(x)
         args1 = np.where((x > np.pi / 5) | (x < -np.pi / 5))[0]
         args2 = np.where((x <= np.pi / 5) & (x >= -np.pi / 5))[0]

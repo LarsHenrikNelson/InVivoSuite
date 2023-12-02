@@ -1,15 +1,17 @@
 from typing import Literal
+
 import multiprocessing
 
 import numpy as np
-from numba import njit, prange
+from numba import njit
 from scipy import fft
-import pyfftw
 
-__all__ = ["create_wavelets", "compute_cwt"]
+# import pyfftw
+
+__all__ = ["create_wavelets", "compute_cwt", "s_to_f", "f_to_s"]
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True)
 def create_wavelets(
     freqs, fs, n_cycles, sigma=-1, zero_mean: bool = True, order: Literal[1, 2] = 1
 ):
@@ -43,43 +45,36 @@ def create_wavelets(
     """
     inv_fs = 1.0 / fs
     index = 0
-    sigma_t = np.zeros(freqs.size)
-    max_value = 0
+    wave = []
     for i in range(freqs.size):
         if sigma == -1:
-            sigma_t[i] = n_cycles[index] / (2.0 * np.pi * freqs[i])
+            sigma_t = n_cycles[index] / (2.0 * np.pi * freqs[i])
         else:
-            sigma_t[i] = n_cycles[index] / (2.0 * np.pi * sigma)
-        num_values = int((5.0 * sigma_t[i]) // inv_fs)
-        max_value = np.maximum(num_values * 2 + 1, max_value)
-        if n_cycles.size != 1:
-            index += 1
+            sigma_t = n_cycles[index] / (2.0 * np.pi * sigma)
 
-    # Preallocate array since wavelets will zeropadded anyways
-    t = np.zeros((freqs.size, max_value))
-    wave = np.zeros((freqs.size, max_value), dtype=np.complex128)
-    for j in prange(freqs.size):
         # Go 5 STDEVs out on each side
-        num_values = int((5.0 * sigma_t[j]) // inv_fs)
+        num_values = int((5.0 * sigma_t) // inv_fs)
         wave_len = num_values * 2 + 1
+        t = np.zeros(wave_len)
         for k in range(1, num_values + 1):
-            t[j, k + num_values] = t[j, k - 1 + num_values] + inv_fs
-            t[j, num_values - k] = t[j, num_values - k + 1] + inv_fs * -1.0
+            t[k + num_values] = t[k - 1 + num_values] + inv_fs
+            t[num_values - k] = t[num_values - k + 1] + inv_fs * -1.0
 
         # Could also do
         # oscillation.imag = np.sin(2.0 * np.pi* f * t)
         # oscillation.real = np.cos(2.0 * np.pi* f * t)
 
-        wave[j, :wave_len] = np.exp(2.0 * 1j * np.pi * freqs[j] * t[j, :wave_len])
+        oscillation = np.exp(2.0 * 1j * np.pi * freqs[i] * t)
 
         if zero_mean:
-            real_offset = np.exp(-2 * (np.pi * freqs[j] * sigma_t[j]) ** 2)
-            wave[j, :wave_len] -= real_offset
-        gaussian_env = np.exp(-(t[j, :wave_len] ** 2) / (2.0 * sigma_t[j] ** 2))
-        wave[j, :wave_len] *= gaussian_env
-        wave[j, :wave_len] /= np.sqrt(0.5) * np.linalg.norm(
-            wave[j, :wave_len], ord=order
-        )
+            real_offset = np.exp(-2 * (np.pi * freqs[i] * sigma_t) ** 2)
+            oscillation -= real_offset
+        gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
+        oscillation *= gaussian_env
+        oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation, ord=order)
+        wave.append(oscillation)
+        if n_cycles.size != 1:
+            index += 1
     return wave
 
 
@@ -116,30 +111,29 @@ def compute_cwt(
             order=order,
         )
     input_size = array.size
-    nfft = input_size + wavelets.shape[1] - 1
-    nfft = fft.next_fast_len(nfft)  # 2 ** int(np.ceil(np.log2(nfft)))
-    output = np.zeros((num, input_size), dtype=np.complex128)
+    conv_size = input_size + np.max([i.size for i in wavelets]) - 1
+    nfft = 1 << int(np.ceil(np.log2(conv_size)))
 
     workers = multiprocessing.cpu_count()
     # array_fft = pyfftw.interfaces.scipy_fft.fft(array, n=nfft, workers=workers)
-    array_fft = fft.fft(array, n=nfft)
+    array_fft = fft.fft(array, n=nfft, workers=workers)
+    output = np.zeros((num, input_size), dtype=np.complex128)
 
-    for index in range(wavelets.shape[0]):
+    for index, ws in enumerate(wavelets):
         if not skip_fft:
             # output_f = pyfftw.interfaces.scipy_fft.fft(
             #     wavelets[index], n=nfft, workers=workers
             # )
-            output_f = fft.fft(wavelets[index], n=nfft)
+            output_f = fft.fft(ws, n=nfft, workers=workers)
         else:
-            output_f = wavelets[index]
+            output_f = ws
         # ret = pyfftw.interfaces.scipy_fft.fft(output_f * array_fft, workers=workers)
-        ret = fft.ifft(output_f * array_fft)
-        ret = ret[: input_size + wavelets.shape[1] - 1]
+        ret = fft.ifft(output_f * array_fft, workers=workers)
+        ret = ret[: ws.size + input_size]
 
-        newsize = input_size
-        currsize = ret.size
-        startind = int((currsize - newsize) // 2)
-        endind = startind + newsize
+        startind = (ret.size - input_size) // 2
+        endind = startind + input_size
+
         output[index, :] = ret[startind:endind]
 
     return freqs, output
