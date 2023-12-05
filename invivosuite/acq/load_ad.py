@@ -45,7 +45,7 @@ def load_pl2_acqs(
             and ad_info.m_Name.decode("ascii")[:2] == "WB"
         ):
             channels.append(ad_info.m_Channel-1)
-    fs = np.zeros(lne(channels))
+    fs = np.zeros(len(channels))
     coeffs = np.zeros(len(channels))
     units = []
     enabled = np.zeros(len(channels), np.int16)
