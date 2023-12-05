@@ -31,7 +31,9 @@ def load_pl2_acqs(
     res = reader.pl2_get_file_info(handle, file_info)
     if res == 0:
         return None
-    channels = file_info.m_TotalNumberOfSpikeChannels
+
+    # Use spike channels because this ignores other analog channels
+    channels = file_info.m_TotalNumberOfAnalogChannels
     acqs = None
     fs = np.zeros(channels)
     coeffs = np.zeros(channels)
