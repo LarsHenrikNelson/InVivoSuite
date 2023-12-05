@@ -49,7 +49,7 @@ def load_pl2_acqs(
     coeffs = np.zeros(len(channels))
     units = []
     enabled = np.zeros(len(channels), np.int16)
-    for i in channels:
+    for index, i in enumerate(channels):
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
         if (
@@ -58,14 +58,14 @@ def load_pl2_acqs(
             and ad_info.m_Name.decode("ascii")[:2] == "WB"
         ):
             data = pl2_ad(pl2_path, i)
-            enabled[i] = 1
+            enabled[index] = 1
             if acqs is None:
                 if end is None or end > data.ad.size:
                     end = data.ad.size
                 acqs = np.zeros((channels, end - start), np.int16)
-            acqs[i] = data.ad[start:end]
-            fs[i] = data.adfrequency
-            coeffs[i] = data.coeff
+            acqs[index] = data.ad[start:end]
+            fs[index] = data.adfrequency
+            coeffs[index] = data.coeff
             units.append(ad_info.m_Units)
     acq_man = AcqManager()
     if save_path == "":
