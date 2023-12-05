@@ -35,11 +35,21 @@ def load_pl2_acqs(
     # Use spike channels because this ignores other analog channels
     channels = file_info.m_TotalNumberOfAnalogChannels
     acqs = None
+    channels = []
+    for i in range(channels):
+        ad_info = PL2AnalogChannelInfo()
+        ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
+        if (
+            ad_info.m_ChannelEnabled
+            and ad_res != 0
+            and ad_info.m_Name.decode("ascii")[:2] == "WB"
+        ):
+            channels.append(i)
     fs = np.zeros(channels)
     coeffs = np.zeros(channels)
     units = []
-    enabled = np.zeros(channels, np.int16)
-    for i in range(0, channels):
+    enabled = np.zeros(len(channels), np.int16)
+    for i in channels:
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
         if (
