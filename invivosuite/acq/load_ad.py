@@ -33,10 +33,10 @@ def load_pl2_acqs(
         return None
 
     # Use spike channels because this ignores other analog channels
-    channels = file_info.m_TotalNumberOfAnalogChannels
+    nchannels = file_info.m_TotalNumberOfAnalogChannels
     acqs = None
     channels = []
-    for i in range(channels):
+    for i in range(nchannels):
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
         if (
