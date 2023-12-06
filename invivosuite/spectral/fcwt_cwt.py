@@ -40,14 +40,21 @@ def daughter_wavelet_multiplication(
     mm = isizef - 1
     s1 = isize - 1
 
-    for q1 in prange(0, int(batchsize)):
-        q = float(q1)
-        tmp = min(mm, step * q)
+    # for q1 in prange(0, int(batchsize)):
+    #     q = float(q1)
+    #     tmp = min(mm, step * q)
 
-        output[output_index, q1] = input_fft[q1].real * mother[int(tmp)] + (
-            input_fft[q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
+    #     output[output_index, q1] = input_fft[q1].real * mother[int(tmp)] + (
+    #         input_fft[q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
+    #     )
+    if not imaginary:
+        output[output_index, 0:batchsize] = (
+            input_fft[0:batchsize] * mother[0:batchsize:step]
         )
-
+    else:
+        output[output_index, 0:batchsize] = input_fft[0:batchsize] * np.conjugate(
+            mother[0:batchsize:step]
+        )
     if doublesided:
         for q1 in prange(0, int(batchsize)):
             q = float(q1)
