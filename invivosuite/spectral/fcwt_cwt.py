@@ -47,6 +47,7 @@ def daughter_wavelet_multiplication(
         output[output_index, q1] = input_fft[q1].real * mother[int(tmp)] + (
             input_fft[q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
         )
+
     if doublesided:
         for q1 in prange(0, int(batchsize)):
             q = float(q1)

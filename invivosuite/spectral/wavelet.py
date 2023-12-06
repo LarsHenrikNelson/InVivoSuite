@@ -112,7 +112,7 @@ def gen_cwt(
     conv_size = input_size + np.max([i.size for i in wavelets]) - 1
     nfft = 1 << int(np.ceil(np.log2(conv_size)))
 
-    workers = os.cpu_count()
+    workers = os.cpu_count() // 2
     # array_fft = pyfftw.interfaces.scipy_fft.fft(array, n=nfft, workers=workers)
     array_fft = fft.fft(array, n=nfft, workers=workers)
     output = np.zeros((num, input_size), dtype=np.complex128)
@@ -138,7 +138,7 @@ def gen_cwt(
 
     if not skip_fft:
         output = np.array(
-            joblib.Parallel(n_jobs=workers)(
+            joblib.Parallel(n_jobs=workers, prefer="threads")(
                 joblib.delayed(simple_cwt)(i, array_fft, input_size, nfft)
                 for i in wavelets
             )

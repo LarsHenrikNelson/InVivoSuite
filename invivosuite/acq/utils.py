@@ -273,3 +273,16 @@ def kde(
     x = np.linspace(min_array, max_array, num=2**power2)
     y = KDEpy.FFTKDE(kernel=kernel, bw=bw_method).fit(array, weights=None).evaluate(x)
     return x, y
+
+
+def aligned(a, alignment=64):
+    if (a.ctypes.data % alignment) == 0:
+        return a
+    assert alignment % a.itemsize == 0
+    extra = alignment // a.itemsize
+    buf = np.empty(a.size + extra, dtype=a.dtype)
+    ofs = (-buf.ctypes.data % alignment) // a.itemsize
+    aa = buf[ofs : ofs + a.size].reshape(a.shape)
+    np.copyto(aa, a)
+    assert aa.ctypes.data % alignment == 0
+    return aa
