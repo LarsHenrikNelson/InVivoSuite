@@ -29,6 +29,28 @@ def daughter_wavelet_multiplication(
     imaginary: bool = False,
     doublesided: bool = False,
 ):
+    """FFT wavelet convolution from fCWT using numpy. That utilizes
+    numpy pass-by assignment as pass-by references/pointer.
+
+    Parameters
+    ----------
+    input_fft : np.ndarray
+        FFT of the signal of interest, must be a 1D signal
+    output : np.ndarray
+        Pre allocated output array
+    output_index : int
+        Index for the current wavelet, input convolution
+    mother : np.ndarray
+        Mother wavelet
+    scale : float
+        Scale to convolve input with
+    threads : int, optional
+        Number of threads to use, by default 1
+    imaginary : bool, optional
+        Whether the wavelet contains imaginary numbers, by default False
+    doublesided : bool, optional
+        Whether the wavelet is has a doubleside FFT (not in use), by default False
+    """
     isize = input_fft.size
     isizef = float(isize)
     endpointf = min(isizef / 2.0, (isizef * 2.0) / scale)
@@ -67,6 +89,16 @@ def daughter_wavelet_multiplication(
 
 @njit(cache=True, parallel=True)
 def fft_normalize(transform, size):
+    """Simple FFT normalization that is parallelized
+    by Numba.
+
+    Parameters
+    ----------
+    transform :
+        FFT transform
+    size : _type_
+        _description_
+    """
     transform / size
 
 

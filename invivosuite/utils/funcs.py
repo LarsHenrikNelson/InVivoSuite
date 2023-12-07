@@ -4,6 +4,24 @@ from numba import njit, prange
 from numpy.random import default_rng
 from scipy import fft, interpolate, optimize
 
+__all__ = [
+    "xconv_fft",
+    "xcorr_fft",
+    "xcorr_lag",
+    "convolve_loop",
+    "convolve",
+    "cross_corr",
+    "envelopes_idx",
+    "sinefunc",
+    "fit_sine",
+    "bin_data_sorted",
+    "bin_data_unsorted",
+    "ppc_sampled",
+    "kde",
+    "ppc_numba",
+    "aligned",
+]
+
 
 def xconv_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
     shape = array_1.size + array_2.size - 1
@@ -163,14 +181,14 @@ def envelopes_idx(
     return lmin, lmax
 
 
-def sinfunc(t, A, w, p, c):
+def sinefunc(t, A, w, p, c):
     return A * np.sin(w * t + p) + c
 
 
 def fit_sine(x, y):
-    popt, _ = optimize.curve_fit(sinfunc, x, y)
+    popt, _ = optimize.curve_fit(sinefunc, x, y)
     A, w, p, c = popt
-    output = sinfunc(x, A, w, p, c)
+    output = sinefunc(x, A, w, p, c)
     return output, popt
 
 
@@ -206,7 +224,7 @@ def bin_data_sorted(data: np.ndarray, bins: np.ndarray):
 
 
 @njit()
-def binned_data_unsorted(data: np.ndarray, bins: np.ndarray, func: callable):
+def bin_data_unsorted(data: np.ndarray, bins: np.ndarray, func: callable):
     binned_data = np.zeros(bins.size - 1)
     for i in range(bins.size - 1):
         indexes = np.where((data >= bins[i]) & (data < bins[i + 1]))

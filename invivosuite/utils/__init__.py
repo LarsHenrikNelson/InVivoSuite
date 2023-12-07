@@ -1,1 +1,2 @@
-from .analysis_funcs import *  # noqa: F401
+from .analysis_funcs import *  # noqa
+from .funcs import *  # noqa

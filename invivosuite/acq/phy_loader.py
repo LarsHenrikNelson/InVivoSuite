@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .spike_metrics import calculate_metrics
+# from .spike_metrics import calculate_metrics
 
 
 class SpikeModel:
@@ -212,16 +212,16 @@ class SpikeModel:
             )
         return best_channel
 
-    def calculate_spk_metrics(self, fs, isi_threshold, min_isi):
-        fs /= 1000
-        labels, m = calculate_metrics(
-            self.spike_times / fs,
-            self.spike_clusters,
-            self.amplitudes,
-            isi_threshold,
-            min_isi,
-        )
-        return labels, m
+    # def calculate_spk_metrics(self, fs, isi_threshold, min_isi):
+    #     fs /= 1000
+    #     labels, m = calculate_metrics(
+    #         self.spike_times / fs,
+    #         self.spike_clusters,
+    #         self.amplitudes,
+    #         isi_threshold,
+    #         min_isi,
+    #     )
+    #     return labels, m
 
 
 def _unwhiten(wmi, x, channel_ids=None):

@@ -9,7 +9,7 @@ from scipy import signal
 from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
-from .utils import envelopes_idx
+from ..utils import envelopes_idx
 
 
 class AcqManager(SpkManager, LFPManager):

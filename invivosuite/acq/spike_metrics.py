@@ -1,31 +1,51 @@
 import numpy as np
+from scipy import stats
 
-from . import utils
+from .. import utils
 
 """These are from 
 https://github.com/AllenInstitute/ecephys_spike_sorting/blob/master/ecephys_spike_sorting/modules/quality_metrics/metrics.py
 I will likely change the histogram based metrics to KDE for better accuracy.
 """
 
+__all__ = ["presence", "firing_rate", "amplitude_cutoff", "isi_violations"]
 
-def presence_ratio(spike_train, min_time, max_time, num_bins=100):
-    """Calculate fraction of time the unit is present within an epoch.
 
-    Inputs:
+def presence(
+    data: np.ndarray, nbins: int, start: int = -1, stop: int = -1, tol=1e-9
+) -> tuple[float, float, float, bool]:
+    """Modified version of AllenInstitutes spike presence. Creates a
+    KDE of the spike indices then runs a regression to see if the
+    data is skewed and a
+
+    Parameters
+    ----------
+    data : np.ndarray
+        _description_
+    nbins : int
+        _description_
+    start : int, optional
+        _description_, by default -1
+    stop : int, optional
+        _description_, by default -1
+    tol : float, optional
+        _description_, by default 1e-9
+
+    Returns
     -------
-    spike_train : array of spike times
-    min_time : minimum time for potential spikes
-    max_time : maximum time for potential spikes
-
-    Outputs:
-    --------
-    presence_ratio : fraction of time bins in which this unit is spiking
-
+    tuple[float, float, float, bool]
+        _description_
     """
-
-    h, b = np.histogram(spike_train, np.linspace(min_time, max_time, num_bins))
-
-    return np.sum(h > 0) / num_bins
+    if start == -1:
+        start = data[0]
+    if stop == -1:
+        stop == data[-1]
+    bins = np.linspace(start, stop, num=nbins)
+    binned = utils.bin_data_sorted(data, bins)
+    x, y = utils.kde(data, tol=1e-9)
+    fit_out = stats.fit(stats.uniform, y)
+    reg_out = stats.linregress(np.arange(binned.size), binned)
+    return np.sum(binned > 0) / nbins, reg_out.slope, reg_out.pvalue, fit_out.success
 
 
 def firing_rate(spike_train, min_time=None, max_time=None):
@@ -84,10 +104,10 @@ def amplitude_cutoff(
 
     """
 
-    # h, b = np.histogram(amplitudes, num_histogram_bins, density=True)
+    h, b = np.histogram(amplitudes, tol, density=True)
 
     # pdf = ndimage.gaussian_filter1d(h, histogram_smoothing_value)
-    # support = b[:-1]
+    support = b[:-1]
     x, pdf = utils.kde(amplitudes, kernel, bw_method, tol)
 
     peak_index = np.argmax(pdf)
@@ -139,120 +159,3 @@ def isi_violations(spike_train, min_time, max_time, isi_threshold, min_isi=0):
     fpRate = violation_rate / total_rate
 
     return fpRate, num_violations
-
-
-def calculate_isi_violations(
-    spike_times, spike_clusters, total_units, isi_threshold, min_isi
-):
-    cluster_ids = np.unique(spike_clusters)
-    viol_rates = np.zeros((total_units,))
-    for idx, cluster_id in enumerate(cluster_ids):
-        for_this_cluster = spike_clusters == cluster_id
-        viol_rates[idx], num_violations = isi_violations(
-            spike_times[for_this_cluster],
-            min_time=np.min(spike_times),
-            max_time=np.max(spike_times),
-            isi_threshold=isi_threshold,
-            min_isi=min_isi,
-        )
-
-    return viol_rates
-
-
-def calculate_presence_ratio(spike_times, spike_clusters, total_units):
-    cluster_ids = np.unique(spike_clusters)
-    ratios = np.zeros((total_units,))
-    for idx, cluster_id in enumerate(cluster_ids):
-        for_this_cluster = spike_clusters == cluster_id
-        ratios[idx] = presence_ratio(
-            spike_times[for_this_cluster],
-            min_time=np.min(spike_times),
-            max_time=np.max(spike_times),
-        )
-
-    return ratios
-
-
-def calculate_firing_rate(
-    spike_times, spike_clusters, total_units, min_time=-1, max_time=-1
-):
-    cluster_ids = np.unique(spike_clusters)
-    firing_rates = np.zeros((total_units,))
-    if min_time == -1:
-        min_time = np.min(spike_times)
-    if max_time == -1:
-        max_time = np.max(spike_times)
-
-    for idx, cluster_id in enumerate(cluster_ids):
-        for_this_cluster = spike_clusters == cluster_id
-        firing_rates[idx] = firing_rate(
-            spike_times[for_this_cluster],
-            min_time=np.min(spike_times),
-            max_time=np.max(spike_times),
-        )
-
-    return firing_rates
-
-
-def calculate_amplitude_cutoff(spike_clusters, amplitudes, total_units):
-    cluster_ids = np.unique(spike_clusters)
-    amplitude_cutoffs = np.zeros((total_units,))
-    for idx, cluster_id in enumerate(cluster_ids):
-        for_this_cluster = spike_clusters == cluster_id
-        amplitude_cutoffs[idx] = amplitude_cutoff(amplitudes[for_this_cluster])
-    return amplitude_cutoffs
-
-
-def calculate_metrics(
-    spike_times, spike_clusters, amplitudes, isi_threshold, min_isi, acqs
-):
-    """Calculate metrics for all units on one probe
-
-    Inputs:
-    ------
-    spike_times : numpy.ndarray (num_spikes x 0)
-        Spike times in seconds (same timebase as epochs)
-    spike_clusters : numpy.ndarray (num_spikes x 0)
-        Cluster IDs for each spike
-    spike_templates : numpy.ndarray (num_spikes x 0)
-        Original template IDs for each spike time
-    amplitudes : numpy.ndarray (num_spikes x 0)
-        Amplitude value for each spike time
-    params : dict of parameters
-        'isi_threshold' : minimum time for isi violations
-
-
-    Outputs:
-    --------
-    metrics : pandas.DataFrame
-        one column for each metric
-        one row per unit per epoch
-
-    """
-
-    total_units = len(np.unique(spike_clusters))
-    metrics = np.zeros((total_units, 5))
-    labels = [
-        "isi_violations",
-        "presence_ratio",
-        "firing_rate",
-        "amplitude_cutoff",
-        "cluster_ids",
-    ]
-
-    metrics[:, 0] = calculate_isi_violations(
-        spike_times,
-        spike_clusters,
-        total_units,
-        isi_threshold,
-        min_isi,
-    )
-
-    metrics[:, 1] = calculate_presence_ratio(spike_times, spike_clusters, total_units)
-
-    metrics[:, 2] = calculate_firing_rate(spike_times, spike_clusters, total_units)
-
-    metrics[:, 3] = calculate_amplitude_cutoff(spike_clusters, amplitudes, total_units)
-    metrics[:, 4] = np.unique(spike_clusters)
-
-    return labels, metrics
