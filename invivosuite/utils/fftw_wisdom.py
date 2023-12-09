@@ -6,10 +6,10 @@ from ..utils import config
 
 
 __all__ = [
-    "import_wisdom",
-    "save_wisdom",
-    "load_wisdom",
     "FFTDATA",
+    "import_wisdom",
+    "load_wisdom",
+    "save_wisdom",
 ]
 
 
@@ -37,7 +37,8 @@ def create_wisdom(inputs: list[FFTDATA], outputs: list[str]):
     return pyfftw.export_wisdom()
 
 
-def save_wisdom(wisdom):
+def save_wisdom():
+    wisdom = pyfftw.export_wisdom()
     save_path = Path(f"{config.PROG_DIR}")
     for index, i in enumerate(wisdom):
         with open(save_path / f"{index}_wisdom", "wb") as f:

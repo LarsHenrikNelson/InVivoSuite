@@ -10,10 +10,10 @@ from numba import njit, prange
 # Reimplemented fcwt in "pure" python as a learning resource
 
 __all__ = [
-    "fcwt_wavelet",
     "daughter_wavelet_multiplication",
+    "fcwt_wavelet",
     "fft_normalize",
-    "fcwt_cwt",
+    "pyfcwt_cwt",
 ]
 
 
@@ -103,7 +103,7 @@ def fft_normalize(transform, size):
     transform / size
 
 
-def fcwt_cwt(
+def pyfcwt_cwt(
     input_data: np.ndarray,
     scales: np.ndarray,
     sigma,

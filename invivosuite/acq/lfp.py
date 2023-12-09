@@ -17,25 +17,25 @@ from scipy import fft, interpolate, signal
 from ..spectral import multitaper
 
 __all__ = [
-    "get_ave_band_power",
-    "get_max_from_burst",
-    "split_at_zeros",
+    "burst_stats",
     "calc_all_freq_corrs",
     "corr_freqs",
     "create_all_freq_windows",
-    "get_freq_window",
-    "synchrony_cwt",
-    "phase_synchrony",
-    "phase_discontinuity_index",
-    "stepped_cwt_cohy",
+    "derivative_baseline",
     "find_bursts",
-    "short_time_energy",
-    "stationary_spectrum",
+    "get_ave_band_power",
+    "get_freq_window",
+    "get_max_from_burst",
     "get_pairwise_coh",
     "kde_baseline",
-    "derivative_baseline",
-    "burst_stats",
+    "phase_discontinuity_index",
+    "phase_synchrony",
     "seg_pxx",
+    "short_time_energy",
+    "split_at_zeros",
+    "stationary_spectrum",
+    "stepped_cwt_cohy",
+    "synchrony_cwt",
 ]
 
 Windows = Literal[

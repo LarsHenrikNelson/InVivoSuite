@@ -15,6 +15,12 @@ from .pypl2 import PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 
+__all__ = [
+    "load_acq",
+    "load_hdf5_acqs",
+    "load_pl2_acqs",
+]
+
 
 def load_pl2_acqs(
     pl2_path: str,
@@ -137,15 +143,3 @@ def _path_checker(file_path: str, save_path: str):
             return False
     else:
         return False
-
-
-def process_acqs(acqs):
-    for i in acqs:
-        i.create_lfp()
-        i.create_spike()
-
-
-if __name__ == "__main__":
-    load_pl2_acqs()
-    load_hdf5_acqs()
-    load_acq()
