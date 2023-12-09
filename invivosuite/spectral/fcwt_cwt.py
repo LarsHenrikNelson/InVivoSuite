@@ -1,12 +1,24 @@
+import os
+
 import numpy as np
+
+# from scipy import fft
+import pyfftw
 from numba import njit, prange
-from scipy import fft
+
 
 # Reimplemented fcwt in "pure" python as a learning resource
 
+__all__ = [
+    "fcwt_wavelet",
+    "daughter_wavelet_multiplication",
+    "fft_normalize",
+    "fcwt_cwt",
+]
+
 
 @njit(cache=True, parallel=True)
-def gen_wavelet(mu, size, scale=2.0):
+def fcwt_wavelet(mu, size, scale=2.0):
     toradians = (2 * np.pi) / size
     norm = np.sqrt(2 * np.pi) * np.power(np.pi, -1 / 4)
 
@@ -21,8 +33,6 @@ def gen_wavelet(mu, size, scale=2.0):
 @njit(cache=True, parallel=True)
 def daughter_wavelet_multiplication(
     input_fft: np.ndarray,
-    output: np.ndarray,
-    output_index: int,
     mother: np.ndarray,
     scale: float,
     threads: int = 1,
@@ -38,8 +48,6 @@ def daughter_wavelet_multiplication(
         FFT of the signal of interest, must be a 1D signal
     output : np.ndarray
         Pre allocated output array
-    output_index : int
-        Index for the current wavelet, input convolution
     mother : np.ndarray
         Mother wavelet
     scale : float
@@ -62,29 +70,22 @@ def daughter_wavelet_multiplication(
     mm = isizef - 1
     s1 = isize - 1
 
-    # for q1 in prange(0, int(batchsize)):
-    #     q = float(q1)
-    #     tmp = min(mm, step * q)
+    output = np.zeros(input_fft.size, dtype=np.complex128)
 
-    #     output[output_index, q1] = input_fft[q1].real * mother[int(tmp)] + (
-    #         input_fft[q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
-    #     )
-    if not imaginary:
-        output[output_index, 0:batchsize] = (
-            input_fft[0:batchsize] * mother[0:batchsize:step]
-        )
-    else:
-        output[output_index, 0:batchsize] = input_fft[0:batchsize] * np.conjugate(
-            mother[0:batchsize:step]
+    for q1 in prange(0, int(batchsize)):
+        tmp = min(mm, step * q1)
+
+        output[q1] = input_fft[q1].real * mother[int(tmp)] + (
+            input_fft[q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
         )
     if doublesided:
         for q1 in prange(0, int(batchsize)):
-            q = float(q1)
-            tmp = min(mm, step * q)
+            tmp = min(mm, step * q1)
 
-            output[output_index, s1 - q1] = input_fft[s1 - q1].real * mother[
-                int(tmp)
-            ] + input_fft[s1 - q1].imag * mother[int(tmp)] * (1j - 2 * imaginary)
+            output[s1 - q1] = input_fft[s1 - q1].real * mother[int(tmp)] + input_fft[
+                s1 - q1
+            ].imag * mother[int(tmp)] * (1j - 2 * imaginary)
+    return output
 
 
 @njit(cache=True, parallel=True)
@@ -103,34 +104,52 @@ def fft_normalize(transform, size):
 
 
 def fcwt_cwt(
-    input: np.ndarray,
+    input_data: np.ndarray,
     scales: np.ndarray,
     sigma,
+    threads: int = -1,
     norm: bool = True,
 ):
-    size = input.size
+    if threads == -1:
+        threads = os.cpu_count() // 2
+    size = input_data.size
     newsize = 1 << int(np.ceil(np.log2(size)))
 
-    Ihat = fft.fft(input, n=newsize)
+    # Ihat = fft.fft(input, n=newsize)
 
     # Only need for rfft or if using fftw
-    # Ihat = np.zeros(newsize, dtype=np.complex128)
-    # temp = fft.fft(input, n=newsize)
-    # Ihat[:temp.size] = temp
-    # for i in range(1, newsize>>1):
-    #     Ihat[newsize-i] = (Ihat[i].real, Ihat[i].imag)
+    a = pyfftw.empty_aligned(newsize, dtype="float64")
+    b = pyfftw.empty_aligned(newsize // 2 + 1, dtype="complex128")
+    Ihat = np.zeros(newsize, dtype=complex)
+    a[:size] = input_data
 
-    mother = gen_wavelet(sigma, newsize)
+    forward_fft = pyfftw.FFTW(a, b, threads=threads)
+    forward_fft()
 
-    temp = np.zeros((scales.size, newsize), dtype=np.complex128)
+    Ihat[: newsize // 2 + 1] = b
+    for i in prange(1, newsize >> 1):
+        Ihat[newsize - i] = Ihat[i].real + Ihat[i].imag * -1j
+
+    mother = fcwt_wavelet(sigma, newsize)
+
     # last_scale = True
+
+    c = pyfftw.empty_aligned(newsize, dtype="complex128")
+    d = pyfftw.empty_aligned(newsize, dtype="complex128")
+    backward_fft = pyfftw.FFTW(c, d, direction="FFTW_BACKWARD", threads=threads)
+
+    cwt = np.zeros((scales.size, size), dtype=np.complex128)
     for index, s in enumerate(scales):
         # if s == scales[-1]:
         #     last_scale = True
-        daughter_wavelet_multiplication(Ihat, temp, index, mother, s)
-    transform = fft.ifft(temp)[:, :size]
+        output = daughter_wavelet_multiplication(Ihat, mother, s)
+        c[:] = output
+        backward_fft()
+        cwt[index] = d[:size]
+
+    # cwt = fft.ifft(temp)[:, :size]
 
     if norm:
-        fft_normalize(transform, newsize)
+        fft_normalize(cwt, newsize)
 
-    return transform
+    return cwt
