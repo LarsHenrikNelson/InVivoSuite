@@ -8,7 +8,12 @@ https://github.com/AllenInstitute/ecephys_spike_sorting/blob/master/ecephys_spik
 I will likely change the histogram based metrics to KDE for better accuracy.
 """
 
-__all__ = ["presence", "firing_rate", "amplitude_cutoff", "isi_violations"]
+__all__ = [
+    "amplitude_cutoff",
+    "firing_rate",
+    "isi_violations",
+    "presence",
+]
 
 
 def presence(

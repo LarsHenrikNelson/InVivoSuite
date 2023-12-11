@@ -8,3 +8,6 @@ from .acq import (
 )
 from . import utils  # noqa: F401
 from . import spectral  # noqa: F401
+
+
+utils.fftw_wisdom.load_wisdom()

@@ -50,7 +50,6 @@ def run_T(
             diff = spk_train[i + 1] - spk_train[i]
             if diff < (2 * dt):
                 time_A = time_A - 2 * dt + diff
-            i += 1
         if (spk_train[0] - start) < dt:
             time_A = time_A - start + spk_train[0] - dt
         if (stop - spk_train[-1]) < dt:
@@ -58,6 +57,7 @@ def run_T(
     return time_A
 
 
+@njit()
 def sttc(
     spk_1: np.ndarray,
     spk_2: np.ndarray,

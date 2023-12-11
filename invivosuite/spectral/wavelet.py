@@ -8,11 +8,11 @@ from scipy import fft
 
 # import pyfftw
 
-__all__ = ["create_wavelets", "compute_cwt", "gen_cwt", "s_to_f", "f_to_s"]
+__all__ = ["mne_wavelets", "mne_cwt", "gen_cwt", "s_to_f", "f_to_s"]
 
 
 @njit(cache=True)
-def create_wavelets(
+def mne_wavelets(
     freqs, fs, n_cycles, sigma=-1, zero_mean: bool = True, order: Literal[1, 2] = 1
 ):
     """Compute Morlet wavelets for the given frequency range.
@@ -147,7 +147,7 @@ def gen_cwt(
     return output
 
 
-def compute_cwt(
+def mne_cwt(
     array: np.ndarray,
     f0: float,
     f1: float,
@@ -169,7 +169,7 @@ def compute_cwt(
     else:
         freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=num)
 
-    wavelets = create_wavelets(
+    wavelets = mne_wavelets(
         freqs=freqs,
         fs=fs,
         n_cycles=n_cycles,
