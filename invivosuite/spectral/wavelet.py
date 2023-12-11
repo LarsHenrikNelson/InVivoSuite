@@ -1,12 +1,13 @@
 import os
 from typing import Literal, Union
 
-import joblib
+# import joblib
 import numpy as np
 from numba import njit
-from scipy import fft
 
-# import pyfftw
+# from scipy import fft
+
+from ..spectral import fft
 
 __all__ = ["mne_wavelets", "mne_cwt", "gen_cwt", "s_to_f", "f_to_s"]
 
@@ -90,8 +91,14 @@ def mne_wavelets(
     return wave
 
 
-def simple_cwt(wavelet, array_fft, array_size, nfft):
-    ret = fft.ifft(fft.fft(wavelet, nfft) * array_fft)
+def simple_cwt(
+    wavelet: np.ndarray,
+    array_fft: np.ndarray,
+    array_size: int,
+    nfft: int,
+    threads: int = -1,
+):
+    ret = fft.ifft(fft.c2c_fft(wavelet, nfft=nfft) * array_fft, threads=1)
     ret = ret[: wavelet.size + array_size - 1]
 
     startind = (ret.size - array_size) // 2
@@ -101,7 +108,10 @@ def simple_cwt(wavelet, array_fft, array_size, nfft):
 
 
 def gen_cwt(
-    array: np.ndarray, wavelets: Union[list, np.ndarray], skip_fft: bool = False
+    array: np.ndarray,
+    wavelets: Union[list, np.ndarray],
+    skip_fft: bool = False,
+    threads=-1,
 ):
     if isinstance(wavelets, list):
         num = len(wavelets)
@@ -112,9 +122,7 @@ def gen_cwt(
     conv_size = input_size + np.max([i.size for i in wavelets]) - 1
     nfft = 1 << int(np.ceil(np.log2(conv_size)))
 
-    workers = os.cpu_count() // 2
-    # array_fft = pyfftw.interfaces.scipy_fft.fft(array, n=nfft, workers=workers)
-    array_fft = fft.fft(array, n=nfft, workers=workers)
+    array_fft = fft.r2c_fft(array, nfft=nfft, threads=threads)
     output = np.zeros((num, input_size), dtype=np.complex128)
 
     # if not skip_fft:
@@ -127,22 +135,22 @@ def gen_cwt(
 
     # else:
     #     fft_Ws = fft.ifft(wavelets * array)
-    # for index, ws in enumerate(wavelets):
-    #     # ret = pyfftw.interfaces.scipy_fft.fft(output_f * array_fft, workers=workers)
-    #     ret = fft_Ws[index, : ws.size + input_size - 1]
+    for index, ws in enumerate(wavelets):
+        ret = fft.ifft(fft.c2c_fft(ws, nfft=nfft) * array_fft, threads=1)
+        ret = ret[: ws.size + input_size - 1]
 
-    #     startind = (ret.size - input_size) // 2
-    #     endind = startind + input_size
+        startind = (ret.size - input_size) // 2
+        endind = startind + input_size
 
-    #     output[index, :] = ret[startind:endind]
+        output[index, :] = ret[startind:endind]
 
-    if not skip_fft:
-        output = np.array(
-            joblib.Parallel(n_jobs=workers, prefer="threads")(
-                joblib.delayed(simple_cwt)(i, array_fft, input_size, nfft)
-                for i in wavelets
-            )
-        )
+    # if not skip_fft:
+    #     output = np.array(
+    #         joblib.Parallel(n_jobs=workers, prefer="threads")(
+    #             joblib.delayed(simple_cwt)(i, array_fft, input_size, nfft)
+    #             for i in wavelets
+    #         )
+    #     )
 
     return output
 
@@ -158,6 +166,7 @@ def mne_cwt(
     sigma: int = -1,
     zero_mean: bool = True,
     order: Literal[1, 2] = 2,
+    threads: int = -1,
 ):
     if not isinstance(n_cycles, int):
         n_cycles = np.array(n_cycles).ravel()
@@ -178,7 +187,10 @@ def mne_cwt(
         order=order,
     )
 
-    output = gen_cwt(array, wavelets, skip_fft=False)
+    if threads == -1:
+        threads = os.cpu_count() // 2
+
+    output = gen_cwt(array, wavelets, skip_fft=False, threads=threads)
 
     return freqs, output
 

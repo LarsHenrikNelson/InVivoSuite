@@ -5,7 +5,7 @@ import numpy as np
 import pyfftw
 
 
-__all__ = ["rfft", "fft", "ifft"]
+__all__ = ["r2c_rfft", "r2c_fft", "c2c_fft", "ifft"]
 
 
 def next_power_two(data: np.ndarray):
@@ -19,20 +19,20 @@ def norm_fft(array: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none"):
         array /= array.size
 
 
-def rfft(
+def r2c_rfft(
     data: np.ndarray,
-    np2: bool = True,
+    nfft: int = -1,
     norm: Literal["none", "sqrt", "n"] = "none",
     threads: int = -1,
 ):
-    if np2:
-        newsize = 1 << int(np.ceil(np.log2(data.size)))
+    if nfft == -1:
+        nfft = 1 << int(np.ceil(np.log2(data.size)))
     else:
-        newsize = data.size
+        nfft = data.size
     if threads == -1:
         threads = os.cpu_count() // 2
-    input_array = pyfftw.empty_aligned(newsize, dtype="float64")
-    output_array = pyfftw.empty_aligned(newsize // 2 + 1, dtype="complex128")
+    input_array = pyfftw.empty_aligned(nfft, dtype="float64")
+    output_array = pyfftw.empty_aligned(nfft // 2 + 1, dtype="complex128")
     input_array[: data.size] = data
     forward_fft = pyfftw.FFTW(input_array, output_array, threads=threads)
     forward_fft()
@@ -42,30 +42,49 @@ def rfft(
     return output_array
 
 
-def fft(
+def r2c_fft(
     data: np.ndarray,
-    np2: bool = True,
+    nfft: int = -1,
     norm: Literal["none", "sqrt", "n"] = "none",
     threads: int = -1,
 ):
-    if np2:
-        newsize = 1 << int(np.ceil(np.log2(data.size)))
-    else:
-        newsize = data.size
+    if nfft == -1:
+        nfft = 1 << int(np.ceil(np.log2(data.size)))
     if threads == -1:
         threads = os.cpu_count() // 2
-    input_array = pyfftw.empty_aligned(newsize, dtype="float64")
-    temp = pyfftw.empty_aligned(newsize // 2 + 1, dtype="complex128")
+    input_array = pyfftw.empty_aligned(nfft, dtype="float64")
+    temp = pyfftw.empty_aligned(nfft // 2 + 1, dtype="complex128")
     forward_fft = pyfftw.FFTW(input_array, temp, threads=threads)
     input_array[: data.size] = data
     forward_fft()
-    output_array = np.zeros(newsize, dtype=complex)
-    output_array[: newsize // 2 + 1] = temp
+    output_array = np.zeros(nfft, dtype=complex)
+    output_array[: nfft // 2 + 1] = temp
 
-    # for i in range(1, newsize >> 1):
-    #     output_array[newsize - i] = output_array[i].real + output_array[i].imag * -1j
+    # for i in range(1, nfft >> 1):
+    #     output_array[nfft - i] = output_array[i].real + output_array[i].imag * -1j
 
-    output_array[newsize // 2 :] = np.conjugate(temp[1:][::-1])
+    output_array[(nfft + 1) // 2 :] = np.conjugate(temp[1:][::-1])
+
+    norm_fft(output_array, norm=norm)
+
+    return output_array
+
+
+def c2c_fft(
+    data: np.ndarray,
+    nfft: int = -1,
+    norm: Literal["none", "sqrt", "n"] = "none",
+    threads: int = -1,
+):
+    if nfft == -1:
+        nfft = 1 << int(np.ceil(np.log2(data.size)))
+    if threads == -1:
+        threads = os.cpu_count() // 2
+    input_array = pyfftw.empty_aligned(nfft, dtype="complex128")
+    output_array = pyfftw.empty_aligned(nfft, dtype="complex128")
+    forward_fft = pyfftw.FFTW(input_array, output_array, threads=threads)
+    input_array[: data.size] = data
+    forward_fft()
 
     norm_fft(output_array, norm=norm)
 
