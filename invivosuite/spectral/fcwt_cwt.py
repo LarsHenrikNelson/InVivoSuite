@@ -127,8 +127,10 @@ def pyfcwt_cwt(
     forward_fft()
 
     Ihat[: newsize // 2 + 1] = b
-    for i in prange(1, newsize >> 1):
-        Ihat[newsize - i] = Ihat[i].real + Ihat[i].imag * -1j
+    # for i in range(1, newsize >> 1):
+    #     Ihat[newsize - i] = Ihat[i].real + Ihat[i].imag * -1j
+
+    Ihat[newsize // 2 :] = np.conjugate(b[1:][::-1])
 
     mother = fcwt_wavelet(sigma, newsize)
 

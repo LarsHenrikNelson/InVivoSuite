@@ -7,6 +7,7 @@ from ..utils import config
 
 __all__ = [
     "FFTDATA",
+    "get_wisdom",
     "import_wisdom",
     "load_wisdom",
     "save_wisdom",
@@ -34,6 +35,9 @@ def create_wisdom(inputs: list[FFTDATA], outputs: list[str]):
             b = pyfftw.empty_aligned(i.length, dtype="complex128")
 
             fft_object = pyfftw.FFTW(a, b)  # noqa
+
+
+def get_wisdom():
     return pyfftw.export_wisdom()
 
 
