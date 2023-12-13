@@ -73,6 +73,14 @@ class AcqManager(SpkManager, LFPManager):
         return channels
 
     @property
+    def start(self):
+        return self.get_file_attr("start")
+
+    @property
+    def end(self):
+        return self.get_file_attr("end")
+
+    @property
     def shape(self):
         self.open()
         shape = self.file["acqs"].shape
@@ -273,6 +281,41 @@ class AcqManager(SpkManager, LFPManager):
             )
         self.close()
         return acq
+
+    def get_multichans(
+        self,
+        chan: int,
+        nchans: int,
+        acq_type: Literal["spike", "lfp", "raw"],
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+    ):
+        total_chans = 64
+        start_chan = chan - nchans
+        end_chan = chan + nchans + 1
+        if start_chan < 0:
+            start_chan = 0
+        if end_chan >= total_chans:
+            end_chan = total_chans - 1
+        multi_acq = np.zeros(
+            (end_chan - start_chan + 1, int(self.end() - self.start()))
+        )
+        index = 0
+        for i in range(start_chan, end_chan + 1):
+            multi_acq[index] = self.acq(
+                acq_num=i,
+                acq_type="spike",
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+            index += 1
+        return multi_acq
 
     def envelope(self, acq: np.ndarray, interp: bool = True):
         env_min, env_max = envelopes_idx(acq, interp=interp)
