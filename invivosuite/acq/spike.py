@@ -5,10 +5,56 @@ from typing import Union
 import fcwt
 import numpy as np
 from KDEpy import TreeKDE
-from numba import njit
-from scipy import signal
-from scipy import fft
+from numba import njit, prange
+from scipy import fft, signal
 from sklearn.decomposition import PCA
+
+__all__ = [
+    "bin_spikes",
+    "create_binary_spikes",
+    "extract_spikes_multi_channel",
+    "extract_spikes_single_channel",
+    "find_bursts",
+    "get_burst_data",
+    "max_int_bursts",
+    "whitening_matrix",
+]
+
+
+@njit(parallel=True, cache=True)
+def extract_spikes_single_channel(indexes, acq, size=45):
+    m = np.zeros((indexes.size, size * 2))
+    for i in prange(indexes.size):
+        start = int(indexes[i] - size)
+        end = int(indexes[i] + size)
+        if start < 0:
+            start = 0
+        if acq.size < end:
+            end = acq.size
+        b = acq[start:end]
+        m[i, :] = b
+    return m
+
+
+@njit()
+def extract_spikes_multi_channel(indexes, acqs, size=45):
+    if acqs.ndim == 1:
+        outsize = size * 2
+        acq_n = acqs.size
+    else:
+        outsize = acqs.shape[0] * size * 2
+        acq_n = acqs.shape[1]
+    m = np.zeros((indexes.size, outsize))
+    for i in prange(indexes.size):
+        start = int(indexes[i] - size)
+        end = int(indexes[i] + size)
+        if start < 0:
+            start = 0
+        if acq_n < end:
+            end = acq_n
+        b = acqs[:, start:end]
+        m[i, :] = b.flatten()
+    return m
 
 
 @njit()
