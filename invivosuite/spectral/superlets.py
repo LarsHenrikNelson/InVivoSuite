@@ -17,6 +17,7 @@ from scipy.signal import fftconvolve
 MORLET_SD_SPREAD = 6
 
 # the length, in units of standard deviation, of the actual support window of the Morlet
+# assumes a fixed sigma wavelet
 MORLET_SD_FACTOR = 2.5
 
 
