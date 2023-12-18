@@ -4,6 +4,7 @@ from typing import Literal, Union
 # import joblib
 import numpy as np
 from numba import njit
+import pyfftw
 
 # from scipy import fft
 
@@ -11,10 +12,23 @@ from ..spectral import fft
 
 __all__ = ["mne_wavelets", "mne_cwt", "gen_cwt", "s_to_f", "f_to_s"]
 
+"""
+This is  modified version of MNE tfr: 
+https://github.com/mne-tools/mne-python/blob/main/mne/time_frequency/tfr.py
+with some modifications such as allowing the guassian sd to be modified
+and the normalization order to be change to 1 or 2.
+"""
+
 
 @njit(cache=True)
 def mne_wavelets(
-    freqs, fs, n_cycles, sigma=-1, zero_mean: bool = True, order: Literal[1, 2] = 1
+    freqs,
+    fs,
+    n_cycles,
+    sigma=-1,
+    zero_mean: bool = True,
+    gauss_sd=5.0,
+    order: Literal[1, 2] = 1,
 ):
     """Compute Morlet wavelets for the given frequency range.
 
@@ -54,8 +68,10 @@ def mne_wavelets(
             sigma_t = n_cycles[index] / (2.0 * np.pi * sigma)
 
         # Go 5 STDEVs out on each side
-        num_values = int((5.0 * sigma_t) // inv_fs)
+        num_values = int((gauss_sd * sigma_t) // inv_fs)
         t = np.arange(-num_values, num_values + 1) / fs
+
+        # Alt eq if not using fixed sigma: num_values = int((2*np.pi*freqs[i]/fs)*5.0)
 
         oscillation = np.exp(2.0 * 1j * np.pi * freqs[i] * t)
 
@@ -109,21 +125,16 @@ def simple_cwt(
 
 def gen_cwt(
     array: np.ndarray,
+    output: np.ndarray,
     wavelets: Union[list, np.ndarray],
     skip_fft: bool = False,
     threads=-1,
 ):
-    if isinstance(wavelets, list):
-        num = len(wavelets)
-    else:
-        num = wavelets.shape[0]
-
     input_size = array.size
     conv_size = input_size + np.max([i.size for i in wavelets]) - 1
     nfft = 1 << int(np.ceil(np.log2(conv_size)))
 
     array_fft = fft.r2c_fft(array, nfft=nfft, threads=threads)
-    output = np.zeros((num, input_size), dtype=np.complex128)
 
     # if not skip_fft:
     #     fft_Ws = np.array(
@@ -150,9 +161,6 @@ def gen_cwt(
     #             joblib.delayed(simple_cwt)(i, array_fft, input_size, nfft)
     #             for i in wavelets
     #         )
-    #     )
-
-    return output
 
 
 def mne_cwt(
@@ -190,9 +198,70 @@ def mne_cwt(
     if threads == -1:
         threads = os.cpu_count() // 2
 
-    output = gen_cwt(array, wavelets, skip_fft=False, threads=threads)
+    output = np.zeros((len(wavelets), array.size), dtype=np.complex128)
+
+    gen_cwt(array, output, wavelets, skip_fft=False, threads=threads)
 
     return freqs, output
+
+
+class mneCWT:
+    """mneCWT class to reuse the output buffer and wavelets."""
+
+    def __init__(
+        self,
+        input_size: int,
+        f0: float,
+        f1: float,
+        fs: float,
+        num: int,
+        scaling: str = "linear",
+        n_cycles: int = 7,
+        sigma: int = -1,
+        zero_mean: bool = True,
+        order: Literal[1, 2] = 2,
+        threads: int = -1,
+    ):
+        self.input_size = input_size
+        self.f0 = f0
+        self.f1 = f1
+        self.fs = fs
+        self.num = num
+        self.scaling = scaling
+        self.n_cycles = n_cycles
+        self.sigma = sigma
+        self.zero_mean = zero_mean
+        self.order = order
+        self.threads = threads
+        if self.threads == -1:
+            self.threads = os.cpu_count() // 2
+
+    def create_wavelets(self):
+        self.wavelets = mne_wavelets(
+            self.freqs,
+            self.fs,
+            self.n_cycles,
+            self.sigma,
+            self.zero_mean,
+            self.gauss_sd,
+            self.order,
+        )
+        nfft = 1 << int(np.ceil(np.log2(self.input_size)))
+        self.output = np.zeros((self.num, self.input_size), dtype=np.complex128)
+
+        # Somewhat risky to do but this expects wavelets to be in reverse order
+        # so that input data is fully erased.
+        self.input_array = pyfftw.empty_aligned(nfft, dtype="complex128")
+        self.output_array = pyfftw.empty_aligned(nfft, dtype="complex128")
+        self.forward_fft = pyfftw.FFTW(
+            self.input_array, self.output_array, threads=self.threads
+        )
+
+    def cwt(self, data):
+        self.input_array[: self.input] = data
+        self.forward_fft()
+
+        return self.output
 
 
 def get_support(fb, scale):

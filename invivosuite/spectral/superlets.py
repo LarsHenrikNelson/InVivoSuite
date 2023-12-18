@@ -27,6 +27,7 @@ def computeWaveletSize(fc, nc, fs):
         fc - center frequency in Hz
         nc - number of cycles
         fs - sampling rate in Hz
+
     """
     sd = (nc / 2) * (1 / fc) / MORLET_SD_FACTOR
     return int(2 * np.floor(np.round(sd * fs * MORLET_SD_SPREAD) / 2) + 1)
@@ -278,10 +279,6 @@ def superlets(data, fs, foi, c1, ord):
 # superlets.py has been updated to contain a class, to be instantiated once for multiple superlet transforms
 # alternatively, the function "superlet" can be used to compute the superlet transform for one single batch of data
 #
-
-
-import numpy as np
-from scipy.signal import fftconvolve
 
 
 def superlet(
