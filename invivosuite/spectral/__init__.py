@@ -4,3 +4,4 @@ from .wavelet import *  # noqa: F403
 from .fcwt_cwt import *  # noqa: F403
 from . import fft  # noqa: F401
 from .fftw_wisdom import *  # noqa:F403
+from . import superlets  # noqa: F401

@@ -91,12 +91,39 @@ def c2c_fft(
     return output_array
 
 
-def ifft(data: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none", threads=-1):
+def c2c_ifft(data: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none", threads=-1):
     norm_fft(data, norm=norm)
     if threads == -1:
         threads = os.cpu_count() // 2
     c = pyfftw.empty_aligned(data.size, dtype="complex128")
     d = pyfftw.empty_aligned(data.size, dtype="complex128")
+    c[:] = data
+    backward_fft = pyfftw.FFTW(c, d, direction="FFTW_BACKWARD", threads=threads)
+    backward_fft()
+    return d
+
+
+def c2r_ifft(data: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none", threads=-1):
+    norm_fft(data, norm=norm)
+    if threads == -1:
+        threads = os.cpu_count() // 2
+    input_size = (data.size // 2) + 1
+    c = pyfftw.empty_aligned(input.size, dtype="complex128")
+    d = pyfftw.empty_aligned((input_size - 1) * 2, dtype="float64")
+    c[:] = data[:input_size]
+    backward_fft = pyfftw.FFTW(c, d, direction="FFTW_BACKWARD", threads=threads)
+    backward_fft()
+    return d
+
+
+def c2r_rifft(
+    data: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none", threads=-1
+):
+    norm_fft(data, norm=norm)
+    if threads == -1:
+        threads = os.cpu_count() // 2
+    c = pyfftw.empty_aligned(data.size, dtype="complex128")
+    d = pyfftw.empty_aligned((data.size - 1) * 2, dtype="float64")
     c[:] = data
     backward_fft = pyfftw.FFTW(c, d, direction="FFTW_BACKWARD", threads=threads)
     backward_fft()

@@ -61,22 +61,23 @@ def mne_wavelets(
     inv_fs = 1.0 / fs
     index = 0
     wave = []
-    for i in range(freqs.size):
+    for fc in freqs:
         if sigma == -1:
-            sigma_t = n_cycles[index] / (2.0 * np.pi * freqs[i])
+            sigma_t = n_cycles[index] / (2.0 * np.pi * fc)
         else:
             sigma_t = n_cycles[index] / (2.0 * np.pi * sigma)
 
         # Go 5 STDEVs out on each side
         num_values = int((gauss_sd * sigma_t) // inv_fs)
+
+        # Alt eq if not using fixed sigma: num_values = int((2*np.pi*fc/fs)*5.0)
+
         t = np.arange(-num_values, num_values + 1) / fs
 
-        # Alt eq if not using fixed sigma: num_values = int((2*np.pi*freqs[i]/fs)*5.0)
-
-        oscillation = np.exp(2.0 * 1j * np.pi * freqs[i] * t)
+        oscillation = np.exp(2.0 * 1j * np.pi * fc * t)
 
         if zero_mean:
-            real_offset = np.exp(-2 * (np.pi * freqs[i] * sigma_t) ** 2)
+            real_offset = np.exp(-2 * (np.pi * fc * sigma_t) ** 2)
             oscillation -= real_offset
         gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
         oscillation *= gaussian_env

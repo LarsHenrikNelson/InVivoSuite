@@ -11,6 +11,7 @@
 
 
 import numpy as np
+from numba import njit
 from scipy.signal import fftconvolve
 
 # spread, in units of standard deviation, of the Gaussian window of the Morlet wavelet
@@ -21,33 +22,34 @@ MORLET_SD_SPREAD = 6
 MORLET_SD_FACTOR = 2.5
 
 
-def computeWaveletSize(fc, nc, fs):
-    """
-    Compute the size in samples of a morlet wavelet.
-    Arguments:
-        fc - center frequency in Hz
-        nc - number of cycles
-        fs - sampling rate in Hz
+# def computeWaveletSize(fc, nc, fs):
+#     """
+#     Compute the size in samples of a morlet wavelet.
+#     Arguments:
+#         fc - center frequency in Hz
+#         nc - number of cycles
+#         fs - sampling rate in Hz
 
-    """
-    sd = (nc / 2) * (1 / fc) / MORLET_SD_FACTOR
-    return int(2 * np.floor(np.round(sd * fs * MORLET_SD_SPREAD) / 2) + 1)
-
-
-def gausswin(size, alpha):
-    """
-    Create a Gaussian window.
-    """
-    halfSize = int(np.floor(size / 2))
-    idiv = alpha / halfSize
-
-    t = (np.array(range(size), dtype=np.float64) - halfSize) * idiv
-    window = np.exp(-(t * t) * 0.5)
-
-    return window
+#     """
+#     sd = (nc / 2) * (1 / fc) / MORLET_SD_FACTOR
+#     return int(2 * np.floor(np.round(sd * fs * MORLET_SD_SPREAD) / 2) + 1)
 
 
-def morlet(fc, nc, fs):
+# def gausswin(size, alpha):
+#     """
+#     Create a Gaussian window.
+#     """
+#     halfSize = int(np.floor(size / 2))
+#     idiv = alpha / halfSize
+
+#     t = (np.array(range(size), dtype=np.float64) - halfSize) * idiv
+#     window = np.exp(-(t * t) * 0.5)
+
+#     return window
+
+
+@njit(cache=True)
+def morlet(fc, nc, fs, sigma=2.5, gauss_sd=6.0):
     """
     Create an analytic Morlet wavelet.
     Arguments:
@@ -55,13 +57,16 @@ def morlet(fc, nc, fs):
         nc - number of cycles
         fs - sampling rate in Hz
     """
-    size = computeWaveletSize(fc, nc, fs)
+    sd = (nc / 2) * (1 / fc) / sigma
+    size = int(2 * np.floor(np.round(sd * fs * gauss_sd) / 2) + 1)
     half = int(np.floor(size / 2))
-    gauss = gausswin(size, MORLET_SD_SPREAD / 2)
+    idiv = (gauss_sd / 2) / half
+    t = (np.arange(size, dtype=np.float64) - half) * idiv
+    gauss = np.exp(-(t * t) * 0.5)
     igsum = 1 / gauss.sum()
     ifs = 1 / fs
 
-    t = (np.array(range(size), dtype=np.float64) - half) * ifs
+    t = (np.arange(size, dtype=np.float64) - half) * ifs
     wavelet = gauss * np.exp(2 * np.pi * fc * t * 1j) * igsum
 
     return wavelet

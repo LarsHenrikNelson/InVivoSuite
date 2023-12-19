@@ -2,7 +2,9 @@ import KDEpy
 import numpy as np
 from numba import njit, prange
 from numpy.random import default_rng
-from scipy import fft, interpolate, optimize
+from scipy import interpolate, optimize
+
+from ..spectral import fft
 
 __all__ = [
     "xconv_fft",
@@ -27,13 +29,13 @@ def xconv_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
     shape = array_1.size + array_2.size - 1
     fshape = fft.next_fast_len(shape)
 
-    sp1 = fft.rfft(array_1, fshape)
-    sp2 = fft.rfft(array_2, fshape)
+    sp1 = fft.r2c_rfft(array_1, fshape)
+    sp2 = fft.r2c_rfft(array_2, fshape)
 
     if not circular:
-        ret = fft.irfft(sp1 * sp2, fshape)
+        ret = fft.ifft(sp1 * sp2, norm="n")
     else:
-        ret = fft.irfft(sp1 * np.conjugate(sp2), fshape)
+        ret = fft.ifft(sp1 * np.conjugate(sp2), norm="n")
 
     return ret[:shape]
 
@@ -42,15 +44,14 @@ def xcorr_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):
     array_2 = np.ascontiguousarray(array_2[::-1])
 
     shape = array_1.size + array_2.size - 1
-    fshape = fft.next_fast_len(shape)
 
-    sp1 = fft.rfft(array_1, fshape)
-    sp2 = fft.rfft(array_2, fshape)
+    sp1 = fft.r2c_rfft(array_1, nfft=-1)
+    sp2 = fft.r2c_rfft(array_2, nfft=-1)
 
     if not circular:
-        ret = fft.irfft(sp1 * sp2, fshape)
+        ret = fft.irfft(sp1 * sp2)
     else:
-        ret = fft.irfft(sp1 * np.conjugate(sp2), fshape)
+        ret = fft.irfft(sp1 * np.conjugate(sp2))
 
     return ret[:shape]
 
