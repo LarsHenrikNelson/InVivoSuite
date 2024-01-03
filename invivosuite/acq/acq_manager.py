@@ -294,20 +294,19 @@ class AcqManager(SpkManager, LFPManager):
         probe: str = "all",
     ):
         total_chans = 64
-        start_chan = chan - nchans
-        end_chan = chan + nchans + 1
+        start_chan = chan - nchans // 2
+        end_chan = chan + nchans // 2
+        print(start_chan, end_chan)
         if start_chan < 0:
             start_chan = 0
         if end_chan >= total_chans:
             end_chan = total_chans - 1
-        multi_acq = np.zeros(
-            (end_chan - start_chan + 1, int(self.end() - self.start()))
-        )
+        multi_acq = np.zeros((end_chan - start_chan + 1, int(self.end - self.start)))
         index = 0
         for i in range(start_chan, end_chan + 1):
             multi_acq[index] = self.acq(
                 acq_num=i,
-                acq_type="spike",
+                acq_type=acq_type,
                 ref=ref,
                 ref_type=ref_type,
                 ref_probe=ref_probe,
