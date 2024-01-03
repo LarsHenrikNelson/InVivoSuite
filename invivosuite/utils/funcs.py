@@ -2,7 +2,7 @@ import KDEpy
 import numpy as np
 from numba import njit, prange
 from numpy.random import default_rng
-from scipy import interpolate, optimize
+from scipy import interpolate, optimize, signal
 
 from ..spectral import fft
 
@@ -305,3 +305,46 @@ def aligned(a, alignment=64):
     np.copyto(aa, a)
     assert aa.ctypes.data % alignment == 0
     return aa
+
+
+def center_spikes(phy_model, acq_manager, probe="acc", ref_type="cmr", size=45):
+    for chan, clust_ids in phy_model.channel_clusters:
+        for clust in clust_ids:
+            dat = np.where(phy_model.spike_clusters == clust)[0]
+            spike_times = phy_model.spike_times[dat].flatten()
+            if chan != 64:
+                spk_acq = acq_manager.acq(
+                    acq_num=chan,
+                    acq_type="spike",
+                    ref=True,
+                    ref_type=ref_type,
+                    ref_probe=probe,
+                    map_channel=True,
+                    probe=probe,
+                )
+                centered_spks = _center_spikes(
+                    spike_times, spk_acq, probe=probe, ref_type=ref_type, size=size
+                )
+                phy_model.spike_times[dat] = centered_spks
+
+
+def _center_spikes(spike_times, spk_acq, size=45):
+    mod_spk_times = np.zeros(spike_times.size, np.int64)
+    for i in range(spike_times.size):
+        start = int(spike_times[i] - size)
+        end = int(spike_times[i] + size + 1)
+        if start < 0:
+            start = 0
+        if spk_acq.size < end:
+            end = spk_acq.size
+        b = signal.argrelmin(spk_acq[start:end], order=15)[0]
+        if b.size > 1:
+            temp = np.argmin(np.abs(b - 45))
+            b = b[temp] - size
+        else:
+            b = b[0] - size
+        if b > np.abs(3):
+            mod_spk_times[i] = b + spike_times[i]
+        else:
+            mod_spk_times[i] = spike_times[i]
+    return mod_spk_times

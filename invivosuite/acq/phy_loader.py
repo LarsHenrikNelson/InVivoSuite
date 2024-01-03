@@ -110,11 +110,9 @@ class SpikeModel:
 
     def _map_template_channels(self):
         self.templates_channels = defaultdict(list)
-        self.channels_templates = defaultdict(list)
+        self.channel_clusters = defaultdict(list)
         for i in range(self.cluster_ids.size):
-            self.channels_templates[self.cluster_channels[i]].append(
-                self.cluster_ids[i]
-            )
+            self.channel_clusters[self.cluster_channels[i]].append(self.cluster_ids[i])
             self.templates_channels[self.cluster_ids[i]].append(
                 self.cluster_channels[i]
             )

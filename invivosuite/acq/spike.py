@@ -23,10 +23,10 @@ __all__ = [
 
 @njit(parallel=True, cache=True)
 def extract_spikes_single_channel(indexes, acq, size=45):
-    m = np.zeros((indexes.size, size * 2))
+    m = np.zeros((indexes.size, size * 2 + 1))
     for i in prange(indexes.size):
         start = int(indexes[i] - size)
-        end = int(indexes[i] + size)
+        end = int(indexes[i] + size + 1)
         if start < 0:
             start = 0
         if acq.size < end:
@@ -42,12 +42,12 @@ def extract_spikes_multi_channel(indexes, acqs, size=45):
         outsize = size * 2
         acq_n = acqs.size
     else:
-        outsize = acqs.shape[0] * size * 2
+        outsize = acqs.shape[0] * size * 2 + 1
         acq_n = acqs.shape[1]
     m = np.zeros((indexes.size, outsize))
     for i in prange(indexes.size):
         start = int(indexes[i] - size)
-        end = int(indexes[i] + size)
+        end = int(indexes[i] + size + 1)
         if start < 0:
             start = 0
         if acq_n < end:

@@ -1,6 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+__all__ = ["plot_spks", "plot_lfp_bursts_with_freq", "plot_bursts_baseline"]
+
+
+def plot_spks(spks):
+    fig, ax = plt.subplots()
+    for i in range(spks.shape[0]):
+        ax.plot(spks[i], c="black", linewidth=1, alpha=0.6)
+
 
 def plot_lfp_bursts_with_freq(acq, length, save_path):
     a = acq.acq("lfp")
