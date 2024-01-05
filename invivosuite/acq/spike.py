@@ -11,6 +11,7 @@ from sklearn.decomposition import PCA
 
 __all__ = [
     "bin_spikes",
+    "center_spikes",
     "create_binary_spikes",
     "extract_spikes_multi_channel",
     "extract_spikes_single_channel",
@@ -19,6 +20,29 @@ __all__ = [
     "max_int_bursts",
     "whitening_matrix",
 ]
+
+
+@njit(parallel=True, cache=True)
+def center_spikes(indexes, acq_array, size=45):
+    outsize = size * 2 + 1
+    acq_n = acq_array.size
+    m = np.zeros(indexes.size, dtype=np.int64)
+    for i in range(indexes.size):
+        start = int(indexes[i] - size)
+        end = int(indexes[i] + size + 1)
+        if start < 0:
+            start = 0
+        if acq_n < end:
+            end = acq_n
+        if not ((end - start) < outsize):
+            b = acq_array[:, start:end]
+            max_vel = np.argmin(np.diff(b))
+            d = np.argmin(b[:, max_vel : max_vel + 10])
+            d += start + max_vel
+            m[i] = d
+        else:
+            m[i] = indexes[i]
+    return m
 
 
 @njit(parallel=True, cache=True)
@@ -32,17 +56,17 @@ def extract_spikes_single_channel(indexes, acq, size=45):
         if acq.size < end:
             end = acq.size
         b = acq[start:end]
-        m[i, :] = b
+        m[i, : b.size] = b
     return m
 
 
-@njit()
+@njit(parallel=True, cache=True)
 def extract_spikes_multi_channel(indexes, acqs, size=45):
     if acqs.ndim == 1:
-        outsize = size * 2
+        outsize = size * 2 + 1
         acq_n = acqs.size
     else:
-        outsize = acqs.shape[0] * size * 2 + 1
+        outsize = acqs.shape[0] * (size * 2 + 1)
         acq_n = acqs.shape[1]
     m = np.zeros((indexes.size, outsize))
     for i in prange(indexes.size):

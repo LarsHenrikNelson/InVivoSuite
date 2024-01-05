@@ -296,7 +296,6 @@ class AcqManager(SpkManager, LFPManager):
         total_chans = 64
         start_chan = chan - nchans // 2
         end_chan = chan + nchans // 2
-        print(start_chan, end_chan)
         if start_chan < 0:
             start_chan = 0
         if end_chan >= total_chans:
