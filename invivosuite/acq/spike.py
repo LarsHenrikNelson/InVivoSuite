@@ -22,7 +22,6 @@ __all__ = [
 ]
 
 
-@njit(parallel=True, cache=True)
 def center_spikes(indexes, acq_array, size=45):
     outsize = size * 2 + 1
     acq_n = acq_array.size
@@ -40,8 +39,6 @@ def center_spikes(indexes, acq_array, size=45):
             d = np.argmin(b[:, max_vel : max_vel + 10])
             d += start + max_vel
             m[i] = d
-        else:
-            m[i] = indexes[i]
     return m
 
 
