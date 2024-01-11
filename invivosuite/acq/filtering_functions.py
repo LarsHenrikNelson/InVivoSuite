@@ -1,6 +1,7 @@
 from typing import Literal, Union
 
 import numpy as np
+import pywt
 from scipy import signal
 
 Filters = Literal[
@@ -566,22 +567,14 @@ def iirnotch(array: np.ndarray, freq: float, q: float, fs: float):
     return filtered_array
 
 
-if __name__ == "__main__":
-    bessel()
-    bessel_zero()
-    butterworth()
-    butterworth_zero()
-    elliptic()
-    elliptic_zero()
-    ewma_filt()
-    ewma_afilt()
-    fir_zero_2()
-    fir_zero_1()
-    median_filter()
-    remez_2()
-    remez_1()
-    savgol_filt()
-    iirnotch_zero()
-    iirnotch()
-    Filters,
-    Windows
+def dwavelet_filter(data, order, filter_type, wavelet="db4"):
+    DWTcoeffs = pywt.wavedec(data, wavelet)
+    if filter_type == "highpass":
+        r = range(0, order)
+    else:
+        r = range(-1, -order + 1)
+    for i in r:
+        DWTcoeffs[i] = np.zeros_like(DWTcoeffs[i])
+
+    filtered_data_dwt = pywt.waverec(DWTcoeffs, "db4")
+    return filtered_data_dwt

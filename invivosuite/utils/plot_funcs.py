@@ -1,7 +1,25 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-__all__ = ["plot_spks", "plot_lfp_bursts_with_freq", "plot_bursts_baseline"]
+__all__ = [
+    "plot_bursts_baseline",
+    "plot_clusters",
+    "plot_lfp_bursts_with_freq",
+    "plot_spks",
+]
+
+
+def plot_clusters(embedding, components, colors, alpha=0.7, marker="."):
+    fig, ax = plt.subplots()
+    n_colors = np.unique(colors)
+    for i in n_colors:
+        temp_color = np.where(i == colors)[0]
+        ax.scatter(
+            embedding[temp_color, components[0]],
+            embedding[temp_color, components[1]],
+            marker=marker,
+            alpha=alpha,
+        )
 
 
 def plot_spks(spks):

@@ -7,22 +7,32 @@ from scipy import interpolate, optimize, signal
 from ..spectral import fft
 
 __all__ = [
-    "xconv_fft",
-    "xcorr_fft",
-    "xcorr_lag",
+    "aligned",
+    "bin_data_sorted",
+    "bin_data_unsorted",
     "convolve_loop",
     "convolve",
     "cross_corr",
     "envelopes_idx",
-    "sinefunc",
     "fit_sine",
-    "bin_data_sorted",
-    "bin_data_unsorted",
-    "ppc_sampled",
     "kde",
     "ppc_numba",
-    "aligned",
+    "ppc_sampled",
+    "sinefunc",
+    "where_count",
+    "xconv_fft",
+    "xcorr_fft",
+    "xcorr_lag",
 ]
+
+
+@njit(cache=True)
+def where_count(item, array):
+    count = 0
+    for i in array:
+        if i == item:
+            count += 1
+    return count
 
 
 def xconv_fft(array_1: np.ndarray, array_2: np.ndarray, circular=False):

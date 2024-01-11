@@ -17,11 +17,12 @@ dependencies = [
     "matplotlib",
     "numba",
     "numpy",
-    "PySide6",
     "pyqtgraph",
+    "PySide6",
+    "PyWavelets",
     "qdarkstyle",
-    "scipy",
     "scikit-learn",
+    "scipy",
     "statsmodels"
 ]
 requires-python = ">=3.9"

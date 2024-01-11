@@ -9,6 +9,8 @@ from numba import njit, prange
 from scipy import fft, signal
 from sklearn.decomposition import PCA
 
+from ..utils import where_count
+
 __all__ = [
     "bin_spikes",
     "center_spikes",
@@ -20,6 +22,53 @@ __all__ = [
     "max_int_bursts",
     "whitening_matrix",
 ]
+
+
+def get_channel_spikes(
+    chan,
+    acq_manager,
+    phy_loader,
+    size=45,
+    nchans=8,
+    ref=True,
+    ref_type="cmr",
+    ref_probe="acc",
+    map_channel=True,
+    probe="acc",
+    center_spikes=False,
+):
+    total_spikes = 0
+    for i in phy_loader.channel_clusters[chan]:
+        total_spikes += where_count(i, phy_loader.spike_clusters)
+
+    if chan != 64:
+        spk_chan = acq_manager.get_multichans(
+            chan=chan,
+            nchans=nchans,
+            acq_type="spike",
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            map_channel=map_channel,
+            probe=probe,
+        )
+    else:
+        return None
+    if spk_chan.ndim == 1:
+        outsize = size * 2 + 1
+    else:
+        outsize = spk_chan.shape[0] * (size * 2 + 1)
+    spks = np.zeros((total_spikes, outsize))
+    load_index = 0
+    for clust in phy_loader.channel_clusters[chan]:
+        spike_times = phy_loader.get_cluster_spike_indexes(clust)
+        spks_temp = extract_spikes_multi_channel(spike_times, spk_chan, size=size)
+        if center_spikes:
+            spike_times = center_spikes(spike_times, spk_chan, size=size)
+        end_index = load_index + spks_temp.shape[0]
+        spks[load_index:end_index, :] = spks_temp
+        load_index += spks_temp.shape[0]
+    return spks
 
 
 @njit(parallel=True, cache=True)
