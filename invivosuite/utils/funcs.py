@@ -12,6 +12,7 @@ __all__ = [
     "bin_data_unsorted",
     "convolve_loop",
     "convolve",
+    "corr_acq",
     "cross_corr",
     "envelopes_idx",
     "fit_sine",
@@ -24,6 +25,17 @@ __all__ = [
     "xcorr_fft",
     "xcorr_lag",
 ]
+
+
+@njit(parallel=True)
+def corr_acq(acqs):
+    size = acqs.shape[0]
+    corr_data = np.zeros((size, size))
+    for i in prange(size):
+        for j in range(i, size):
+            corr_data[i, j] = np.corrcoef(acqs[i], acqs[j])[0, 1]
+            corr_data[j, i] = corr_data[i, j]
+    return corr_data
 
 
 @njit(cache=True)
