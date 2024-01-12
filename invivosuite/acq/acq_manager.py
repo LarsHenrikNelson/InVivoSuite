@@ -315,6 +315,12 @@ class AcqManager(SpkManager, LFPManager):
             index += 1
         return multi_acq
 
+    def get_groups(self):
+        self.open()
+        groups = self.file.keys()
+        self.close()
+        return groups
+
     def envelope(self, acq: np.ndarray, interp: bool = True):
         env_min, env_max = envelopes_idx(acq, interp=interp)
         return env_min, env_max
