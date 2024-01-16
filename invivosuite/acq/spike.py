@@ -652,19 +652,19 @@ def get_spike_cwt(spikes, fs=40000, f0=300, f1=1500, fn=100, bandwidth=2.0):
     return data
 
 
-def whitening_matrix(data, neighbors=7):
+def whitening_matrix(data, neighbors=2):
     nchans = data.shape[0]
     nt = data.shape[1]
     W = np.zeros((nchans, nchans))
     for i in range(nchans):
-        start = max(0, i - neighbors - 1)
-        end = min(i + neighbors, nchans)
+        start = max(0, i - neighbors)
+        end = min(i + neighbors + 1, nchans)
         inds = np.arange(start, end)
         temp = data[inds, :].T
         cc = temp.T @ temp
         cc /= nt
-        ilocal = min(i, neighbors + 1)
         u, s, _ = np.linalg.svd(cc, hermitian=True)
         W_local = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
+        ilocal = min(i, neighbors)
         W[inds, i] = W_local[inds - inds.min(), ilocal]
     return W
