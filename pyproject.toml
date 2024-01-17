@@ -17,6 +17,7 @@ dependencies = [
     "matplotlib",
     "numba",
     "numpy",
+    "pyFFTW",
     "pyqtgraph",
     "PySide6",
     "PyWavelets",
