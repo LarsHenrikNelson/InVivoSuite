@@ -17,6 +17,7 @@ __all__ = [
     "envelopes_idx",
     "fit_sine",
     "kde",
+    "mad",
     "ppc_numba",
     "ppc_sampled",
     "sinefunc",
@@ -27,6 +28,11 @@ __all__ = [
     "xcorr_fft",
     "xcorr_lag",
 ]
+
+
+def mad(array):
+    mad = np.median(np.abs(np.median(array) - array))
+    return mad / 0.6744897501960817
 
 
 def whitening_matrix_full(data):
