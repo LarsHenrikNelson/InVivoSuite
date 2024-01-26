@@ -9,7 +9,7 @@ from scipy import signal
 from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
-from ..utils import envelopes_idx
+from ..utils import envelopes_idx, whitening_matrix_local
 
 
 class AcqManager(SpkManager, LFPManager):
@@ -231,6 +231,30 @@ class AcqManager(SpkManager, LFPManager):
     #         ) * self.get_file_dataset("coeffs", rows=i)
     #         means[i] = array.mean()
     #     self.set_file_dataset("chan_means", data=means)
+    def compute_whitening_matrix(
+        self,
+        neighbors: int,
+        probe: str,
+        acq_type: Literal["spike", "lfp"] = "spike",
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+    ):
+        probe_chans = self.get_grp_dataset("probe", probe)
+        probe_chans -= probe_chans[0]
+        nchans = probe_chans[1]
+        start = self.get_file_attr("start")
+        end = self.get_file_attr("end")
+        acquisitions = np.zeros((probe_chans[1], end - start))
+        for i in range(probe_chans[1]):
+            acquisitions[i, :] = self.acq(
+                i, acq_type=acq_type, ref=ref, ref_type=ref_type, ref_probe=ref_probe
+            )
+        if neighbors != nchans:
+            whitening_matrix = whitening_matrix_local(acquisitions, neighbors)
+        else:
+            whitening_matrix = whitening_matrix(acquisitions)
+        self.set_grp_dataset("whitening_matrix", probe, whitening_matrix)
 
     def acq(
         self,

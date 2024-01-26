@@ -21,10 +21,39 @@ __all__ = [
     "ppc_sampled",
     "sinefunc",
     "where_count",
+    "whitening_matrix_full",
+    "whitening_matrix_local",
     "xconv_fft",
     "xcorr_fft",
     "xcorr_lag",
 ]
+
+
+def whitening_matrix_full(data):
+    nt = data.shape[1]
+    cc = data.T @ data
+    cc /= nt
+    u, s, _ = np.linalg.svd(cc, hermitian=True)
+    W = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
+    return W
+
+
+def whitening_matrix_local(data, neighbors=2):
+    nchans = data.shape[0]
+    nt = data.shape[1]
+    W = np.zeros((nchans, nchans))
+    for i in range(nchans):
+        start = max(0, i - neighbors)
+        end = min(i + neighbors + 1, nchans)
+        inds = np.arange(start, end)
+        temp = data[inds, :].T
+        cc = temp.T @ temp
+        cc /= nt
+        u, s, _ = np.linalg.svd(cc, hermitian=True)
+        W_local = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
+        ilocal = min(i, neighbors)
+        W[inds, i] = W_local[inds - inds.min(), ilocal]
+    return W
 
 
 @njit(parallel=True)
