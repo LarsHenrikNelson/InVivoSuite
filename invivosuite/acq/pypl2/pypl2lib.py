@@ -8,9 +8,28 @@
 # You are free to modify or share this file, provided that the above
 # copyright notice is kept intact.
 
-from ctypes import *
+from ctypes import (
+    byref,
+    c_char,
+    c_double,
+    c_int,
+    c_uint,
+    c_ulonglong,
+    c_ushort,
+    CDLL,
+    Structure,
+)
 import os
 import platform
+
+__all__ = [
+    "PL2AnalogChannelInfo",
+    "PL2DigitalChannelInfo",
+    "PL2FileInfo",
+    "PL2SpikeChannelInfo",
+    "PyPL2FileReader",
+    "tm",
+]
 
 
 class tm(Structure):

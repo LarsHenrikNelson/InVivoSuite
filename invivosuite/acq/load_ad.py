@@ -40,8 +40,8 @@ def load_pl2_acqs(
 
     # Use spike channels because this ignores other analog channels
     nchannels = file_info.m_TotalNumberOfAnalogChannels
-    acqs = None
-    channels = []
+    wb_channels = []
+    ai_channels = []
     for i in range(nchannels):
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
@@ -50,34 +50,57 @@ def load_pl2_acqs(
             and ad_res != 0
             and ad_info.m_Name.decode("ascii")[:2] == "WB"
         ):
-            channels.append(i)
-    fs = np.zeros(len(channels))
-    coeffs = np.zeros(len(channels))
-    units = []
-    enabled = np.zeros(len(channels), np.int16)
-    for index, i in enumerate(channels):
-        ad_info = PL2AnalogChannelInfo()
-        ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
+            wb_channels.append(i)
         if (
             ad_info.m_ChannelEnabled
             and ad_res != 0
-            and ad_info.m_Name.decode("ascii")[:2] == "WB"
+            and ad_info.m_Name.decode("ascii")[:2] == "AI"
         ):
-            data = pl2_ad(pl2_path, i)
-            enabled[index] = 1
-            if acqs is None:
-                if end is None or end > data.ad.size:
-                    end = data.ad.size
-                acqs = np.zeros((len(channels), end - start), np.int16)
-            acqs[index] = data.ad[start:end]
-            fs[index] = data.adfrequency
-            coeffs[index] = data.coeff
-            units.append(ad_info.m_Units)
+            ai_channels.append(i)
+
+    acqs = None
+    fs = np.zeros(len(wb_channels))
+    coeffs = np.zeros(len(wb_channels))
+    units = []
+    enabled = np.zeros(len(wb_channels), np.int16)
+    for index, i in enumerate(wb_channels):
+        ad_info = PL2AnalogChannelInfo()
+        ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
+        data = pl2_ad(pl2_path, i)
+        enabled[index] = 1
+        if acqs is None:
+            if end is None or end > data.ad.size:
+                end = data.ad.size
+            acqs = np.zeros((len(wb_channels), end - start), np.int16)
+        acqs[index] = data.ad[start:end]
+        fs[index] = data.adfrequency
+        coeffs[index] = data.coeff
+        units.append(ad_info.m_Units)
+
+    ais = None
+    ai_data = None
+    ai_fs = np.zeros(len(wb_channels))
+    ai_coeffs = np.zeros(len(wb_channels))
+    ai_units = []
+    for index, i in enumerate(ai_channels):
+        ad_info = PL2AnalogChannelInfo()
+        ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
+        data = pl2_ad(pl2_path, i)
+        enabled[index] = 1
+        if ais is None:
+            if end is None or end > data.ad.size:
+                end = data.ad.size
+            ais = np.zeros((len(wb_channels), end - start), np.int16)
+        ais[index] = data.ad[start:end]
+        ai_fs[index] = data.adfrequency
+        ai_coeffs[index] = data.coeff
+        ai_units.append(ad_info.m_Units)
+    ai_data = (ais, ai_fs, ai_coeffs, np.asarray(ai_units))
     acq_man = AcqManager()
     if save_path == "":
         save_path = Path(pl2_path).parent
     acq_man.create_hdf5_file(
-        acqs, fs, coeffs, np.asarray(units), enabled, name, save_path
+        acqs, fs, coeffs, np.asarray(units), enabled, name, save_path, ai=ai_data
     )
     # acq_data = (acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)

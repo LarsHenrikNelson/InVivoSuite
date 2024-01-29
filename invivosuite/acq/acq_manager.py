@@ -30,6 +30,7 @@ class AcqManager(SpkManager, LFPManager):
         enabled,
         identifier="test",
         save_path="",
+        ai=None,
     ):
         if save_path == "":
             save_path = os.getcwd()
@@ -50,6 +51,11 @@ class AcqManager(SpkManager, LFPManager):
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])
         self.set_probe("all", [0, acqs.shape[0]])
+        if ai is not None:
+            self.file.set_grp_dataset("ai", "acq", ai[0])
+            self.file.set_grp_dataset("ai", "fs", ai[1])
+            self.file.set_grp_dataset("ai", "coeffs", ai[2])
+            self.file.set_grp_dataset("ai", "units", ai[3])
         self.close()
 
     def open_hdf5_file(self, file_path):
@@ -231,6 +237,7 @@ class AcqManager(SpkManager, LFPManager):
     #         ) * self.get_file_dataset("coeffs", rows=i)
     #         means[i] = array.mean()
     #     self.set_file_dataset("chan_means", data=means)
+
     def compute_whitening_matrix(
         self,
         neighbors: int,

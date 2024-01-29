@@ -12,7 +12,21 @@ from collections import namedtuple
 
 import numpy as np
 
-from .pypl2lib import *
+from .pypl2lib import (
+    PL2AnalogChannelInfo,
+    PL2DigitalChannelInfo,
+    PL2FileInfo,
+    PL2SpikeChannelInfo,
+    PyPL2FileReader,
+)
+
+from ctypes import (
+    c_char,
+    c_longlong,
+    c_short,
+    c_ulonglong,
+    c_ushort,
+)
 
 
 def print_error(pypl2_file_reader_instance):
@@ -77,9 +91,9 @@ def pl2_ad(filename, channel):
     achannel_info = PL2AnalogChannelInfo()
 
     # Check if channel is an integer or string, and call appropriate function
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_analog_channel_info(handle, channel, achannel_info)
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_analog_channel_info_by_name(handle, channel, achannel_info)
 
     # If res is 0, print error message and return 0.
@@ -96,7 +110,7 @@ def pl2_ad(filename, channel):
     values = (c_short * achannel_info.m_NumberOfValues)()
 
     # Check if channel is an integer or string, and call appropriate function
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_analog_channel_data(
             handle,
             channel,
@@ -106,7 +120,7 @@ def pl2_ad(filename, channel):
             fragment_counts,
             values,
         )
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_analog_channel_data_by_name(
             handle,
             channel,
@@ -207,9 +221,9 @@ def pl2_spikes(filename, channel, unit=[]):
     schannel_info = PL2SpikeChannelInfo()
 
     # Check if channel is an integer or string, and call appropriate function
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_spike_channel_info(handle, channel, schannel_info)
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_spike_channel_info_by_name(handle, channel, schannel_info)
 
     # If res is 0, print error message and return 0.
@@ -226,11 +240,11 @@ def pl2_spikes(filename, channel, unit=[]):
         c_short * (schannel_info.m_NumberOfSpikes * schannel_info.m_SamplesPerSpike)
     )()
 
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_spike_channel_data(
             handle, channel, num_spikes_returned, spike_timestamps, units, values
         )
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_spike_channel_data_by_name(
             handle, channel, num_spikes_returned, spike_timestamps, units, values
         )
@@ -325,9 +339,9 @@ def pl2_events(filename, channel):
     echannel_info = PL2DigitalChannelInfo()
 
     # Check if channel is an integer or string, and call appropriate function
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_digital_channel_info(handle, channel, echannel_info)
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_digital_channel_info_by_name(handle, channel, echannel_info)
 
     # If res is 0, print error message and return 0.
@@ -341,11 +355,11 @@ def pl2_events(filename, channel):
     event_timestamps = (c_longlong * echannel_info.m_NumberOfEvents)()
     event_values = (c_ushort * echannel_info.m_NumberOfEvents)()
 
-    if type(channel) is int:
+    if isinstance(channel, int):
         res = p.pl2_get_digital_channel_data(
             handle, channel, num_events_returned, event_timestamps, event_values
         )
-    if type(channel) is str:
+    if isinstance(channel, str):
         res = p.pl2_get_digital_channel_data_by_name(
             handle, channel, num_events_returned, event_timestamps, event_values
         )
