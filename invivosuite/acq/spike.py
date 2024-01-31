@@ -131,20 +131,26 @@ def run_P(
 ) -> int:
     Nab = 0
     j = 0
+    k = 0
+    add_spk = 0
     for i in range(0, spk_times_1.size):
         while j < spk_times_2.size:
+            # Need this for unsigned ints to work with numba
             if spk_times_1[i] < spk_times_2[j]:
                 temp = spk_times_2[j] - spk_times_1[i]
+                add_spk = 1
             else:
                 temp = spk_times_1[i] - spk_times_2[j]
+                add_spk = 0
             if np.abs(temp) <= dt:
                 Nab = Nab + 1
+                k += add_spk
                 break
             elif spk_times_2[j] > spk_times_1[i]:
                 break
             else:
                 j += 1
-    return Nab
+    return Nab, k
 
 
 @njit()
@@ -180,46 +186,51 @@ def sttc(
     dt: Union[float, int],
     start: Union[float, int],
     stop: Union[float, int],
-) -> float:
+) -> tuple[float, int, int, int, int]:
     """This is a Numba accelerated version of spike timing tiling coefficient.
     It is faster than Elephants version by about 50 times. This adds up when
     there are 10000+ comparisons to make. This function can run using unsigned ints
-    which is the most numerically precise
+    which is the most numerically precise.
 
     Args:
-        spk_times_1 (np.ndarray): _description_
-        spk_times_2 (np.ndarray): _description_
-        dt (int, float): _description_
-        start (int, float): _description_
-        stop (int, float): _description_
+        spk_times_1 (np.ndarray): np.array of spike times
+        spk_times_2 (np.ndarray): np.array of spike times
+        dt (int, float): largest time difference at which two spikes can be considered
+        to co-occur
+        start (int, float): start of time to assess
+        stop (int, float): stop of time to assess, usually the length of the recording
 
     Returns:
         float: _description_
+        int: number of spikes in spk_times_1 that occur within dt of spikes spk_times_2
+        int: number of spikes in spk_times_1 that occur before spikes spk_times_2
+        int: number of spikes in spk_times_2 that occur within dt of spikes spk_times_1
+        int: number of spikes in spk_times_2 that occur before spikes spk_times_1
     """
     if spk_times_1.size == 0 or spk_times_2.size == 0:
         return np.nan
     else:
         dt = float(dt)
-        T = stop - start
-        TA = run_T(spk_times_1, dt, start, stop)
-        TA /= T
-        TB = run_T(spk_times_2, dt, start, stop)
-        TB /= T
-        PA = run_P(spk_times_1, spk_times_2, dt)
-        PA /= spk_times_1.size
-        PB = run_P(spk_times_2, spk_times_1, dt)
-        PB /= spk_times_2.size
-        if PA * TB == 1 and PB * TA == 1:
+        t = stop - start
+        tA = run_T(spk_times_1, dt, start, stop)
+        tA /= t
+        tB = run_T(spk_times_2, dt, start, stop)
+        tB /= t
+        pA, kA = run_P(spk_times_1, spk_times_2, dt)
+        pA /= spk_times_1.size
+        pB, kB = run_P(spk_times_2, spk_times_1, dt)
+        pB /= spk_times_2.size
+        if pA * tB == 1 and pB * tA == 1:
             index = 1.0
-        elif PA * TB == 1:
-            index = 0.5 + 0.5 * (PB - TA) / (1 - PB * TA)
-        elif PB * TA == 1:
-            index = 0.5 + 0.5 * (PA - TB) / (1 - PA * TB)
+        elif pA * tB == 1:
+            index = 0.5 + 0.5 * (pB - tA) / (1 - pB * tA)
+        elif pB * tA == 1:
+            index = 0.5 + 0.5 * (pA - tB) / (1 - pA * tB)
         else:
-            index = (0.5 * ((PA - TB) / (1 - PA * TB))) + (
-                0.5 * ((PB - TA) / (1 - PB * TA))
+            index = (0.5 * ((pA - tB) / (1 - pA * tB))) + (
+                0.5 * ((pB - tA) / (1 - pB * tA))
             )
-        return index
+        return index, pA, kA, pB, kB
 
 
 def run_p(
@@ -244,7 +255,12 @@ def run_p(
     return len(tiled_spikes_j) / len(spiketrain_j)
 
 
-def run_t(spiketrain: np.ndarray, dt: int, t_start, t_stop) -> float:
+def run_t(
+    spiketrain: np.ndarray,
+    dt: Union[int, float],
+    t_start: Union[int, float],
+    t_stop: Union[int, float],
+) -> float:
     dt = dt
     sorted_spikes = spiketrain
 
