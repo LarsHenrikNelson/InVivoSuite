@@ -325,8 +325,8 @@ class AcqManager(SpkManager, LFPManager):
         probe: str = "all",
     ):
         total_chans = 64
-        start_chan = chan - nchans // 2
-        end_chan = chan + nchans // 2
+        start_chan = chan - nchans
+        end_chan = chan + nchans
         if start_chan < 0:
             start_chan = 0
         if end_chan >= total_chans:
