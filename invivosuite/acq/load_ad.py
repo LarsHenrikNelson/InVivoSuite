@@ -79,8 +79,8 @@ def load_pl2_acqs(
 
     ais = None
     ai_data = None
-    ai_fs = np.zeros(len(wb_channels))
-    ai_coeffs = np.zeros(len(wb_channels))
+    ai_fs = np.zeros(len(ai_channels))
+    ai_coeffs = np.zeros(len(ai_channels))
     ai_units = []
     for index, i in enumerate(ai_channels):
         ad_info = PL2AnalogChannelInfo()
@@ -90,7 +90,7 @@ def load_pl2_acqs(
         if ais is None:
             if end is None or end > data.ad.size:
                 end = data.ad.size
-            ais = np.zeros((len(wb_channels), end - start), np.int16)
+            ais = np.zeros((len(ai_channels), end - start), np.int16)
         ais[index] = data.ad[start:end]
         ai_fs[index] = data.adfrequency
         ai_coeffs[index] = data.coeff

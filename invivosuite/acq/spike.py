@@ -126,19 +126,21 @@ def extract_spikes_multi_channel(indexes, acqs, size=45):
 
 
 @njit()
-def run_P(spk_1: np.ndarray, spk_2: np.ndarray, dt: Union[int, float]) -> int:
+def run_P(
+    spk_times_1: np.ndarray, spk_times_2: np.ndarray, dt: Union[int, float]
+) -> int:
     Nab = 0
     j = 0
-    for i in range(0, spk_1.size):
-        while j < spk_2.size:
-            if spk_1[i] < spk_2[j]:
-                temp = spk_2[j] - spk_1[i]
+    for i in range(0, spk_times_1.size):
+        while j < spk_times_2.size:
+            if spk_times_1[i] < spk_times_2[j]:
+                temp = spk_times_2[j] - spk_times_1[i]
             else:
-                temp = spk_1[i] - spk_2[j]
+                temp = spk_times_1[i] - spk_times_2[j]
             if np.abs(temp) <= dt:
                 Nab = Nab + 1
                 break
-            elif spk_2[j] > spk_1[i]:
+            elif spk_times_2[j] > spk_times_1[i]:
                 break
             else:
                 j += 1
@@ -173,19 +175,20 @@ def run_T(
 
 @njit()
 def sttc(
-    spk_1: np.ndarray,
-    spk_2: np.ndarray,
+    spk_times_1: np.ndarray,
+    spk_times_2: np.ndarray,
     dt: Union[float, int],
     start: Union[float, int],
     stop: Union[float, int],
 ) -> float:
     """This is a Numba accelerated version of spike timing tiling coefficient.
     It is faster than Elephants version by about 50 times. This adds up when
-    there are 10000+ comparisons to make.
+    there are 10000+ comparisons to make. This function can run using unsigned ints
+    which is the most numerically precise
 
     Args:
-        spk_1 (np.ndarray): _description_
-        spk_2 (np.ndarray): _description_
+        spk_times_1 (np.ndarray): _description_
+        spk_times_2 (np.ndarray): _description_
         dt (int, float): _description_
         start (int, float): _description_
         stop (int, float): _description_
@@ -193,19 +196,19 @@ def sttc(
     Returns:
         float: _description_
     """
-    if spk_1.size == 0 or spk_2.size == 0:
+    if spk_times_1.size == 0 or spk_times_2.size == 0:
         return np.nan
     else:
         dt = float(dt)
         T = stop - start
-        TA = run_T(spk_1, dt, start, stop)
+        TA = run_T(spk_times_1, dt, start, stop)
         TA /= T
-        TB = run_T(spk_2, dt, start, stop)
+        TB = run_T(spk_times_2, dt, start, stop)
         TB /= T
-        PA = run_P(spk_1, spk_2, dt)
-        PA /= spk_1.size
-        PB = run_P(spk_2, spk_1, dt)
-        PB /= spk_2.size
+        PA = run_P(spk_times_1, spk_times_2, dt)
+        PA /= spk_times_1.size
+        PB = run_P(spk_times_2, spk_times_1, dt)
+        PB /= spk_times_2.size
         if PA * TB == 1 and PB * TA == 1:
             index = 1.0
         elif PA * TB == 1:
