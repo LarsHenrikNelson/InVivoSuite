@@ -148,7 +148,7 @@ def gen_cwt(
     # else:
     #     fft_Ws = fft.ifft(wavelets * array)
     for index, ws in enumerate(wavelets):
-        ret = fft.ifft(fft.c2c_fft(ws, nfft=nfft) * array_fft, threads=1)
+        ret = fft.c2c_ifft(fft.c2c_fft(ws, nfft=nfft) * array_fft, threads=1)
         ret = ret[: ws.size + input_size - 1]
 
         startind = (ret.size - input_size) // 2
