@@ -208,7 +208,7 @@ def sttc(
         int: number of spikes in spk_times_2 that occur before spikes spk_times_1
     """
     if spk_times_1.size == 0 or spk_times_2.size == 0:
-        return np.nan
+        return 0.0, 0, 0, 0, 0
     else:
         dt = float(dt)
         t = stop - start
@@ -216,10 +216,10 @@ def sttc(
         tA /= t
         tB = run_T(spk_times_2, dt, start, stop)
         tB /= t
-        pA, kA = run_P(spk_times_1, spk_times_2, dt)
-        pA /= spk_times_1.size
-        pB, kB = run_P(spk_times_2, spk_times_1, dt)
-        pB /= spk_times_2.size
+        pA_a, kA = run_P(spk_times_1, spk_times_2, dt)
+        pA = pA_a / spk_times_1.size
+        pB_b, kB = run_P(spk_times_2, spk_times_1, dt)
+        pB = pB_b / spk_times_2.size
         if pA * tB == 1 and pB * tA == 1:
             index = 1.0
         elif pA * tB == 1:
@@ -230,7 +230,7 @@ def sttc(
             index = (0.5 * ((pA - tB) / (1 - pA * tB))) + (
                 0.5 * ((pB - tA) / (1 - pB * tA))
             )
-        return index, pA, kA, pB, kB
+        return index, pA_a, kA, pB_b, kB
 
 
 def run_p(
