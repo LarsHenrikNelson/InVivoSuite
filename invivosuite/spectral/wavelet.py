@@ -269,6 +269,7 @@ def get_support(fb, scale):
     return fb * scale * 3.0
 
 
+# Not necessarily correct
 def f_to_s(freqs, fs):
     return fs / freqs
 
