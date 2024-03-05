@@ -90,7 +90,9 @@ def center_spikes(indexes, acq_array, size=45):
 
 
 @njit(parallel=True, cache=True)
-def extract_spikes_single_channel(indexes, acq, size=45):
+def extract_spikes_single_channel(
+    indexes: np.ndarray, acq: np.ndarray, size: int = 45, center_spikes: bool = False
+):
     m = np.zeros((indexes.size, size * 2 + 1))
     for i in prange(indexes.size):
         start = int(indexes[i] - size)
