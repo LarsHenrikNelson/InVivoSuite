@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 
 # from .spike_metrics import calculate_metrics
+from . import spike
 
 
 class SpikeModel:
@@ -220,6 +221,17 @@ class SpikeModel:
     #         min_isi,
     #     )
     #     return labels, m
+
+    def center_spikes(self, cluster_id, acq):
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        indexes = self.spike_times[spike_ids].flatten()
+        indexes = spike.center_spikes(indexes, acq)
+        self.spike_times[spike_ids] = indexes.reshape((indexes.size, 1))
+        times_sorted = np.argsort(self.spike_times, axis=0)
+        self.spike_times[:, :] = self.spike_times[times_sorted, 0]
+        self.amplitudes[:, :] = self.amplitudes[times_sorted, 0]
+        self.spike_clusters[:] = self.spike_clusters[times_sorted]
+        self.spike_templates[:, :] = self.spike_templates[times_sorted, 0]
 
 
 def _unwhiten(wmi, x, channel_ids=None):

@@ -71,16 +71,16 @@ def get_channel_spikes(
 
 
 @njit(parallel=True, cache=True)
-def center_spikes(indexes, acq_array, size=45):
+def center_spikes(indexes, acq, size=45):
     m = np.zeros(indexes.size, dtype=np.int64)
-    for i in prange(indexes.size):
+    for i in range(indexes.size):
         start = int(indexes[i] - size)
         end = int(indexes[i] + size + 1)
         if start < 0:
             start = 0
-        if end < indexes.size:
-            b = acq_array[start:end]
-            max_vel = np.argmin(np.diff(b))
+        if end < acq.size:
+            b = acq[start:end]
+            max_vel = np.argmin(b[1:] - b[:-1])
             d = np.argmin(b[max_vel : max_vel + 10])
             d += start + max_vel
             m[i] = d
@@ -91,8 +91,10 @@ def center_spikes(indexes, acq_array, size=45):
 
 @njit(parallel=True, cache=True)
 def extract_spikes_single_channel(
-    indexes: np.ndarray, acq: np.ndarray, size: int = 45, center_spikes: bool = False
+    indexes: np.ndarray, acq: np.ndarray, size: int = 45, center: bool = False
 ):
+    if center:
+        indexes = center_spikes(indexes, acq, size=45)
     m = np.zeros((indexes.size, size * 2 + 1))
     for i in prange(indexes.size):
         start = int(indexes[i] - size)
