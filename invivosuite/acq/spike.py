@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 
-def get_channel_spikes(
+def get_multichan_spikes(
     chan,
     acq_manager,
     phy_loader,
@@ -39,20 +39,16 @@ def get_channel_spikes(
     total_spikes = 0
     for i in phy_loader.channel_clusters[chan]:
         total_spikes += where_count(i, phy_loader.spike_clusters)
-
-    if chan != 64:
-        spk_chan = acq_manager.get_multichans(
-            chan=chan,
-            nchans=nchans,
-            acq_type="spike",
-            ref=ref,
-            ref_type=ref_type,
-            ref_probe=ref_probe,
-            map_channel=map_channel,
-            probe=probe,
-        )
-    else:
-        return None
+    spk_chan = acq_manager.get_multichans(
+        chan=chan,
+        nchans=nchans,
+        acq_type="spike",
+        ref=ref,
+        ref_type=ref_type,
+        ref_probe=ref_probe,
+        map_channel=map_channel,
+        probe=probe,
+    )
     if spk_chan.ndim == 1:
         outsize = size * 2 + 1
     else:
