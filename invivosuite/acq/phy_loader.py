@@ -232,6 +232,12 @@ class SpikeModel:
         self.amplitudes[:, :] = self.amplitudes[times_sorted, 0]
         self.spike_clusters[:] = self.spike_clusters[times_sorted]
         self.spike_templates[:, :] = self.spike_templates[times_sorted, 0]
+        self.flush_data()
+
+    def flush_data(self):
+        self.spike_clusters.flush()
+        self.spike_templates.flush()
+        self.spike_times.flush()
 
 
 def _unwhiten(wmi, x, channel_ids=None):

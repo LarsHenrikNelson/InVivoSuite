@@ -23,6 +23,22 @@ __all__ = [
 ]
 
 
+def duplicate_spikes(chan, cluster_id, spk_acq_pair):
+    indexes = spk_acq_pair[0].get_cluster_spike_indexes(cluster_id)
+    spk_acq = spk_acq_pair[1].acq(
+        chan,
+        acq_type="spike",
+        ref=True,
+        ref_type="cmr",
+        ref_probe="acc",
+        map_channel=True,
+        probe="acc",
+    )
+    nu = center_spikes(indexes, spk_acq)
+
+    return not (np.unique(nu).size == indexes.size), np.unique(nu).size
+
+
 def get_multichan_spikes(
     chan,
     acq_manager,

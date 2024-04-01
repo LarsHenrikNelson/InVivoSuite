@@ -272,9 +272,13 @@ class AcqManager(SpkManager, LFPManager):
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
     ):
-        start = self.get_file_attr("start")
-        end = self.get_file_attr("end")
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
         acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=int(acq_num), columns=(start, end)
@@ -315,23 +319,38 @@ class AcqManager(SpkManager, LFPManager):
 
     def get_multichans(
         self,
-        chan: int,
-        nchans: int,
         acq_type: Literal["spike", "lfp", "raw"],
+        chan: Union[int, None] = None,
+        nchans: Union[int, None] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
     ):
         total_chans = 64
-        start_chan = chan - nchans
-        end_chan = chan + nchans
-        if start_chan < 0:
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
+
+        if chan is not None:
+            start_chan = chan - nchans
+            end_chan = chan + nchans
+            if start_chan < 0:
+                start_chan = 0
+            if end_chan >= total_chans:
+                end_chan = total_chans - 1
+            multi_acq = np.zeros(
+                (end_chan - start_chan + 1, int(self.end - self.start))
+            )
+
+        else:
             start_chan = 0
-        if end_chan >= total_chans:
-            end_chan = total_chans - 1
-        multi_acq = np.zeros((end_chan - start_chan + 1, int(self.end - self.start)))
+            end_chan = 63
+            multi_acq = np.zeros((end_chan + 1, int(self.end - self.start)))
         index = 0
         for i in range(start_chan, end_chan + 1):
             multi_acq[index] = self.acq(
@@ -342,6 +361,8 @@ class AcqManager(SpkManager, LFPManager):
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
             index += 1
         return multi_acq
