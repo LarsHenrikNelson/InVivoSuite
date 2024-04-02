@@ -286,7 +286,7 @@ class AcqManager(SpkManager, LFPManager):
         array -= array.mean()
         if ref:
             median = self.get_grp_dataset(ref_type, ref_probe)
-            array -= median
+            array -= median[start:end]
         if acq_type == "raw":
             return array
         filter_dict = self.get_filter(acq_type)
@@ -350,7 +350,7 @@ class AcqManager(SpkManager, LFPManager):
         else:
             start_chan = 0
             end_chan = 63
-            multi_acq = np.zeros((end_chan + 1, int(self.end - self.start)))
+            multi_acq = np.zeros((end_chan + 1, int(end - start)))
         index = 0
         for i in range(start_chan, end_chan + 1):
             multi_acq[index] = self.acq(

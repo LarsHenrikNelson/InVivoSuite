@@ -240,6 +240,14 @@ class SpikeModel:
         self.spike_times.flush()
 
 
+def get_template_channels(templates):
+    output = np.zeros((templates.shape[0], 2))
+    for i in range(templates.shape[0]):
+        temp = np.where(np.all(templates[i] == 0, axis=0) == 0)[0]
+        output[i] = [temp[0], temp[-1]]
+    return output
+
+
 def _unwhiten(wmi, x, channel_ids=None):
     mat = wmi
     if channel_ids is not None:
