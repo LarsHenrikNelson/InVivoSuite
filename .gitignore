@@ -2,3 +2,4 @@
 __pycache__
 invivosuite.egg-info
 build
+debug.py

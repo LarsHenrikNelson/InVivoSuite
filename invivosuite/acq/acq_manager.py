@@ -61,6 +61,10 @@ class AcqManager(SpkManager, LFPManager):
     def open_hdf5_file(self, file_path):
         self.file_path = file_path
 
+    def load_kilosort(self, file_directory):
+        self.ks_directory = Path(file_directory)
+        self.load_ks_data()
+
     def open(self):
         if not self.file_open:
             self.file = h5py.File(self.file_path, "r+")
@@ -330,7 +334,8 @@ class AcqManager(SpkManager, LFPManager):
         start: Union[None, int] = None,
         end: Union[None, int] = None,
     ):
-        total_chans = 64
+        data = self.get_grp_dataset("probes", probe)
+        total_chans = data[1] - data[0]
         if start is None:
             start = self.get_file_attr("start")
         if end is None:
@@ -348,11 +353,12 @@ class AcqManager(SpkManager, LFPManager):
             )
 
         else:
-            start_chan = 0
-            end_chan = 63
+            start_chan = data[1] - data[0]
+            end_chan = (data[1] - data[0]) - 1
             multi_acq = np.zeros((end_chan + 1, int(end - start)))
         index = 0
         for i in range(start_chan, end_chan + 1):
+            print(i)
             multi_acq[index] = self.acq(
                 acq_num=i,
                 acq_type=acq_type,
