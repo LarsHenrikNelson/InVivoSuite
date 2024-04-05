@@ -353,13 +353,11 @@ class AcqManager(SpkManager, LFPManager):
             )
 
         else:
-            start_chan = data[1] - data[0]
+            start_chan = 0
             end_chan = (data[1] - data[0]) - 1
             multi_acq = np.zeros((end_chan + 1, int(end - start)))
-        index = 0
         for i in range(start_chan, end_chan + 1):
-            print(i)
-            multi_acq[index] = self.acq(
+            multi_acq[i, :] = self.acq(
                 acq_num=i,
                 acq_type=acq_type,
                 ref=ref,
@@ -370,7 +368,6 @@ class AcqManager(SpkManager, LFPManager):
                 start=start,
                 end=end,
             )
-            index += 1
         return multi_acq
 
     def get_groups(self):
