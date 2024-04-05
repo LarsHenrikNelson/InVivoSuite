@@ -129,6 +129,7 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 240000,
+        output_chans: int = 16,
         callback=print,
     ):
         if start is None:
@@ -137,7 +138,7 @@ class SpkManager:
             end = self.get_file_attr("end")
         n_chunks = (end - start) // (chunk_size)
         chunk_starts = np.arange(n_chunks) * chunk_size
-        output = np.zeros((len(self.spike_times), waveform_length, 12))
+        output = np.zeros((len(self.spike_times), waveform_length, output_chans))
 
         # Get the best range of channels for each template
         channel_map = self.get_grp_dataset("channel_maps", probe)
@@ -196,6 +197,27 @@ class SpkManager:
             )
         return output
 
+    def extract_spike_channels(self, probe, nchans, output_chans):
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+        _, channels = self.get_template_channels(
+            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
+        )
+        spike_channels = np.full(
+            (self.sparse_templates.shape[0], output_chans), fill_value=-1
+        )
+        for i in range(channels.shape[0]):
+            num_channels = channels[i, 2] - channels[i, 1]
+            spike_channels[i, : num_channels + 1] = np.arange(
+                channels[i, 1], channels[i, 2] + 1
+            )
+        full_spike_channels = np.full(
+            (self.spike_times.shape[0], output_chans), fill_value=-1
+        )
+        for i in range(self.spike_templates.shape[0]):
+            temp_index = self.spike_templates[i]
+            full_spike_channels[i] = spike_channels[temp_index]
+        return full_spike_channels
+
     def export_to_phy(
         self,
         nchans: int = 4,
@@ -208,6 +230,7 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 240000,
+        output_chans: int = 16,
         callback=print,
     ):
         output = self.extract_waveforms(
@@ -221,20 +244,19 @@ class SpkManager:
             start=start,
             end=end,
             chunk_size=chunk_size,
+            output_chans=output_chans,
             callback=callback,
         )
-        peaks, channels = self.get_template_channels(
-            self.sparse_templates, nchans=nchans, total_chans=64
+
+        full_spike_channels = self.extract_spike_channels(
+            probe=probe, nchans=nchans, output_chans=output_chans
         )
-        spike_channels = np.full((self.sparse_templates.shape[0], 12), fill_value=-1)
-        for i in range(channels.shape[0]):
-            num_channels = channels[i, 2] - channels[i, 1]
-            spike_channels[: num_channels + 1] = np.arange(
-                channels[i, 1], channels[i, 2] + 1
-            )
 
         np.save(self.ks_directory / "_phy_spikes_subset.waveforms.npy", output)
         np.save(
-            self.ks_directory / "_phy_spikes_subset.waveforms.npy", self.spike_times
+            self.ks_directory / "_phy_spikes_subset.spikes.npy",
+            np.arange(self.spike_times.shape[0]),
         )
-        np.save(self.ks_directory / "_phy_spikes_subset.channels.npy", spike_channels)
+        np.save(
+            self.ks_directory / "_phy_spikes_subset.channels.npy", full_spike_channels
+        )
