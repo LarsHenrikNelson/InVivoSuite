@@ -4,6 +4,8 @@ from typing import Literal, Union
 
 import numpy as np
 
+from .spike_functions import find_minmax_exponent_3
+
 
 class SpkManager:
     def load_ks_data(self):
@@ -54,8 +56,8 @@ class SpkManager:
                 end_chan -= start_chan
                 start_chan = 0
             if end_chan > total_chans:
-                start_chan -= end_chan - total_chans + 1
-                end_chan = total_chans - 1
+                start_chan -= end_chan - total_chans
+                end_chan = total_chans
             channel_output[i, 1] = start_chan
             channel_output[i, 2] = end_chan
             channel_output[i, 0] = chan
@@ -72,6 +74,7 @@ class SpkManager:
         waveform_length,
         peaks,
         channels,
+        template_amplitudes,
     ):
 
         # Get only the current spikes
@@ -80,7 +83,7 @@ class SpkManager:
         )[0]
 
         # Sort the spikes by amplitude
-        extract_indexes = np.argsort(self.amplitudes[current_spikes])
+        extract_indexes = np.argsort(template_amplitudes[current_spikes])
 
         spk_chans = nchans * 2
         width = waveform_length / 2
@@ -89,7 +92,7 @@ class SpkManager:
             # Get the spike info in loop
             curr_spk_index = current_spikes[i]
             cur_spk_time = self.spike_times[curr_spk_index]
-            if cur_spk_time < cutoff_end and (cur_spk_time - width) > start:
+            if (cur_spk_time < cutoff_end) and ((cur_spk_time - width) > start):
                 cur_template_index = self.spike_templates[curr_spk_index]
                 cur_template = self.sparse_templates[cur_template_index]
                 chans = channels[cur_template_index, 1:3]
@@ -146,6 +149,12 @@ class SpkManager:
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
 
+        temps = np.unique(self.spike_templates)
+        template_peaks = {key: value for key, value in zip(temps, peaks.flatten())}
+        template_amplitudes = np.zeros((self.spike_templates.size))
+        for i in range(template_amplitudes.size):
+            template_amplitudes[i] = template_peaks[self.spike_templates[i]]
+
         for index, i in enumerate(chunk_starts):
             callback(
                 f"Starting chunk {index+1} start at {i} and ending at {i+chunk_size}."
@@ -170,7 +179,22 @@ class SpkManager:
                 waveform_length=waveform_length,
                 peaks=peaks,
                 channels=channels,
+                template_amplitudes=template_amplitudes,
             )
+            # _extract_waveforms_chunk(
+            #     spike_times=self.spike_times,
+            #     spike_templates=self.spike_templates,
+            #     sparse_templates=self.sparse_templates,
+            #     output=output,
+            #     recording_chunk=recording_chunk,
+            #     nchans=nchans,
+            #     start=start,
+            #     end=end,
+            #     waveform_length=waveform_length,
+            #     peaks=peaks,
+            #     channels=channels,
+            #     template_amplitudes=template_amplitudes,
+            # )
         leftover = (end - start) % (chunk_size)
         if leftover > 0:
             i = end - leftover
@@ -194,7 +218,22 @@ class SpkManager:
                 waveform_length=waveform_length,
                 peaks=peaks,
                 channels=channels,
+                template_amplitudes=template_amplitudes,
             )
+            # _extract_waveforms_chunk(
+            #     spike_times=self.spike_times,
+            #     spike_templates=self.spike_templates,
+            #     sparse_templates=self.sparse_templates,
+            #     output=output,
+            #     recording_chunk=recording_chunk,
+            #     nchans=nchans,
+            #     start=start,
+            #     end=end,
+            #     waveform_length=waveform_length,
+            #     peaks=peaks,
+            #     channels=channels,
+            #     template_amplitudes=template_amplitudes,
+            # )
         return output
 
     def extract_spike_channels(self, probe, nchans, output_chans):
@@ -207,9 +246,7 @@ class SpkManager:
         )
         for i in range(channels.shape[0]):
             num_channels = channels[i, 2] - channels[i, 1]
-            spike_channels[i, : num_channels + 1] = np.arange(
-                channels[i, 1], channels[i, 2] + 1
-            )
+            spike_channels[i, :num_channels] = np.arange(channels[i, 1], channels[i, 2])
         full_spike_channels = np.full(
             (self.spike_times.shape[0], output_chans), fill_value=-1
         )
@@ -231,8 +268,19 @@ class SpkManager:
         end: Union[None, int] = None,
         chunk_size: int = 240000,
         output_chans: int = 16,
+        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
         callback=print,
     ):
+        callback("Extracting spike waveforms.")
+
+        dtypes = {
+            "f64": np.float64,
+            "f32": np.float32,
+            "f16": np.float16,
+            "i32": np.int32,
+            "i16": np.int16,
+        }
+
         output = self.extract_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,
@@ -247,16 +295,34 @@ class SpkManager:
             output_chans=output_chans,
             callback=callback,
         )
+        callback("Spike waveforms extracted.")
 
+        callback("Finding spike channels.")
         full_spike_channels = self.extract_spike_channels(
             probe=probe, nchans=nchans, output_chans=output_chans
         )
 
+        if dtype != "f64":
+            callback(f"Converting to dtype {dtype}.")
+            # min_val, max_val = find_minmax_exponent_3(
+            #     output, np.finfo("d").max, np.finfo("d").min
+            # )
+            # exponent = (np.abs((np.abs(min_val) - np.abs(max_val))) // 4) * 3
+            # callback(f"Multiplying by 10**{exponent} to reduce dtype.")
+            # output = (output * float(10**exponent)).astype(dtypes[dtype])
+            output.astype(dtype=dtypes[dtype], copy=False)
+
+        callback("Saving spikes waveforms.")
         np.save(self.ks_directory / "_phy_spikes_subset.waveforms.npy", output)
+
+        callback("Saving spike times.")
         np.save(
             self.ks_directory / "_phy_spikes_subset.spikes.npy",
             np.arange(self.spike_times.shape[0]),
         )
+
+        callback("Saving spike channels.")
         np.save(
             self.ks_directory / "_phy_spikes_subset.channels.npy", full_spike_channels
         )
+        callback("Finished exporting data.")

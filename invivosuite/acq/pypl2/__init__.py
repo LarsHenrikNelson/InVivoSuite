@@ -7,26 +7,40 @@
 # You are free to modify or share this file, provided that the above
 # copyright notice is kept intact.
 
-#__init__.py serves three purposes:
+# __init__.py serves three purposes:
 #   1) Let's Python know that the .py files in this directory are importable modules.
 #   2) Sets up classes and functions in the pypl2lib and pypl2api modules to be easy to
-#      access. For example, without importing the pl2_ad function from pypl2api in 
+#      access. For example, without importing the pl2_ad function from pypl2api in
 #      __init__.py, you would have to import pypl2 in your script like this:
 #           from pypl2.pypl2api import pl2_ad
 #      instead of like this:
 #           from pypl2 import pl2_ad
 #      It's a minor convenience, but improves readability.
-#   3) Explicitly states which classes and functions in PyPL2 are meant to be public 
+#   3) Explicitly states which classes and functions in PyPL2 are meant to be public
 #      parts of the API.
 
-from .pypl2lib import PL2FileInfo, PL2AnalogChannelInfo, PL2SpikeChannelInfo, PL2DigitalChannelInfo, PyPL2FileReader
-from .pypl2api import pl2_ad, pl2_spikes, pl2_events, pl2_info, pl2_comments
+from .pypl2lib import (
+    PL2FileInfo,  # noqa: F401
+    PL2AnalogChannelInfo,  # noqa: F401
+    PL2SpikeChannelInfo,  # noqa: F401
+    PL2DigitalChannelInfo,  # noqa: F401
+    PyPL2FileReader,  # noqa: F401
+)
+from .pypl2api import (
+    pl2_ad,  # noqa: F401
+    pl2_spikes,  # noqa: F401
+    pl2_events,  # noqa: F401
+    pl2_info,  # noqa: F401
+    pl2_comments,  # noqa: F401
+)
 
-__author__ = 'Chris Heydrick (chris@plexon.com)'
-__version__ = '1.3.0'
+__author__ = "Chris Heydrick (chris@plexon.com)"
+__version__ = "1.3.0"
 
 # I'll put thanks to community bug fixers and feature implementers here
-__with_thanks_to__ = ['With thanks to Roland Ferger with the Pena Lab for demonstrating how to port to Python 3']
+__with_thanks_to__ = [
+    "With thanks to Roland Ferger with the Pena Lab for demonstrating how to port to Python 3"
+]
 
 # 5/24/2016 CH
 # Added 64-bit .dll support, incremented to 1.1.0
