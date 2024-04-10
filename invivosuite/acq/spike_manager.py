@@ -4,7 +4,7 @@ from typing import Literal, Union
 
 import numpy as np
 
-from .spike_functions import find_minmax_exponent_3
+# from .spike_functions import find_minmax_exponent_3
 
 
 class SpkManager:
@@ -14,24 +14,23 @@ class SpkManager:
         self._load_spike_clusters()
         self._load_spike_times()
         self._load_amplitudes()
+        self._load_spike_waveforms()
 
     def _load_amplitudes(self):
-        self.amplitudes = np.load(
-            str(self.ks_directory / "amplitudes.npy"), "r+"
-        ).flatten()
+        self.amplitudes = np.load(self.ks_directory / "amplitudes.npy", "r+").flatten()
 
     def _load_sparse_templates(self):
-        self.sparse_templates = np.load(str(self.ks_directory / "templates.npy"), "r+")
+        self.sparse_templates = np.load(self.ks_directory / "templates.npy", "r+")
 
     def _load_spike_templates(self):
         self.spike_templates = np.load(
-            str(self.ks_directory / "spike_templates.npy"), "r+"
+            self.ks_directory / "spike_templates.npy", "r+"
         ).flatten()
         self.template_ids = np.unique(self.spike_templates)
 
     def _load_spike_clusters(self):
         self.spike_clusters = np.load(
-            str(self.ks_directory / "spike_clusters.npy"), "r+"
+            self.ks_directory / "spike_clusters.npy", "r+"
         ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
 
@@ -42,8 +41,17 @@ class SpkManager:
 
     def _load_spike_times(self):
         self.spike_times = np.load(
-            str(self.ks_directory / "spike_times.npy"), "r+"
+            self.ks_directory / "spike_times.npy", "r+"
         ).flatten()
+
+    def _load_spike_waveforms(self):
+        temp_path = self.ks_directory / "_phy_spikes_subset.waveforms.npy"
+        if temp_path.exists():
+            self.spike_waveforms = np.load(temp_path, "r+")
+        else:
+            self.spike_waveforms = np.zeros((0, 0, 0))
+            np.save(temp_path, self.spike_waveforms)
+            self._load_spike_waveforms()
 
     def get_template_channels(self, templates, nchans, total_chans):
         channel_output = np.zeros((templates.shape[0], 3), dtype=int)
@@ -92,12 +100,11 @@ class SpkManager:
             # Get the spike info in loop
             curr_spk_index = current_spikes[i]
             cur_spk_time = self.spike_times[curr_spk_index]
+            cur_template_index = self.spike_templates[curr_spk_index]
+            cur_template = self.sparse_templates[cur_template_index]
+            chans = channels[cur_template_index, 1:3]
+            peak_chan = channels[cur_template_index, 0]
             if (cur_spk_time < cutoff_end) and ((cur_spk_time - width) > start):
-                cur_template_index = self.spike_templates[curr_spk_index]
-                cur_template = self.sparse_templates[cur_template_index]
-                chans = channels[cur_template_index, 1:3]
-                peak_chan = channels[cur_template_index, 0]
-
                 output[curr_spk_index, :, :spk_chans] = recording_chunk[
                     int(cur_spk_time - start - width) : int(
                         cur_spk_time - start + width
@@ -116,9 +123,13 @@ class SpkManager:
                         cur_spk_time - start + width
                     ),
                     chans[0] : chans[1],
-                ] -= (
-                    cur_template[:, chans[0] : chans[1]] / tj
-                )
+                ] -= cur_template[:, chans[0] : chans[1]] / (tj + 1e-10)
+            # else:
+            #     size = int(cutoff_end - (cur_spk_time - start - width))
+            #     output[curr_spk_index, :size, :spk_chans] = recording_chunk[
+            #         int(cur_spk_time - start - width) : int(cutoff_end),
+            #         chans[0] : chans[1],
+            #     ]
 
     def extract_waveforms(
         self,
@@ -181,20 +192,6 @@ class SpkManager:
                 channels=channels,
                 template_amplitudes=template_amplitudes,
             )
-            # _extract_waveforms_chunk(
-            #     spike_times=self.spike_times,
-            #     spike_templates=self.spike_templates,
-            #     sparse_templates=self.sparse_templates,
-            #     output=output,
-            #     recording_chunk=recording_chunk,
-            #     nchans=nchans,
-            #     start=start,
-            #     end=end,
-            #     waveform_length=waveform_length,
-            #     peaks=peaks,
-            #     channels=channels,
-            #     template_amplitudes=template_amplitudes,
-            # )
         leftover = (end - start) % (chunk_size)
         if leftover > 0:
             i = end - leftover
@@ -220,20 +217,6 @@ class SpkManager:
                 channels=channels,
                 template_amplitudes=template_amplitudes,
             )
-            # _extract_waveforms_chunk(
-            #     spike_times=self.spike_times,
-            #     spike_templates=self.spike_templates,
-            #     sparse_templates=self.sparse_templates,
-            #     output=output,
-            #     recording_chunk=recording_chunk,
-            #     nchans=nchans,
-            #     start=start,
-            #     end=end,
-            #     waveform_length=waveform_length,
-            #     peaks=peaks,
-            #     channels=channels,
-            #     template_amplitudes=template_amplitudes,
-            # )
         return output
 
     def extract_spike_channels(self, probe, nchans, output_chans):
@@ -281,7 +264,7 @@ class SpkManager:
             "i16": np.int16,
         }
 
-        output = self.extract_waveforms(
+        self.spike_waveforms = self.extract_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,
             ref=ref,
@@ -310,10 +293,12 @@ class SpkManager:
             # exponent = (np.abs((np.abs(min_val) - np.abs(max_val))) // 4) * 3
             # callback(f"Multiplying by 10**{exponent} to reduce dtype.")
             # output = (output * float(10**exponent)).astype(dtypes[dtype])
-            output.astype(dtype=dtypes[dtype], copy=False)
+            self.spike_waveforms.astype(dtype=dtypes[dtype], copy=False)
 
         callback("Saving spikes waveforms.")
-        np.save(self.ks_directory / "_phy_spikes_subset.waveforms.npy", output)
+        np.save(
+            self.ks_directory / "_phy_spikes_subset.waveforms.npy", self.spike_waveforms
+        )
 
         callback("Saving spike times.")
         np.save(
@@ -323,6 +308,76 @@ class SpkManager:
 
         callback("Saving spike channels.")
         np.save(
-            self.ks_directory / "_phy_spikes_subset.channels.npy", full_spike_channels
+            self.ks_directory / "_phy_spikes_subset.channels.npy",
+            full_spike_channels,
         )
         callback("Finished exporting data.")
+        self._load_spike_waveforms()
+
+    def recompute_templates(
+        self,
+        nchans: int = 4,
+        waveform_length: int = 82,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
+        chunk_size: int = 240000,
+        output_chans: int = 16,
+        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
+        callback=print,
+    ):
+        if self.spike_waveforms.size == 0:
+            self.export_to_phy(
+                nchans=nchans,
+                waveform_length=waveform_length,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+                start=start,
+                end=end,
+                chunk_size=chunk_size,
+                output_chans=output_chans,
+                dtype=dtype,
+                callback=callback,
+            )
+            self._load_spike_waveforms()
+
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+        _, channels = self.get_template_channels(
+            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
+        )
+
+        sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
+        callback("Starting to recompute templates")
+        for clust_id in self.cluster_ids:
+            callback(f"Recomputing cluster {clust_id} template")
+            indexes = np.where(self.spike_clusters == clust_id)[0]
+            temp_spikes_waveforms = self.spike_waveforms[indexes]
+            test = np.mean(temp_spikes_waveforms, axis=0)
+            temp_index = np.unique(self.spike_templates[indexes])[0]
+            start_chan = channels[temp_index][0] - nchans
+            end_chan = channels[temp_index][0] + nchans
+            if start_chan < 0:
+                end_chan -= start_chan
+                start_chan = 0
+            if end_chan > channel_map.size:
+                start_chan -= end_chan - channel_map.size
+                end_chan = channel_map.size
+            best_chans = np.arange(start_chan, end_chan)
+            sparse_templates_new[clust_id, :, best_chans] = test.T
+            self.spike_templates[indexes] = clust_id
+        self.sparse_templates = sparse_templates_new
+        np.save(self.ks_directory / "templates.npy", self.sparse_templates)
+        np.save(
+            self.ks_directory / "similar_templates.npy",
+            np.zeros((self.sparse_templates.shape[0], self.sparse_templates.shape[0])),
+        )
+        self._load_sparse_templates()
+        self.spike_times.flush()
+        callback("Finished recomputing templates.")
