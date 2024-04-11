@@ -4,6 +4,8 @@ from typing import Union
 import numpy as np
 from numba import njit
 
+__all__ = ["sttc", "sttc_ele"]
+
 
 @njit()
 def run_P(
