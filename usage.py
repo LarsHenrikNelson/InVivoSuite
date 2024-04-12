@@ -223,9 +223,26 @@ acq_manager.open_hdf5_file(hdf5_path)
 acq_manager.load_kilosort(ks_path)
 
 """
-Output data to use phy
+Output data to use phy. Don't use the f64 dtype, it makes Phy slow.
+Chunk size and waveform length are in samples.
 """
 acq_manager.export_to_phy(
+    waveform_length=82,
+    ref=True,
+    ref_type="cmr",
+    ref_probe="acc",
+    map_channel=True,
+    probe="acc",
+    chunk_size=480000,
+    dtype="f32",
+    output_chans=8,
+)
+
+"""
+Recalculate templates. I would re-export the extracted spikes after computing the new templates.
+This will provide a more accurate view of what the spikes look like.
+"""
+acq_manager.recompute_templates(
     ref_probe="acc",
     map_channel=True,
     probe="acc",
