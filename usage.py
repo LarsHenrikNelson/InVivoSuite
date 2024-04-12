@@ -127,6 +127,22 @@ for i in acqs:
 
 # %%
 """
+Compute the whitening matrix.
+This requires that a channel map is set.
+"""
+for i in acqs:
+    i.compute_whitening_matrix(
+        neighbors=2,
+        probe="acc",
+        acq_type="spike",
+        ref=True,
+        ref_type="cmr",
+        ref_probe="acc",
+        map_channel=True,
+    )
+
+# %%
+"""
 Setting some random attributes
 """
 for i in acqs:
@@ -222,6 +238,7 @@ acq_manager = AcqManager()
 acq_manager.open_hdf5_file(hdf5_path)
 acq_manager.load_kilosort(ks_path)
 
+# %%
 """
 Output data to use phy. Don't use the f64 dtype, it makes Phy slow.
 Chunk size and waveform length are in samples.
