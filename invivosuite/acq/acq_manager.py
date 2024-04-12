@@ -97,12 +97,12 @@ class AcqManager(SpkManager, LFPManager):
         self.close()
         return shape
 
-    @property
-    def id(self):
-        self.open()
-        id = self.file.attrs["id"]
-        self.close()
-        return id
+    # @property
+    # def id(self):
+    #     self.open()
+    #     id = self.file.attrs["id"]
+    #     self.close()
+    #     return id
 
     @property
     def probes(self):

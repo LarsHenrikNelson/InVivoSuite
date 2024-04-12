@@ -241,7 +241,8 @@ acq_manager.load_kilosort(ks_path)
 # %%
 """
 Output data to use phy. Don't use the f64 dtype, it makes Phy slow.
-Chunk size and waveform length are in samples.
+Chunk size and waveform length are in samples. Note that drift correction
+is not used.
 """
 acq_manager.export_to_phy(
     waveform_length=82,

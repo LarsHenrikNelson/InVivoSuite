@@ -1,7 +1,10 @@
+import math
+from typing import TypedDict
+
 import numpy as np
 from scipy import stats
 
-from .. import utils
+from ... import utils
 
 """These are from 
 https://github.com/AllenInstitute/ecephys_spike_sorting/blob/master/ecephys_spike_sorting/modules/quality_metrics/metrics.py
@@ -16,41 +19,50 @@ __all__ = [
 ]
 
 
-def presence(
-    data: np.ndarray, nbins: int, start: int = -1, stop: int = -1, tol=1e-9
-) -> tuple[float, float, float, bool]:
+class Presence(TypedDict):
+    presence_ratio: float
+    reg_slope: float
+    reg_pvalue: float
+    uniform_fit: bool
+
+
+def presence(data: np.ndarray, start: int = -1, end: int = -1, tol=1e-9) -> Presence:
     """Modified version of AllenInstitutes spike presence. Creates a
     KDE of the spike indices then runs a regression to see if the
     data is skewed and a
 
-    Parameters
-    ----------
-    data : np.ndarray
-        _description_
-    nbins : int
-        _description_
-    start : int, optional
-        _description_, by default -1
-    stop : int, optional
-        _description_, by default -1
-    tol : float, optional
-        _description_, by default 1e-9
+    Args:
+        data (np.ndarray): data in samples
+        nbins (int): _description_
+        start (int, optional): _description_. Defaults to -1.
+        end (int, optional): _description_. Defaults to -1.
+        tol (_type_, optional): _description_. Defaults to 1e-9.
 
-    Returns
-    -------
-    tuple[float, float, float, bool]
-        _description_
+    Returns:
+        tuple[float, float, float, bool]: _description_
     """
     if start == -1:
         start = data[0]
-    if stop == -1:
-        stop == data[-1]
-    bins = np.linspace(start, stop, num=nbins)
-    binned = utils.bin_data_sorted(data, bins)
-    x, y = utils.kde(data, tol=1e-9)
-    fit_out = stats.fit(stats.uniform, y)
-    reg_out = stats.linregress(np.arange(binned.size), binned)
-    return np.sum(binned > 0) / nbins, reg_out.slope, reg_out.pvalue, fit_out.success
+    if end == -1:
+        end == data[-1]
+    nbins = math.ceil(data.size * 0.05)
+    if nbins > 2:
+        bins = np.linspace(start, end, num=nbins)
+        binned = utils.bin_data_sorted(data, bins)
+        reg_out = stats.linregress(np.arange(binned.size), binned)
+        _, y = utils.kde(data, tol=tol)
+        fit_out = stats.fit(stats.uniform, y)
+        output = Presence(
+            presence_ratio=np.sum(binned > 0) / nbins,
+            reg_slope=reg_out.slope,
+            reg_pvalue=reg_out.pvalue,
+            uniform_fit=fit_out.success,
+        )
+    else:
+        output = Presence(
+            presence_ratio=0.0, reg_slope=0.0, reg_pvalue=0.0, uniform_fit=False
+        )
+    return output
 
 
 def firing_rate(spike_train, min_time=None, max_time=None):
