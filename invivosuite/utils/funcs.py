@@ -22,8 +22,7 @@ __all__ = [
     "ppc_sampled",
     "sinefunc",
     "where_count",
-    "whitening_matrix_full",
-    "whitening_matrix_local",
+    "whitening_matrix",
     "xconv_fft",
     "xcorr_fft",
     "xcorr_lag",
@@ -35,31 +34,38 @@ def mad(array):
     return mad / 0.6744897501960817
 
 
-def whitening_matrix_full(data):
-    nt = data.shape[1]
-    cc = data.T @ data
+def whitening_matrix(acquisitions: np.ndarray) -> np.ndarray:
+    """ZCA whitening matrix. Assumes data is (nchans, nsamples).
+    Can be used for local whitening by passing a subset of
+    channels.
+
+    Args:
+        acquisitions (np.ndarray): _description_
+
+    Returns:
+        np.ndarray: _description_
+    """
+    nt = acquisitions.shape[0]
+    cc = acquisitions @ acquisitions.T
     cc /= nt
     u, s, _ = np.linalg.svd(cc, hermitian=True)
     W = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
     return W
 
 
-def whitening_matrix_local(data, neighbors=2):
+def whitening_matrix_local(data: np.ndarray, W: np.ndarray, channel, neighbors):
+    # Not used anymore
     nchans = data.shape[0]
     nt = data.shape[1]
-    W = np.zeros((nchans, nchans))
-    for i in range(nchans):
-        start = max(0, i - neighbors)
-        end = min(i + neighbors + 1, nchans)
-        inds = np.arange(start, end)
-        temp = data[inds, :].T
-        cc = temp.T @ temp
-        cc /= nt
-        u, s, _ = np.linalg.svd(cc, hermitian=True)
-        W_local = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
-        ilocal = min(i, neighbors)
-        W[inds, i] = W_local[inds - inds.min(), ilocal]
-    return W
+    start = max(0, channel - neighbors)
+    end = min(channel + neighbors + 1, nchans)
+    inds = np.arange(start, end)
+    cc = data.T @ data
+    cc /= nt
+    u, s, _ = np.linalg.svd(cc, hermitian=True)
+    W_local = np.dot(u, np.dot(np.diag(1.0 / np.sqrt(s + 1e-8)), u.T))
+    ilocal = min(channel, neighbors)
+    W[inds, channel] = W_local[inds - inds.min(), ilocal]
 
 
 @njit(parallel=True)

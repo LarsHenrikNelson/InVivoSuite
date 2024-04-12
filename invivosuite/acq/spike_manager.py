@@ -111,13 +111,8 @@ class SpkManager:
                     ),
                     chans[0] : chans[1],
                 ]
-                tt = recording_chunk[
-                    int(cur_spk_time - start - width) : int(
-                        cur_spk_time - start + width
-                    ),
-                    peak_chan,
-                ]
-                tj = peaks[cur_template_index, 0] / (np.min(tt) + 1e-10)
+                tt = recording_chunk[int(cur_spk_time - start), peak_chan]
+                tj = peaks[cur_template_index, 0] / (tt + 1e-10)
                 recording_chunk[
                     int(cur_spk_time - start - width) : int(
                         cur_spk_time - start + width

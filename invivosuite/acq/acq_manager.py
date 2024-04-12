@@ -9,7 +9,7 @@ from scipy import signal
 from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
-from ..utils import envelopes_idx, whitening_matrix_local
+from ..utils import envelopes_idx, whitening_matrix
 
 
 class AcqManager(SpkManager, LFPManager):
@@ -245,27 +245,56 @@ class AcqManager(SpkManager, LFPManager):
     def compute_whitening_matrix(
         self,
         neighbors: int,
-        probe: str,
+        probe: str = "all",
         acq_type: Literal["spike", "lfp"] = "spike",
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
+        map_channel: bool = True,
     ):
-        probe_chans = self.get_grp_dataset("probe", probe)
+        probe_chans = self.get_grp_dataset("probes", probe)
         probe_chans -= probe_chans[0]
-        nchans = probe_chans[1]
+        total_chans = probe_chans[1] - probe_chans[0]
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        acquisitions = np.zeros((probe_chans[1], end - start))
-        for i in range(probe_chans[1]):
-            acquisitions[i, :] = self.acq(
-                i, acq_type=acq_type, ref=ref, ref_type=ref_type, ref_probe=ref_probe
-            )
-        if neighbors != nchans:
-            whitening_matrix = whitening_matrix_local(acquisitions, neighbors)
+        W = np.zeros((total_chans, total_chans))
+        if neighbors != total_chans:
+            for channel in range(probe_chans[1]):
+                acquisitions = self.get_multichans(
+                    "spike",
+                    ref=ref,
+                    channel=channel,
+                    nchans=neighbors,
+                    ref_probe=ref_probe,
+                    ref_type=ref_type,
+                    map_channel=map_channel,
+                    probe=probe,
+                    start=start,
+                    end=end,
+                )
+                start_chan = int(max(0, channel - neighbors))
+                end_chan = int(min(total_chans, channel + neighbors + 1))
+                W_temp = whitening_matrix(
+                    acquisitions=acquisitions,
+                )
+                ilocal = min(0, neighbors)
+                W[channel, start_chan:end_chan] = W_temp[ilocal, :]
         else:
-            whitening_matrix = whitening_matrix(acquisitions)
-        self.set_grp_dataset("whitening_matrix", probe, whitening_matrix)
+            acquisitions = np.zeros((probe_chans[1], end - start))
+            for i in range(probe_chans[1]):
+                acquisitions[i, :] = self.acq(
+                    i,
+                    acq_type=acq_type,
+                    ref=ref,
+                    ref_type=ref_type,
+                    ref_probe=ref_probe,
+                    map_channel=map_channel,
+                    probe=probe,
+                    start=start,
+                    end=end,
+                )
+            W = whitening_matrix(acquisitions)
+        self.set_grp_dataset("whitening_matrix", probe, W)
 
     def acq(
         self,
@@ -318,19 +347,19 @@ class AcqManager(SpkManager, LFPManager):
             acq = self.downsample(
                 acq, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
             )
-        self.close()
         return acq
 
     def get_multichans(
         self,
         acq_type: Literal["spike", "lfp", "raw"],
-        chan: Union[int, None] = None,
+        channel: Union[int, None] = None,
         nchans: Union[int, None] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
+        whiten: bool = False,
         start: Union[None, int] = None,
         end: Union[None, int] = None,
     ):
@@ -341,24 +370,19 @@ class AcqManager(SpkManager, LFPManager):
         if end is None:
             end = self.get_file_attr("end")
 
-        if chan is not None:
-            start_chan = chan - nchans
-            end_chan = chan + nchans
-            if start_chan < 0:
-                start_chan = 0
-            if end_chan >= total_chans:
-                end_chan = total_chans - 1
-            multi_acq = np.zeros(
-                (end_chan - start_chan + 1, int(self.end - self.start))
-            )
-
+        if channel is not None:
+            # start_chan = channel - nchans
+            end_chan = channel + nchans
+            start_chan = max(0, int(channel - nchans))
+            end_chan = min(total_chans, int(channel + nchans + 1))
+            multi_acq = np.zeros((end_chan - start_chan, int(end - start)))
         else:
             start_chan = 0
-            end_chan = (data[1] - data[0]) - 1
-            multi_acq = np.zeros((end_chan + 1, int(end - start)))
-        for i in range(start_chan, end_chan + 1):
-            multi_acq[i, :] = self.acq(
-                acq_num=i,
+            end_chan = data[1] - data[0]
+            multi_acq = np.zeros((end_chan, int(end - start)))
+        for channel in range(start_chan, end_chan):
+            multi_acq[int(channel - start_chan), :] = self.acq(
+                acq_num=channel,
                 acq_type=acq_type,
                 ref=ref,
                 ref_type=ref_type,
@@ -368,6 +392,9 @@ class AcqManager(SpkManager, LFPManager):
                 start=start,
                 end=end,
             )
+        if whiten:
+            W = self.get_grp_dataset("whitening_matrix", probe)
+            multi_acq = W[start_chan:end_chan, start_chan:end_chan] @ multi_acq
         return multi_acq
 
     def get_groups(self):
