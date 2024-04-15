@@ -299,7 +299,7 @@ class AcqManager(SpkManager, LFPManager):
     def acq(
         self,
         acq_num: int,
-        acq_type: Literal["spike", "lfp", "raw"],
+        acq_type: Literal["spike", "lfp", "wideband"],
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -320,7 +320,7 @@ class AcqManager(SpkManager, LFPManager):
         if ref:
             median = self.get_grp_dataset(ref_type, ref_probe)
             array -= median[start:end]
-        if acq_type == "raw":
+        if acq_type == "wideband":
             return array
         filter_dict = self.get_filter(acq_type)
         sample_rate = self.get_file_dataset("sample_rate", rows=int(acq_num))
@@ -351,7 +351,7 @@ class AcqManager(SpkManager, LFPManager):
 
     def get_multichans(
         self,
-        acq_type: Literal["spike", "lfp", "raw"],
+        acq_type: Literal["spike", "lfp", "wideband"],
         channel: Union[int, None] = None,
         nchans: Union[int, None] = None,
         ref: bool = False,

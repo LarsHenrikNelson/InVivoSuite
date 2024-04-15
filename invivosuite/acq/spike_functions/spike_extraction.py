@@ -5,7 +5,7 @@ from numba import njit
 __all__ = ["get_template_parts", "find_minmax_exponent_3"]
 
 
-@njit()
+@njit(cache=True)
 def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
     index = np.argmin(template)
     start_index = index
@@ -24,8 +24,9 @@ def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
         end_index += 1
         current = template[end_index]
     end_index -= 1
-    amp = template[index]
-    return start_index, end_index, index, amp
+    amplitude = template[index]
+    trough_to_peak = template[end_index] - amplitude
+    return start_index, end_index, index, amplitude, trough_to_peak
 
 
 @njit(cache=True)

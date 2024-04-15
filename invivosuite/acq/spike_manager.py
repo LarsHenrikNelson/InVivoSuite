@@ -1,14 +1,15 @@
 from collections import defaultdict
-from typing import Literal, Union, TypeDict
-
+from pathlib import Path
+from typing import Literal, TypedDict, Union
 
 import numpy as np
+from send2trash import send2trash
 
-from .spike_functions import presence, get_template_parts
 from ..utils import save_tsv
+from .spike_functions import get_template_parts, presence
 
 
-class SpikeProperties(TypeDict):
+class SpikeProperties(TypedDict):
     presence_ration: list
     iei: list
     n_spikes: list
@@ -20,6 +21,14 @@ class SpikeProperties(TypeDict):
     fr: list
 
 
+class TemplateProperties(TypedDict):
+    start_index: list
+    peak_index: list
+    end_index: list
+    peak_value: list
+    amplitude: list
+
+
 class SpkManager:
     def load_ks_data(self):
         self._load_sparse_templates()
@@ -29,38 +38,51 @@ class SpkManager:
         self._load_amplitudes()
         self._load_spike_waveforms()
 
-    def _load_amplitudes(self):
-        self.amplitudes = np.load(self.ks_directory / "amplitudes.npy", "r+").flatten()
+    def _load_amplitudes(self, load_type: str = "r+"):
+        self.amplitudes = np.load(
+            self.ks_directory / "amplitudes.npy", load_type
+        ).flatten()
 
-    def _load_sparse_templates(self):
-        self.sparse_templates = np.load(self.ks_directory / "templates.npy", "r+")
+    def _remove_file(self, file_ending):
+        temp_path = Path(self.ks_directory / file_ending)
+        if temp_path.exists():
+            send2trash(str(temp_path))
 
-    def _load_spike_templates(self):
+    def _load_sparse_templates(self, load_type: str = "r+"):
+        temp_path = self.ks_directory / "templates.npy"
+        if temp_path.exists():
+            self.sparse_templates = np.load(
+                self.ks_directory / "templates.npy", load_type
+            )
+        else:
+            self.sparse_templates = np.zeros((0, 0, 0))
+
+    def _load_spike_templates(self, load_type: str = "r+"):
         self.spike_templates = np.load(
-            self.ks_directory / "spike_templates.npy", "r+"
+            self.ks_directory / "spike_templates.npy", load_type
         ).flatten()
         self.template_ids = np.unique(self.spike_templates)
 
-    def _load_spike_clusters(self):
+    def _load_spike_clusters(self, load_type: str = "r+"):
         self.spike_clusters = np.load(
-            self.ks_directory / "spike_clusters.npy", "r+"
+            self.ks_directory / "spike_clusters.npy", load_type
         ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
 
-    def _create_chan_clusters(self):
+    def _create_chan_clusters(self, load_type: str = "r+"):
         self.chan_clusters = defaultdict(list)
         for cluster, chan in zip(self.cluster_ids, self.cluster_channels):
             self.chan_clusters[chan].append(cluster)
 
-    def _load_spike_times(self):
+    def _load_spike_times(self, load_type: str = "r+"):
         self.spike_times = np.load(
-            self.ks_directory / "spike_times.npy", "r+"
+            self.ks_directory / "spike_times.npy", load_type
         ).flatten()
 
-    def _load_spike_waveforms(self):
+    def _load_spike_waveforms(self, load_type: str = "r+"):
         temp_path = self.ks_directory / "_phy_spikes_subset.waveforms.npy"
         if temp_path.exists():
-            self.spike_waveforms = np.load(temp_path, "r+")
+            self.spike_waveforms = np.load(temp_path, load_type)
         else:
             self.spike_waveforms = np.zeros((0, 0, 0))
             np.save(temp_path, self.spike_waveforms)
@@ -113,21 +135,28 @@ class SpkManager:
         )
         return data
 
-    def get_templates_properties(self):
+    def get_templates_properties(self, templates: np.ndarray) -> TemplateProperties:
         amplitude = []
         start = []
         middle = []
         end = []
+        trough_to_peak = []
         for i in self.cluster_ids:
-            chan = np.argmin(np.min(self.sparse_templates[i], axis=0))
-            si, ei, mi = get_template_parts(self.sparse_templates[i, :, chan])
+            chan = np.argmin(np.min(templates[i], axis=0))
+            si, ei, mi, amp, t_to_p = get_template_parts(templates[i, :, chan])
             start.append(si)
             end.append(ei)
             middle.append(mi)
-            amplitude.append(
-                self.sparse_templates[i, ei, chan] - self.sparse_templates[i, si, chan]
-            )
-        return start, end, middle, amplitude
+            amplitude.append(amp)
+            trough_to_peak.append(t_to_p)
+        temp = TemplateProperties(
+            start_index=start,
+            peak_index=middle,
+            end_index=end,
+            peak_value=amplitude,
+            amplitude=trough_to_peak,
+        )
+        return temp
 
     def get_template_channels(self, templates, nchans, total_chans):
         channel_output = np.zeros((templates.shape[0], 3), dtype=int)
@@ -147,33 +176,6 @@ class SpkManager:
             channel_output[i, 0] = chan
             peak_output[i, 0] = np.min(templates[i, :, chan])
         return peak_output, channel_output
-
-    def wideband_spikes(
-        self,
-        output,
-        recording_chunk,
-        nchans,
-        start,
-        end,
-        waveform_length,
-        peaks,
-        channels,
-        template_amplitudes,
-    ):
-        current_spikes = np.where(
-            (self.spike_times < end) & (self.spike_times > start)
-        )[0]
-
-        # Sort the spikes by amplitude
-        extract_indexes = np.argsort(template_amplitudes[current_spikes])
-
-        spk_chans = nchans * 2
-        width = waveform_length / 2
-        cutoff_end = end - width
-        for i in extract_indexes:
-            # Get the spike info in loop
-            curr_spk_index = current_spikes[i]
-            cur_spk_time = self.spike_times[curr_spk_index]
 
     def extract_waveforms_chunk(
         self,
@@ -242,6 +244,7 @@ class SpkManager:
         end: Union[None, int] = None,
         chunk_size: int = 240000,
         output_chans: int = 16,
+        acq_type: Literal["spike", "lfp", "wideband"] = "spike",
         callback=print,
     ):
         if start is None:
@@ -270,7 +273,7 @@ class SpkManager:
             )
             chunk_start = max(0, i - waveform_length)
             recording_chunk = self.get_multichans(
-                "spike",
+                acq_type=acq_type,
                 ref=ref,
                 ref_probe=ref_probe,
                 ref_type=ref_type,
@@ -295,122 +298,7 @@ class SpkManager:
             i = end - leftover
             callback(f"Starting chunk {index+1} at sample {i}.")
             recording_chunk = self.get_multichans(
-                "spike",
-                ref=ref,
-                ref_probe=ref_probe,
-                ref_type=ref_type,
-                map_channel=map_channel,
-                probe=probe,
-                start=i,
-                end=end,
-            ).T
-            self.extract_waveforms_chunk(
-                output=output,
-                recording_chunk=recording_chunk,
-                nchans=nchans,
-                start=i,
-                end=end,
-                waveform_length=waveform_length,
-                peaks=peaks,
-                channels=channels,
-                template_amplitudes=template_amplitudes,
-            )
-        return output
-
-    def wideband(
-        self,
-        output,
-        recording_chunk,
-        nchans,
-        start,
-        end,
-        waveform_length,
-        peaks,
-        channels,
-        template_amplitudes,
-    ):
-        current_spikes = np.where(
-            (self.spike_times < end) & (self.spike_times > start)
-        )[0]
-
-        # Sort the spikes by amplitude
-        extract_indexes = np.argsort(template_amplitudes[current_spikes])
-
-        spk_chans = nchans * 2
-        width = waveform_length / 2
-        cutoff_end = end - width
-        for i in extract_indexes:
-            # Get the spike info in loop
-            curr_spk_index = current_spikes[i]
-            cur_spk_time = self.spike_times[curr_spk_index]
-
-    def extract_wideband_waveforms(
-        self,
-        nchans: int = 4,
-        waveform_length: int = 82,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
-        ref_probe: str = "all",
-        map_channel: bool = False,
-        probe: str = "all",
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
-        chunk_size: int = 240000,
-        output_chans: int = 16,
-        callback=print,
-    ):
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
-        n_chunks = (end - start) // (chunk_size)
-        chunk_starts = np.arange(n_chunks) * chunk_size
-        output = np.zeros((len(self.spike_times), waveform_length))
-
-        # Get the best range of channels for each template
-        channel_map = self.get_grp_dataset("channel_maps", probe)
-        peaks, channels = self.get_template_channels(
-            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
-        )
-
-        temps = np.unique(self.spike_templates)
-        template_peaks = {key: value for key, value in zip(temps, peaks.flatten())}
-        template_amplitudes = np.zeros((self.spike_templates.size))
-        for i in range(template_amplitudes.size):
-            template_amplitudes[i] = template_peaks[self.spike_templates[i]]
-
-        for index, i in enumerate(chunk_starts):
-            callback(
-                f"Starting chunk {index+1} start at {i} and ending at {i+chunk_size}."
-            )
-            chunk_start = max(0, i - waveform_length)
-            recording_chunk = self.get_multichans(
-                "raw",
-                ref=ref,
-                ref_probe=ref_probe,
-                ref_type=ref_type,
-                map_channel=map_channel,
-                probe=probe,
-                start=chunk_start,
-                end=i + chunk_size,
-            ).T
-            self.extract_waveforms_chunk(
-                output=output,
-                recording_chunk=recording_chunk,
-                nchans=nchans,
-                start=chunk_start,
-                end=i + chunk_size,
-                waveform_length=waveform_length,
-                peaks=peaks,
-                channels=channels,
-                template_amplitudes=template_amplitudes,
-            )
-        leftover = (end - start) % (chunk_size)
-        if leftover > 0:
-            i = end - leftover
-            callback(f"Starting chunk {index+1} at sample {i}.")
-            recording_chunk = self.get_multichans(
-                "spike",
+                acq_type=acq_type,
                 ref=ref,
                 ref_probe=ref_probe,
                 ref_type=ref_type,
@@ -509,17 +397,22 @@ class SpkManager:
             self.spike_waveforms.astype(dtype=dtypes[dtype], copy=False)
 
         callback("Saving spikes waveforms.")
+        self._remove_file("_phy_spikes_subset.waveforms.npy")
+
         np.save(
             self.ks_directory / "_phy_spikes_subset.waveforms.npy", self.spike_waveforms
         )
 
         callback("Saving spike times.")
+        self._remove_file("_phy_spikes_subset.spikes.npy")
+
         np.save(
             self.ks_directory / "_phy_spikes_subset.spikes.npy",
             np.arange(self.spike_times.shape[0]),
         )
 
         callback("Saving spike channels.")
+        self._remove_file("_phy_spikes_subset.channels.npy")
         np.save(
             self.ks_directory / "_phy_spikes_subset.channels.npy",
             full_spike_channels,
@@ -586,11 +479,17 @@ class SpkManager:
             sparse_templates_new[clust_id, :, best_chans] = test.T
             self.spike_templates[indexes] = clust_id
         self.sparse_templates = sparse_templates_new
-        np.save(self.ks_directory / "templates.npy", self.sparse_templates)
+        self._remove_file("templates.npy")
+        np.save(
+            self.ks_directory / "templates.npy",
+            sparse_templates_new.astype(np.float32),
+        )
+        self._remove_file("similar_templates.npy")
         np.save(
             self.ks_directory / "similar_templates.npy",
             np.zeros((self.sparse_templates.shape[0], self.sparse_templates.shape[0])),
         )
+        self.spike_templates.flush()
+
         self._load_sparse_templates()
-        self.spike_times.flush()
         callback("Finished recomputing templates.")
