@@ -1,6 +1,26 @@
+import math
 from typing import Union
 
-__all__ = ["save_tsv", "tsv_row"]
+import numpy as np
+
+__all__ = [
+    "round_sig",
+    "save_tsv",
+    "tsv_row",
+]
+
+
+def round_sig(x, sig=4):
+    if np.isnan(x):
+        return np.nan
+    elif x == 0:
+        return 0
+    elif x != 0 or not np.isnan(x):
+        temp = math.floor(math.log10(abs(x)))
+        if np.isnan(temp):
+            return round(x, 0)
+        else:
+            return round(x, sig - int(temp) - 1)
 
 
 def tsv_row(data: Union[list, tuple]):
@@ -8,7 +28,7 @@ def tsv_row(data: Union[list, tuple]):
     temp_str = ""
     for i in range(num_values):
         if i < (num_values - 1):
-            temp_str = temp_str + f"{data[i]}  "
+            temp_str = temp_str + f"{data[i]}\t"
         else:
             temp_str = temp_str + f"{data[i]}\n"
     return temp_str
@@ -19,12 +39,15 @@ def save_tsv(
     data: dict,
 ):
     with open(f"{name}.tsv", "w") as record_file:
-        keys = data.keys()
-        record_file.write(tsv_row(keys))
+        keys = list(data.keys())
+        record_file.write("\t".join(keys) + "\n")
         size = len(data[keys[0]])
         for i in range(size):
+            t = []
             for j in keys:
-                t = []
-                t.append(data[j][i])
-            row = tsv_row(t)
-            record_file.write(row)
+                if isinstance(data[j][i], (str, int)):
+                    t.append(data[j][i])
+                else:
+                    t.append(round_sig(data[j][i]))
+            # row = tsv_row(t)
+            record_file.write("\t".join(str(x) for x in t) + "\n")

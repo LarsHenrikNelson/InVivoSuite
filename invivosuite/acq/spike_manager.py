@@ -10,23 +10,24 @@ from .spike_functions import get_template_parts, presence
 
 
 class SpikeProperties(TypedDict):
-    presence_ration: list
-    iei: list
-    n_spikes: list
-    cluster_id: list
-    Amplitude: list
-    ContamPct: list
-    depth: list
-    sh: list
-    fr: list
+    presence_ratio: list[float]
+    iei: list[float]
+    n_spikes: list[int]
+    cluster_id: list[int]
+    contampct: list[float]
+    # depth: list
+    # sh: list
+    fr: list[float]
 
 
 class TemplateProperties(TypedDict):
-    start_index: list
-    peak_index: list
-    end_index: list
-    peak_value: list
-    amplitude: list
+    start_index: list[int]
+    peak_index: list[int]
+    end_index: list[int]
+    peak_value: list[float]
+    amplitude: list[float]
+    cluster_id: list[int]
+    channel: list[int]
 
 
 class SpkManager:
@@ -94,44 +95,48 @@ class SpkManager:
         indexes = self.spike_times[spike_ids].flatten()
         return indexes
 
-    def get_cluster_spike_times(self, cluster_id: int, fs: int = 40000) -> np.ndarray:
+    def get_cluster_spike_times(
+        self,
+        cluster_id: int,
+        fs: int = 40000,
+        out_type: Literal["sec", "ms", "samples"] = "sec",
+    ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
-        times = self.spike_times[spike_ids].flatten() / fs
+        if out_type == "ms":
+            times = self.spike_times[spike_ids].flatten() / (fs / 1000)
+        elif out_type == "sec":
+            times = self.spike_times[spike_ids].flatten() / fs
         return times
 
-    def calculate_spike_properties(self, fs: int = 40000) -> SpikeProperties:
-        _, channels = self.get_template_channels(
-            self.sparse_templates, nchans=8, total_chans=64
-        )
+    def get_spikes_properties(
+        self, templates: np.ndarray, fs: int = 40000
+    ) -> SpikeProperties:
+        _, channels = self.get_template_channels(templates, nchans=8, total_chans=64)
         presence_ratios = []
         iei = []
         n_spikes = []
-        depth = []
-        ch = []
+        # depth = []
+        fr = []
         cluster_ids = self.cluster_ids
-        amplitudes = []
-        start_indexes = []
-        middle_indexes = []
-        end_indexes = []
         for i in cluster_ids:
-            times = self.get_cluster_spike_times(i, fs=fs)
-            iei.append(np.diff(times))
+            times = self.get_cluster_spike_times(i, fs=fs, out_type="sec")
+            if times.size > 2:
+                diffs = np.mean(np.diff(times))
+                iei.append(diffs)
+                fr.append(1 / diffs)
+            else:
+                iei.append(0)
+                fr.append(0)
             n_spikes.append(times.size)
             pr = presence(times, self.start / fs, self.end / fs)
-            presence_ratios.append(pr.presence_ratio)
-            ch.append(channels[0])
-            start, end, middle, amp = self.get_template_properties()
-            amplitudes.append(amp)
-            start_indexes.append(start)
-            end_indexes.append(end)
-            middle_indexes.append(middle)
+            presence_ratios.append(pr["presence_ratio"])
         data = SpikeProperties(
             presence_ratio=presence_ratios,
             iei=iei,
             n_spikes=n_spikes,
-            channel=ch,
+            channel=channels[cluster_ids, 0],
             cluster_id=cluster_ids,
-            amplitude=amplitudes,
+            fr=fr,
         )
         return data
 
@@ -141,22 +146,83 @@ class SpkManager:
         middle = []
         end = []
         trough_to_peak = []
+        channel = []
+        cid = []
         for i in self.cluster_ids:
             chan = np.argmin(np.min(templates[i], axis=0))
             si, ei, mi, amp, t_to_p = get_template_parts(templates[i, :, chan])
             start.append(si)
             end.append(ei)
             middle.append(mi)
-            amplitude.append(amp)
-            trough_to_peak.append(t_to_p)
+            amplitude.append(amp * 1000000)
+            trough_to_peak.append(t_to_p * 1000000)
+            channel.append(chan)
+            cid.append(i)
         temp = TemplateProperties(
             start_index=start,
             peak_index=middle,
             end_index=end,
             peak_value=amplitude,
             amplitude=trough_to_peak,
+            channel=channel,
+            cluster_id=cid,
         )
         return temp
+
+    def get_properties(self, fs: int = 40000):
+        output_dict = {}
+        temp_props = self.get_templates_properties(self.sparse_templates)
+        spk_props = self.get_spikes_properties(self.sparse_templates, fs=fs)
+        output_dict.update(temp_props)
+        output_dict.update(spk_props)
+        return output_dict
+
+    def save_properties_phy(self, file_path=None, fs: int = 40000):
+
+        out_data = self.get_properties(fs)
+        out_data["ch"] = out_data["channel"]
+        del out_data["start_index"]
+        del out_data["end_index"]
+        del out_data["peak_index"]
+
+        if file_path is None:
+            save_path = self.ks_directory / "cluster_info"
+        else:
+            save_path = Path(file_path) / "cluster_info"
+        save_tsv(save_path, out_data)
+
+        if file_path is None:
+            save_path = self.ks_directory / "cluster_Amplitude"
+        else:
+            save_path = Path(file_path) / "cluster_Amplitude"
+        save_tsv(
+            save_path,
+            {"Amplitude": out_data["amplitude"], "cluster_id": out_data["cluster_id"]},
+        )
+
+        if file_path is None:
+            save_path = self.ks_directory / "ContamPct"
+        else:
+            save_path = Path(file_path) / "ContamPct"
+        save_tsv(
+            save_path,
+            {
+                "ContamPct": [100.0] * len(out_data["cluster_id"]),
+                "cluster_id": out_data["cluster_id"],
+            },
+        )
+
+        if file_path is None:
+            save_path = self.ks_directory / "cluster_KSLabel"
+        else:
+            save_path = Path(file_path) / "cluster_KSLabel"
+        save_tsv(
+            save_path,
+            {
+                "KSLabel": ["mua"] * len(out_data["cluster_id"]),
+                "cluster_id": out_data["cluster_id"],
+            },
+        )
 
     def get_template_channels(self, templates, nchans, total_chans):
         channel_output = np.zeros((templates.shape[0], 3), dtype=int)
@@ -492,4 +558,5 @@ class SpkManager:
         self.spike_templates.flush()
 
         self._load_sparse_templates()
+        self.save_properties_phy()
         callback("Finished recomputing templates.")

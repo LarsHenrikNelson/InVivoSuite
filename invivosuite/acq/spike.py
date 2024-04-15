@@ -23,9 +23,9 @@ __all__ = [
 ]
 
 
-def duplicate_spikes(chan, cluster_id, spk_acq_pair):
-    indexes = spk_acq_pair[0].get_cluster_spike_indexes(cluster_id)
-    spk_acq = spk_acq_pair[1].acq(
+def duplicate_spikes(chan, cluster_id, acq_manager):
+    indexes = acq_manager.get_cluster_spike_indexes(cluster_id)
+    spk_acq = acq_manager.acq(
         chan,
         acq_type="spike",
         ref=True,
