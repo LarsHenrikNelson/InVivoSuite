@@ -541,6 +541,7 @@ class SpkManager:
 
         sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
         callback("Starting to recompute templates")
+        self.spike_templates = np.array(self.spike_templates)
         for clust_id in self.cluster_ids:
             callback(f"Recomputing cluster {clust_id} template")
             indexes = np.where(self.spike_clusters == clust_id)[0]
@@ -573,7 +574,13 @@ class SpkManager:
             self.ks_directory / "similar_templates.npy",
             np.zeros((self.sparse_templates.shape[0], self.sparse_templates.shape[0])),
         )
-        self.spike_templates.flush()
+
+        callback("Saving spike templates.")
+        self._remove_file("spike_templates.npy")
+        np.save(
+            self.ks_directory / "spike_templates.npy",
+            self.spike_templates,
+        )
 
         self._load_sparse_templates()
         self.save_properties_phy()
