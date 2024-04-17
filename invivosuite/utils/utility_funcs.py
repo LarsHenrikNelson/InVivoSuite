@@ -34,11 +34,8 @@ def tsv_row(data: Union[list, tuple]):
     return temp_str
 
 
-def save_tsv(
-    name: str,
-    data: dict,
-):
-    with open(f"{name}.tsv", "w") as record_file:
+def save_tsv(name: str, data: dict, mode: str = "w", encoding: str = "utf-8"):
+    with open(f"{name}.tsv", mode, encoding=encoding) as record_file:
         keys = list(data.keys())
         record_file.write("\t".join(keys) + "\n")
         size = len(data[keys[0]])

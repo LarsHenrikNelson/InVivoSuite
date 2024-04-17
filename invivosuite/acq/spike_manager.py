@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal, TypedDict, Union
 
 import numpy as np
+import pandas as pd
 from send2trash import send2trash
 
 from ..utils import save_tsv
@@ -70,7 +71,7 @@ class SpkManager:
         ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
 
-    def _create_chan_clusters(self, load_type: str = "r+"):
+    def _create_chan_clusters(self):
         self.chan_clusters = defaultdict(list)
         for cluster, chan in zip(self.cluster_ids, self.cluster_channels):
             self.chan_clusters[chan].append(cluster)
@@ -94,6 +95,9 @@ class SpkManager:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         indexes = self.spike_times[spike_ids].flatten()
         return indexes
+
+    def get_cluster_spike_ids(self, cluster_id: int) -> np.ndarray:
+        return np.where(self.spike_clusters == cluster_id)[0]
 
     def get_cluster_spike_times(
         self,
@@ -181,15 +185,20 @@ class SpkManager:
 
         out_data = self.get_properties(fs)
         out_data["ch"] = out_data["channel"]
+        out_data["Amplitude"] = out_data["amplitude"]
+        out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
+        del out_data["amplitude"]
+        del out_data["channel"]
         del out_data["start_index"]
         del out_data["end_index"]
         del out_data["peak_index"]
 
         if file_path is None:
-            save_path = self.ks_directory / "cluster_info"
+            save_path = self.ks_directory / "cluster_info.tsv"
         else:
-            save_path = Path(file_path) / "cluster_info"
-        save_tsv(save_path, out_data)
+            save_path = Path(file_path) / "cluster_info.tsv"
+        # save_tsv(save_path, out_data, mode="w")
+        pd.DataFrame(out_data).to_csv(save_path, sep="\t")
 
         if file_path is None:
             save_path = self.ks_directory / "cluster_Amplitude"
@@ -197,18 +206,18 @@ class SpkManager:
             save_path = Path(file_path) / "cluster_Amplitude"
         save_tsv(
             save_path,
-            {"Amplitude": out_data["amplitude"], "cluster_id": out_data["cluster_id"]},
+            {"cluster_id": out_data["cluster_id"], "Amplitude": out_data["Amplitude"]},
         )
 
         if file_path is None:
-            save_path = self.ks_directory / "ContamPct"
+            save_path = self.ks_directory / "cluster_ContamPct"
         else:
-            save_path = Path(file_path) / "ContamPct"
+            save_path = Path(file_path) / "cluster_ContamPct"
         save_tsv(
             save_path,
             {
-                "ContamPct": [100.0] * len(out_data["cluster_id"]),
                 "cluster_id": out_data["cluster_id"],
+                "ContamPct": out_data["ContamPct"],
             },
         )
 
@@ -219,8 +228,8 @@ class SpkManager:
         save_tsv(
             save_path,
             {
-                "KSLabel": ["mua"] * len(out_data["cluster_id"]),
                 "cluster_id": out_data["cluster_id"],
+                "KSLabel": ["mua"] * len(out_data["cluster_id"]),
             },
         )
 
@@ -405,7 +414,7 @@ class SpkManager:
             full_spike_channels[i] = spike_channels[temp_index]
         return full_spike_channels
 
-    def export_to_phy(
+    def export_phy_waveforms(
         self,
         nchans: int = 4,
         waveform_length: int = 82,
@@ -464,14 +473,12 @@ class SpkManager:
 
         callback("Saving spikes waveforms.")
         self._remove_file("_phy_spikes_subset.waveforms.npy")
-
         np.save(
             self.ks_directory / "_phy_spikes_subset.waveforms.npy", self.spike_waveforms
         )
 
         callback("Saving spike times.")
         self._remove_file("_phy_spikes_subset.spikes.npy")
-
         np.save(
             self.ks_directory / "_phy_spikes_subset.spikes.npy",
             np.arange(self.spike_times.shape[0]),
@@ -483,6 +490,13 @@ class SpkManager:
             self.ks_directory / "_phy_spikes_subset.channels.npy",
             full_spike_channels,
         )
+
+        callback("Saving template channel indices")
+        self._remove_file("templates_ind.npy")
+        shape = self.sparse_templates.shape
+        temp_ind = np.zeros((shape[0], shape[-1]), dtype=np.int16)
+        temp_ind[:, :] += np.arange(shape[-1])
+
         callback("Finished exporting data.")
         self._load_spike_waveforms()
 
@@ -545,11 +559,15 @@ class SpkManager:
             sparse_templates_new[clust_id, :, best_chans] = test.T
             self.spike_templates[indexes] = clust_id
         self.sparse_templates = sparse_templates_new
+
+        callback("Saving templates.")
         self._remove_file("templates.npy")
         np.save(
             self.ks_directory / "templates.npy",
             sparse_templates_new.astype(np.float32),
         )
+
+        callback("Saving template similarity.")
         self._remove_file("similar_templates.npy")
         np.save(
             self.ks_directory / "similar_templates.npy",
@@ -560,3 +578,51 @@ class SpkManager:
         self._load_sparse_templates()
         self.save_properties_phy()
         callback("Finished recomputing templates.")
+
+    def export_to_phy(
+        self,
+        nchans: int = 4,
+        waveform_length: int = 82,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
+        chunk_size: int = 240000,
+        output_chans: int = 16,
+        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
+        callback=print,
+    ):
+        self.export_phy_waveforms(
+            nchans=nchans,
+            waveform_length=waveform_length,
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            map_channel=map_channel,
+            probe=probe,
+            start=start,
+            end=end,
+            chunk_size=chunk_size,
+            output_chans=output_chans,
+            dtype=dtype,
+            callback=callback,
+        )
+        self.recompute_templates(
+            nchans=nchans,
+            waveform_length=waveform_length,
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            map_channel=map_channel,
+            probe=probe,
+            start=start,
+            end=end,
+            chunk_size=chunk_size,
+            output_chans=output_chans,
+            dtype=dtype,
+            callback=callback,
+        )
+        self.save_properties_phy()
