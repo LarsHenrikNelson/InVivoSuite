@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal, TypedDict, Union
 
 import numpy as np
-import pandas as pd
+
 from send2trash import send2trash
 
 from ..utils import save_tsv
@@ -28,6 +28,7 @@ class TemplateProperties(TypedDict):
     peak_value: list[float]
     amplitude: list[float]
     cluster_id: list[int]
+    stdev: list[int]
     channel: list[int]
 
 
@@ -144,7 +145,9 @@ class SpkManager:
         )
         return data
 
-    def get_templates_properties(self, templates: np.ndarray) -> TemplateProperties:
+    def get_templates_properties(
+        self, templates: np.ndarray, nchans, total_chans
+    ) -> TemplateProperties:
         amplitude = []
         start = []
         middle = []
@@ -152,9 +155,17 @@ class SpkManager:
         trough_to_peak = []
         channel = []
         cid = []
+        stdevs = []
         for i in self.cluster_ids:
-            chan = np.argmin(np.min(templates[i], axis=0))
+            chan, start_chan, _ = self._template_channels(
+                templates[i], nchans=nchans, total_chans=total_chans
+            )
             si, ei, mi, amp, t_to_p = get_template_parts(templates[i, :, chan])
+            indexes = np.where(self.spike_clusters == i)[0]
+            temp_spikes_waveforms = self.spike_waveforms[indexes]
+            template_stdev = np.mean(
+                np.std(temp_spikes_waveforms[:, :, int(chan - start_chan)], axis=0)
+            )
             start.append(si)
             end.append(ei)
             middle.append(mi)
@@ -162,6 +173,7 @@ class SpkManager:
             trough_to_peak.append(t_to_p * 1000000)
             channel.append(chan)
             cid.append(i)
+            stdevs.append(template_stdev)
         temp = TemplateProperties(
             start_index=start,
             peak_index=middle,
@@ -169,21 +181,31 @@ class SpkManager:
             peak_value=amplitude,
             amplitude=trough_to_peak,
             channel=channel,
+            stdev=stdevs,
             cluster_id=cid,
         )
         return temp
 
-    def get_properties(self, fs: int = 40000):
+    def get_properties(self, fs: int = 40000, nchans: int = 4, total_chans: int = 64):
         output_dict = {}
-        temp_props = self.get_templates_properties(self.sparse_templates)
+        temp_props = self.get_templates_properties(
+            self.sparse_templates, nchans, total_chans
+        )
         spk_props = self.get_spikes_properties(self.sparse_templates, fs=fs)
         output_dict.update(temp_props)
         output_dict.update(spk_props)
         return output_dict
 
-    def save_properties_phy(self, file_path=None, fs: int = 40000):
-
-        out_data = self.get_properties(fs)
+    def save_properties_phy(
+        self,
+        file_path=None,
+        fs: int = 40000,
+        nchans: int = 4,
+        total_chans: int = 64,
+        callback=print,
+    ):
+        callback("Calculating spike template properties.")
+        out_data = self.get_properties(fs, nchans, total_chans)
         out_data["ch"] = out_data["channel"]
         out_data["Amplitude"] = out_data["amplitude"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
@@ -193,13 +215,14 @@ class SpkManager:
         del out_data["end_index"]
         del out_data["peak_index"]
 
+        callback("Saving cluster info.")
         if file_path is None:
-            save_path = self.ks_directory / "cluster_info.tsv"
+            save_path = self.ks_directory / "cluster_info"
         else:
-            save_path = Path(file_path) / "cluster_info.tsv"
-        # save_tsv(save_path, out_data, mode="w")
-        pd.DataFrame(out_data).to_csv(save_path, sep="\t")
+            save_path = Path(file_path) / "cluster_info"
+        save_tsv(save_path, out_data, mode="w")
 
+        callback("Saving cluster Amplitude.")
         if file_path is None:
             save_path = self.ks_directory / "cluster_Amplitude"
         else:
@@ -209,6 +232,7 @@ class SpkManager:
             {"cluster_id": out_data["cluster_id"], "Amplitude": out_data["Amplitude"]},
         )
 
+        callback("Saving cluster ContamPct.")
         if file_path is None:
             save_path = self.ks_directory / "cluster_ContamPct"
         else:
@@ -221,6 +245,7 @@ class SpkManager:
             },
         )
 
+        callback("Saving cluster KSLabel.")
         if file_path is None:
             save_path = self.ks_directory / "cluster_KSLabel"
         else:
@@ -232,25 +257,41 @@ class SpkManager:
                 "KSLabel": ["mua"] * len(out_data["cluster_id"]),
             },
         )
+        callback("Finished exporting Phy data.")
 
     def get_template_channels(self, templates, nchans, total_chans):
         channel_output = np.zeros((templates.shape[0], 3), dtype=int)
         peak_output = np.zeros((templates.shape[0], 1))
         for i in range(templates.shape[0]):
-            chan = np.argmin(np.min(templates[i], axis=0))
-            start_chan = chan - nchans
-            end_chan = chan + nchans
-            if start_chan < 0:
-                end_chan -= start_chan
-                start_chan = 0
-            if end_chan > total_chans:
-                start_chan -= end_chan - total_chans
-                end_chan = total_chans
+            chan, start_chan, end_chan = self._template_channels(
+                templates[i], nchans, total_chans
+            )
+            # chan = np.argmin(np.min(templates[i], axis=0))
+            # start_chan = chan - nchans
+            # end_chan = chan + nchans
+            # if start_chan < 0:
+            #     end_chan -= start_chan
+            #     start_chan = 0
+            # if end_chan > total_chans:
+            #     start_chan -= end_chan - total_chans
+            #     end_chan = total_chans
             channel_output[i, 1] = start_chan
             channel_output[i, 2] = end_chan
             channel_output[i, 0] = chan
             peak_output[i, 0] = np.min(templates[i, :, chan])
         return peak_output, channel_output
+
+    def _template_channels(self, template: np.ndarray, nchans, total_chans):
+        best_chan = np.argmin(np.min(template, axis=0))
+        start_chan = best_chan - nchans
+        end_chan = best_chan + nchans
+        if start_chan < 0:
+            end_chan -= start_chan
+            start_chan = 0
+        if end_chan > total_chans:
+            start_chan -= end_chan - total_chans
+            end_chan = total_chans
+        return best_chan, start_chan, end_chan
 
     def extract_waveforms_chunk(
         self,
