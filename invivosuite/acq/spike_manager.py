@@ -228,6 +228,7 @@ class SpkManager:
             )
             bursts_dict = get_burst_data(b_data)
             data["id"] = self.ks_directory.stem
+            data["cluster_id"] = clust_id
             data.update(bursts_dict)
             output.append(data)
         return output
@@ -471,6 +472,25 @@ class SpkManager:
                 template_amplitudes=template_amplitudes,
             )
         return output
+
+    def get_wideband_templates(
+        self,
+        waveform_length: int = 82,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
+        output_chans: int = 16,
+        callback=print,
+    ):
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+        peaks, channels = self.get_template_channels(
+            self.sparse_templates, nchans=8, total_chans=channel_map.size
+        )
+        best_channels = channels[:, 2].flatten()
 
     def extract_spike_channels(self, probe, nchans, output_chans):
         channel_map = self.get_grp_dataset("channel_maps", probe)
