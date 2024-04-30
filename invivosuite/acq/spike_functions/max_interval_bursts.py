@@ -1,6 +1,66 @@
+from typing import Literal
+
 import numpy as np
 
-__all__ = ["max_int_bursts"]
+__all__ = ["max_int_bursts", "get_burst_data"]
+
+
+def ave_inter_burst_iei(bursts):
+    if len(bursts) <= 1:
+        return 0
+    diff = []
+    for i in range(1, len(bursts)):
+        diff.append(bursts[i][0] - bursts[i - 1][-1])
+    return np.mean(diff)
+
+
+def ave_spikes_burst(bursts: list):
+    if len(bursts) == 0:
+        return 0
+    ave = 0
+    for i in bursts:
+        ave += len(i)
+    return ave / len(bursts)
+
+
+def ave_intra_burst_iei(bursts: list) -> float:
+    """Get the average iei from each burst. Does not correct for sampling rate.
+
+    Parameters
+    ----------
+    bursts : list-like
+        A list of bursts
+
+    Returns
+    -------
+    float
+        The average iei of all the bursts
+    """
+    if len(bursts) == 0:
+        return 0
+    ave = 0
+    for i in bursts:
+        ave += np.mean(np.diff(i))
+    return ave / len(bursts)
+
+
+def ave_burst_len(bursts):
+    if len(bursts) == 0:
+        return 0
+    ave = 0
+    for i in bursts:
+        ave += i[-1] - i[0]
+    return ave / len(bursts)
+
+
+def get_burst_data(bursts):
+    data_dict = {}
+    data_dict["num_bursts"] = len(bursts)
+    data_dict["ave_burst_len"] = ave_burst_len(bursts)
+    data_dict["intra_burst_iei"] = ave_intra_burst_iei(bursts)
+    data_dict["ave_spks_burst"] = ave_spikes_burst(bursts)
+    data_dict["inter_burst_iei"] = ave_inter_burst_iei(bursts)
+    return data_dict
 
 
 def clean_max_int_bursts(spikes, bursts, max_int):
@@ -25,7 +85,7 @@ def max_int_bursts(
     max_start=None,
     max_end=None,
     max_int=None,
-    output_type="index",
+    output_type: Literal["sec", "ms", "sample"] = "sec",
 ):
     bursts = []
     spike_temp = spikes / fs
@@ -57,7 +117,7 @@ def max_int_bursts(
             i += 1
     bursts = clean_max_int_bursts(spikes, bursts, max_int)
     if output_type == "time":
-        bursts = [np.array([spikes[j] for j in i]) / fs for i in bursts]
+        bursts = [(np.array([spikes[j] for j in i]) / fs) * 1000 for i in bursts]
     elif output_type == "sample":
         bursts = [np.array([spikes[j] for j in i]) for i in bursts]
     return bursts

@@ -7,7 +7,12 @@ import numpy as np
 from send2trash import send2trash
 
 from ..utils import save_tsv
-from .spike_functions import get_template_parts, presence
+from .spike_functions import (
+    get_template_parts,
+    presence,
+    get_burst_data,
+    max_int_bursts,
+)
 
 
 class SpikeProperties(TypedDict):
@@ -195,6 +200,37 @@ class SpkManager:
         output_dict.update(temp_props)
         output_dict.update(spk_props)
         return output_dict
+
+    def calculate_spike_bursts(
+        self,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        output_type: Literal["sec", "ms", "sample"] = "sec",
+        fs: Union[float, int] = 40000,
+    ):
+        output = []
+        for clust_id in self.cluster_ids:
+            indexes = self.get_cluster_spike_indexes(clust_id)
+            data = {}
+            if indexes.size > 1:
+                data["hertz"] = 1 / np.mean(np.diff(indexes / fs))
+            data["num_spikes"] = indexes.size
+            b_data = max_int_bursts(
+                indexes,
+                fs,
+                min_dur=min_dur,
+                max_start=max_start,
+                max_int=max_int,
+                max_end=max_end,
+                output_type=output_type,
+            )
+            bursts_dict = get_burst_data(b_data)
+            data["id"] = self.ks_directory.stem
+            data.update(bursts_dict)
+            output.append(data)
+        return output
 
     def save_properties_phy(
         self,
