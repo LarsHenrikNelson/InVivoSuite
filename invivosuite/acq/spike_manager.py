@@ -1,6 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Literal, TypedDict, Union
+from typing import Literal, TypedDict, Union, Optional
 
 import numpy as np
 
@@ -108,10 +108,12 @@ class SpkManager:
     def get_cluster_spike_times(
         self,
         cluster_id: int,
-        fs: int = 40000,
+        fs: Optional[int] = None,
         out_type: Literal["sec", "ms", "samples"] = "sec",
     ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        if fs is None:
+            return self.spike_times[spike_ids]
         if out_type == "ms":
             times = self.spike_times[spike_ids].flatten() / (fs / 1000)
         elif out_type == "sec":
@@ -212,10 +214,18 @@ class SpkManager:
     ):
         output = []
         for clust_id in self.cluster_ids:
-            indexes = self.get_cluster_spike_indexes(clust_id)
+            indexes = self.get_cluster_spike_times(
+                clust_id,
+            )
             data = {}
             if indexes.size > 1:
-                data["hertz"] = 1 / np.mean(np.diff(indexes / fs))
+                temp_mean = np.mean(np.diff(indexes / fs))
+                if temp_mean == 0:
+                    data["hertz"] = 0.0
+                else:
+                    data["hertz"] = 1 / temp_mean
+            else:
+                data["hertz"] = 0.0
             data["num_spikes"] = indexes.size
             b_data = max_int_bursts(
                 indexes,
@@ -232,6 +242,28 @@ class SpkManager:
             data.update(bursts_dict)
             output.append(data)
         return output
+
+    def get_cluster_bursts(
+        self,
+        cluster_id,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        output_type: Literal["sec", "ms", "sample"] = "sec",
+        fs: Union[float, int] = 40000,
+    ):
+        indexes = self.get_cluster_spike_times(cluster_id)
+        b_data = max_int_bursts(
+            indexes,
+            fs,
+            min_dur=min_dur,
+            max_start=max_start,
+            max_int=max_int,
+            max_end=max_end,
+            output_type=output_type,
+        )
+        return b_data
 
     def save_properties_phy(
         self,

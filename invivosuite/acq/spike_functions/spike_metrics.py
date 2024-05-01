@@ -50,8 +50,8 @@ def presence(data: np.ndarray, start: int = -1, end: int = -1, tol=1e-9) -> Pres
         bins = np.linspace(start, end, num=nbins)
         binned = utils.bin_data_sorted(data, bins)
         reg_out = stats.linregress(np.arange(binned.size), binned)
-        _, y = utils.kde(data, tol=tol)
-        fit_out = stats.fit(stats.uniform, y)
+        # _, y = utils.kde(data, tol=tol)z
+        fit_out = stats.fit(stats.uniform, binned)
         output = Presence(
             presence_ratio=np.sum(binned > 0) / nbins,
             reg_slope=reg_out.slope,
