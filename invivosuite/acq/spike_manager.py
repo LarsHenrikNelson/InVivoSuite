@@ -14,6 +14,7 @@ from .spike_functions import (
     max_int_bursts,
     sttc,
     sttc_ele,
+    isi_violations,
 )
 
 
@@ -31,6 +32,8 @@ class SpikeProperties(TypedDict):
 class TemplateProperties(TypedDict):
     amplitude_Left: np.ndarray[float]
     amplitude_Float: np.ndarray[float]
+    trough_to_peak: np.ndarray[int]
+    start_to_peak: np.ndarray[int]
     half_width: np.ndarray[float]
     peak_value: np.ndarray[float]
     cluster_id: np.ndarray[int]
@@ -106,6 +109,10 @@ class SpkManager:
     def get_cluster_spike_ids(self, cluster_id: int) -> np.ndarray:
         return np.where(self.spike_clusters == cluster_id)[0]
 
+    def get_cluster_templates(self, cluster_id: int) -> np.ndarray:
+        cid = np.where(self.spike_clusters == cluster_id)[0]
+        return np.unique(self.spike_templates[cid])
+
     def get_cluster_spike_times(
         self,
         cluster_id: int,
@@ -122,13 +129,18 @@ class SpkManager:
         return times
 
     def get_spikes_properties(
-        self, templates: np.ndarray, fs: int = 40000
+        self, templates: np.ndarray, fs: int = 40000, start: int = -1, end: int = -1
     ) -> SpikeProperties:
+        if start == -1:
+            start = self.start / fs
+        if end == -1:
+            end = self.end / fs
         _, channels = self.get_template_channels(templates, nchans=8, total_chans=64)
         presence_ratios = []
         iei = []
         n_spikes = []
         # depth = []
+        fr_iei = []
         fr = []
         cluster_ids = self.cluster_ids
         for i in cluster_ids:
@@ -136,7 +148,8 @@ class SpkManager:
             if times.size > 2:
                 diffs = np.mean(np.diff(times))
                 iei.append(diffs)
-                fr.append(1 / diffs)
+                fr_iei.append(1 / diffs)
+                fr.append(times.size / (end - start))
             else:
                 iei.append(0)
                 fr.append(0)
@@ -171,6 +184,8 @@ class SpkManager:
         channel = np.zeros(self.cluster_ids.size, dtype=int)
         cid = np.zeros(self.cluster_ids.size, dtype=int)
         stdevs = np.zeros(self.cluster_ids.size, dtype=int)
+        trough_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
+        start_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
@@ -184,8 +199,14 @@ class SpkManager:
                 templates[i, :, chan] * multiplier, [peak_index]
             )
             hw[temp_index] = widths[0]
-            ampL = (templates[i, lb, chan] - templates[i, peak_index, chan])[0]
-            ampR = (templates[i, rb, chan] - templates[i, peak_index, chan])[0]
+            ampL[temp_index] = (
+                templates[i, lb, chan] - templates[i, peak_index, chan]
+            )[0]
+            ampR[temp_index] = (
+                templates[i, rb, chan] - templates[i, peak_index, chan]
+            )[0]
+            trough_to_peak[temp_index] = rb - peak_index
+            start_to_peak[temp_index] = peak_index - lb
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
@@ -201,6 +222,8 @@ class SpkManager:
             half_width=hw,
             channel=channel,
             stdev=stdevs,
+            trough_to_peak=trough_to_peak,
+            start_to_peak=start_to_peak,
             cluster_id=cid,
         )
         return temp
@@ -643,6 +666,33 @@ class SpkManager:
         self._load_spike_waveforms()
 
     def recompute_templates(
+        self, nchans: int, total_chans: int, waveform_length: int, callback: callable
+    ):
+        _, channels = self.get_template_channels(
+            self.sparse_templates, nchans=nchans, total_chans=total_chans
+        )
+        sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
+        callback("Starting to recompute templates")
+        self.spike_templates = np.array(self.spike_templates)
+        for clust_id in self.cluster_ids:
+            callback(f"Recomputing cluster {clust_id} template")
+            indexes = np.where(self.spike_clusters == clust_id)[0]
+            temp_spikes_waveforms = self.spike_waveforms[indexes]
+            test = np.mean(temp_spikes_waveforms, axis=0)
+            temp_index = np.unique(self.spike_templates[indexes])[0]
+            start_chan = channels[temp_index][0] - nchans
+            end_chan = channels[temp_index][0] + nchans
+            if start_chan < 0:
+                end_chan -= start_chan
+                start_chan = 0
+            if end_chan > total_chans:
+                start_chan -= end_chan - total_chans
+                end_chan = total_chans
+            best_chans = np.arange(start_chan, end_chan)
+            sparse_templates_new[clust_id, :, best_chans] = test.T
+        return sparse_templates_new
+
+    def save_templates(
         self,
         nchans: int = 4,
         waveform_length: int = 82,
@@ -656,7 +706,7 @@ class SpkManager:
         chunk_size: int = 240000,
         output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
-        callback=print,
+        callback: callable = print,
     ):
         if self.spike_waveforms.size == 0:
             self.export_to_phy(
@@ -681,33 +731,22 @@ class SpkManager:
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
 
-        sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
-        callback("Starting to recompute templates")
-        self.spike_templates = np.array(self.spike_templates)
+        self.sparse_templates = self.recompute_templates(
+            nchans=nchans,
+            total_chans=channel_map.size,
+            waveform_length=waveform_length,
+            callback=callback,
+        )
+
         for clust_id in self.cluster_ids:
-            callback(f"Recomputing cluster {clust_id} template")
             indexes = np.where(self.spike_clusters == clust_id)[0]
-            temp_spikes_waveforms = self.spike_waveforms[indexes]
-            test = np.mean(temp_spikes_waveforms, axis=0)
-            temp_index = np.unique(self.spike_templates[indexes])[0]
-            start_chan = channels[temp_index][0] - nchans
-            end_chan = channels[temp_index][0] + nchans
-            if start_chan < 0:
-                end_chan -= start_chan
-                start_chan = 0
-            if end_chan > channel_map.size:
-                start_chan -= end_chan - channel_map.size
-                end_chan = channel_map.size
-            best_chans = np.arange(start_chan, end_chan)
-            sparse_templates_new[clust_id, :, best_chans] = test.T
             self.spike_templates[indexes] = clust_id
-        self.sparse_templates = sparse_templates_new
 
         callback("Saving templates.")
         self._remove_file("templates.npy")
         np.save(
             self.ks_directory / "templates.npy",
-            sparse_templates_new.astype(np.float32),
+            self.sparse_templates.astype(np.float32),
         )
 
         callback("Saving template similarity.")

@@ -207,14 +207,18 @@ class AcqManager(SpkManager, LFPManager):
                 stop = int(start + i * bin_size) + bin_size
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(begin, stop)
-                ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
+                ) * self.get_file_dataset("coeffs", rows=chans).reshape(
+                    (chans[1] - chans[0], 1)
+                )
                 array -= means
                 cmr[begin:stop] = ref(array, axis=0)
             get_the_rest = (start - end) % bin_size
             if get_the_rest > 0:
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(end - get_the_rest, end)
-                ) * self.get_file_dataset("coeffs").reshape((chans[1] - chans[0], 1))
+                ) * self.get_file_dataset("coeffs", rows=chans).reshape(
+                    (chans[1] - chans[0], 1)
+                )
                 means = array.mean(axis=1, keepdims=True)
                 array -= means
                 cmr[(end - get_the_rest) :] = ref(array[-get_the_rest:], axis=0)

@@ -3,11 +3,12 @@ import numpy as np
 
 def create_binary_spikes(spikes, size):
     if len(spikes) > 0:
+        u, uc = np.unique(spikes, return_counts=True)
         binary_spikes = np.zeros(shape=(size,))
-        binary_spikes[spikes] = 1
+        binary_spikes[u] = uc
         return binary_spikes
     else:
-        AttributeError("There are no spikes in the acquisition.")
+        return np.zeros(shape=(size,))
 
 
 def _bin_spikes(binary_spks, bin_size):
