@@ -83,7 +83,7 @@ def sttc(
         stop (int, float): stop of time to assess, usually the length of the recording
 
     Returns:
-        float: _description_
+        float: spike time tiling coefficient
         int: number of spikes in spk_times_1 that occur within dt of spikes spk_times_2
         int: number of spikes in spk_times_1 that occur before spikes spk_times_2
         int: number of spikes in spk_times_2 that occur within dt of spikes spk_times_1
@@ -173,6 +173,8 @@ def sttc_ele(spiketrain_i, spiketrain_j, dt, start, stop):
     if len(spiketrain_i) == 0 or len(spiketrain_j) == 0:
         index = np.nan
     else:
+        spiketrain_i = spiketrain_i.astype(int)
+        spiketrain_j = spiketrain_j.astype(int)
         TA = run_t(spiketrain_j, dt, start, stop)
         TB = run_t(spiketrain_i, dt, start, stop)
         PA = run_p(spiketrain_j, spiketrain_i, dt)

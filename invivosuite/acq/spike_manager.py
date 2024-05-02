@@ -3,15 +3,17 @@ from pathlib import Path
 from typing import Literal, TypedDict, Union, Optional
 
 import numpy as np
+from scipy import signal
 
 from send2trash import send2trash
 
 from ..utils import save_tsv
 from .spike_functions import (
-    get_template_parts,
     presence,
     get_burst_data,
     max_int_bursts,
+    sttc,
+    sttc_ele,
 )
 
 
@@ -27,14 +29,13 @@ class SpikeProperties(TypedDict):
 
 
 class TemplateProperties(TypedDict):
-    start_index: list[int]
-    peak_index: list[int]
-    end_index: list[int]
-    peak_value: list[float]
-    amplitude: list[float]
-    cluster_id: list[int]
-    stdev: list[int]
-    channel: list[int]
+    amplitude_Left: np.ndarray[float]
+    amplitude_Float: np.ndarray[float]
+    half_width: np.ndarray[float]
+    peak_value: np.ndarray[float]
+    cluster_id: np.ndarray[int]
+    stdev: np.ndarray[int]
+    channel: np.ndarray[int]
 
 
 class SpkManager:
@@ -153,40 +154,51 @@ class SpkManager:
         return data
 
     def get_templates_properties(
-        self, templates: np.ndarray, nchans, total_chans
+        self,
+        templates: np.ndarray,
+        nchans: int,
+        total_chans: int,
+        negative: bool = True,
     ) -> TemplateProperties:
-        amplitude = []
-        start = []
-        middle = []
-        end = []
-        trough_to_peak = []
-        channel = []
-        cid = []
-        stdevs = []
-        for i in self.cluster_ids:
+        if negative:
+            multiplier = -1
+        else:
+            multiplier = 1
+        amplitude = np.zeros(self.cluster_ids.size)
+        ampR = np.zeros(self.cluster_ids.size)
+        ampL = np.zeros(self.cluster_ids.size)
+        hw = np.zeros(self.cluster_ids.size)
+        channel = np.zeros(self.cluster_ids.size, dtype=int)
+        cid = np.zeros(self.cluster_ids.size, dtype=int)
+        stdevs = np.zeros(self.cluster_ids.size, dtype=int)
+        for temp_index in range(self.cluster_ids.size):
+            i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
                 templates[i], nchans=nchans, total_chans=total_chans
             )
-            si, ei, mi, amp, t_to_p = get_template_parts(templates[i, :, chan])
+            peak_index = np.argmin(templates[i, :, chan])
+            _, lb, rb = signal.peak_prominences(
+                templates[i, :, chan] * multiplier, [peak_index]
+            )
+            widths, _, _, _ = signal.peak_widths(
+                templates[i, :, chan] * multiplier, [peak_index]
+            )
+            hw[temp_index] = widths[0]
+            ampL = (templates[i, lb, chan] - templates[i, peak_index, chan])[0]
+            ampR = (templates[i, rb, chan] - templates[i, peak_index, chan])[0]
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
                 np.std(temp_spikes_waveforms[:, :, int(chan - start_chan)], axis=0)
             )
-            start.append(si)
-            end.append(ei)
-            middle.append(mi)
-            amplitude.append(amp * 1000000)
-            trough_to_peak.append(t_to_p * 1000000)
-            channel.append(chan)
-            cid.append(i)
-            stdevs.append(template_stdev)
+            channel[temp_index] = chan
+            cid[temp_index] = i
+            stdevs[temp_index] = template_stdev
         temp = TemplateProperties(
-            start_index=start,
-            peak_index=middle,
-            end_index=end,
             peak_value=amplitude,
-            amplitude=trough_to_peak,
+            amp_Right=ampR,
+            amp_Left=ampL,
+            half_width=hw,
             channel=channel,
             stdev=stdevs,
             cluster_id=cid,
@@ -519,10 +531,11 @@ class SpkManager:
         callback=print,
     ):
         channel_map = self.get_grp_dataset("channel_maps", probe)
-        peaks, channels = self.get_template_channels(
+        _, channels = self.get_template_channels(
             self.sparse_templates, nchans=8, total_chans=channel_map.size
         )
         best_channels = channels[:, 2].flatten()
+        best_channels
 
     def extract_spike_channels(self, probe, nchans, output_chans):
         channel_map = self.get_grp_dataset("channel_maps", probe)
@@ -762,3 +775,67 @@ class SpkManager:
             callback=callback,
         )
         self.save_properties_phy()
+
+    def compute_sttc(
+        self,
+        dt: Union[float, int] = 200,
+        start: Union[float, int] = -1,
+        end: Union[float, int] = -1,
+        sttc_version: Literal["ivs, elephant"] = "ivs",
+    ):
+        output_index = 0
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+        size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
+        sttc_data = np.zeros(size)
+        cluster_ids = np.zeros((size, 4), dtype=int)
+        if sttc_version == "ivs":
+            num1dt_array = np.zeros(size, dtype=int)
+            num2dt_array = np.zeros(size, dtype=int)
+            num1_2_array = np.zeros(size, dtype=int)
+            num2_1_array = np.zeros(size, dtype=int)
+
+        for index1 in range(self.cluster_ids.size - 1):
+            clust_id1 = self.cluster_ids[index1]
+            indexes1 = self.get_cluster_spike_indexes(clust_id1)
+
+            for index2 in range(index1 + 1, self.cluster_ids.size):
+                clust_id2 = self.cluster_ids[index2]
+                indexes2 = self.get_cluster_spike_indexes(clust_id2)
+
+                if sttc_version == "ivs":
+                    sttc_index, num1dt, num1_2, num2dt, num2_1 = sttc(
+                        indexes1, indexes2, dt=dt, start=start, stop=end
+                    )
+                    sttc_data[output_index] = sttc_index
+                    num1dt_array[output_index] = num1dt
+                    num2dt_array[output_index] = num2dt
+                    num1_2_array[output_index] = num1_2
+                    num2_1_array[output_index] = num2_1
+                else:
+                    sttc_index = sttc_ele(
+                        indexes1, indexes2, dt=dt, start=start, stop=end
+                    )
+                    sttc_data[output_index] = sttc_index
+
+                cluster_ids[output_index, 0] = clust_id1
+                cluster_ids[output_index, 1] = clust_id2
+                cluster_ids[output_index, 2] = indexes1.size
+                cluster_ids[output_index, 1] = indexes2.size
+                output_index += 1
+
+        data = {}
+        data["id"] = [self.ks_directory.stem] * size
+        data["sttc"] = sttc_data
+        data["cluster1_id"] = cluster_ids[:, 0].flatten()
+        data["cluster2_id"] = cluster_ids[:, 1].flatten()
+        data["cluster1_size"] = cluster_ids[:, 2].flatten()
+        data["cluster2_size"] = cluster_ids[:, 3].flatten()
+        if sttc_version == "ivs":
+            data["1_before_2"] = num1_2_array
+            data["2_before_1"] = num2_1_array
+            data["1_dt_2"] = num1dt_array
+            data["2_dt_1"] = num2dt_array
+        return data
