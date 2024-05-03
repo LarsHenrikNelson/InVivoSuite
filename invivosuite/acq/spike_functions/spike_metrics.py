@@ -138,7 +138,7 @@ def amplitude_cutoff(
     return fraction_missing
 
 
-def isi_violations(spike_train, min_time, max_time, isi_threshold, min_isi=0):
+def isi_violations(spike_train, min_time, max_time, isi_threshold=1.5, min_isi=0):
     """Calculate ISI violations for a spike train.
 
     Based on metric described in Hill et al. (2011) J Neurosci 31: 8699-8705

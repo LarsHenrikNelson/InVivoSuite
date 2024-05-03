@@ -19,14 +19,14 @@ from .spike_functions import (
 
 
 class SpikeProperties(TypedDict):
-    presence_ratio: list[float]
-    iei: list[float]
-    n_spikes: list[int]
-    cluster_id: list[int]
-    contampct: list[float]
-    # depth: list
-    # sh: list
-    fr: list[float]
+    presence_ratio: np.ndarray[float]
+    iei: np.ndarray[float]
+    n_spikes: np.ndarray[int]
+    cluster_id: np.ndarray[int]
+    contampct: np.ndarray[float]
+    fp_rate: np.ndarray[float]
+    num_violations: np.ndarray[float]
+    fr: np.ndarray[float]
 
 
 class TemplateProperties(TypedDict):
@@ -129,45 +129,63 @@ class SpkManager:
         return times
 
     def get_spikes_properties(
-        self, templates: np.ndarray, fs: int = 40000, start: int = -1, end: int = -1
+        self,
+        templates: np.ndarray,
+        fs: int = 40000,
+        start: int = -1,
+        end: int = -1,
+        isi_threshold=0.00015,
+        min_isi=0,
     ) -> SpikeProperties:
         if start == -1:
             start = self.start / fs
         if end == -1:
             end = self.end / fs
+
         _, channels = self.get_template_channels(templates, nchans=8, total_chans=64)
-        presence_ratios = []
-        iei = []
-        n_spikes = []
-        # depth = []
-        fr_iei = []
-        fr = []
-        cluster_ids = self.cluster_ids
-        for i in cluster_ids:
-            times = self.get_cluster_spike_times(i, fs=fs, out_type="sec")
+
+        size = len(self.cluster_ids)
+
+        presence_ratios = np.zeros(size)
+        iei = np.zeros(size)
+        n_spikes = np.zeros(size, dtype=int)
+        fr_iei = np.zeros(size)
+        fr = np.zeros(size)
+        frate = np.zeros(size)
+        num_violations = np.zeros(size, dtype=int)
+
+        for i in range(size):
+            clust_id = self.cluster_ids[i]
+            times = self.get_cluster_spike_times(clust_id, fs=fs, out_type="sec")
             if times.size > 2:
                 diffs = np.mean(np.diff(times))
-                iei.append(diffs)
-                fr_iei.append(1 / diffs)
-                fr.append(times.size / (end - start))
-                isi_violations(
-                    times,
-                    start,
-                    end,
+                iei[i] = diffs
+                fr_iei[i] = 1 / diffs
+                fr[i] = times.size / (end - start)
+                fpRate, nv = isi_violations(
+                    spike_train=times * 1000,
+                    min_time=start,
+                    max_time=end,
+                    isi_threshold=isi_threshold,
+                    min_isi=min_isi,
                 )
+                frate[i] = fpRate
+                num_violations[i] = nv
             else:
-                iei.append(0)
-                fr.append(0)
-            n_spikes.append(times.size)
+                iei[i] = 0
+                fr[i] = 0
+            n_spikes[i] = times.size
             pr = presence(times, self.start / fs, self.end / fs)
-            presence_ratios.append(pr["presence_ratio"])
+            presence_ratios[i] = pr["presence_ratio"]
         data = SpikeProperties(
             presence_ratio=presence_ratios,
             iei=iei,
             n_spikes=n_spikes,
-            channel=channels[cluster_ids, 0],
-            cluster_id=cluster_ids,
+            channel=channels[self.cluster_ids, 0],
+            cluster_id=self.cluster_ids,
             fr=fr,
+            fp_rate=frate,
+            num_violations=num_violations,
         )
         return data
 
