@@ -61,9 +61,9 @@ class AcqManager(SpkManager, LFPManager):
     def open_hdf5_file(self, file_path):
         self.file_path = file_path
 
-    def load_kilosort(self, file_directory):
+    def load_kilosort(self, file_directory, load_type: str = "r+"):
         self.ks_directory = Path(file_directory)
-        self.load_ks_data()
+        self.load_ks_data(load_type=load_type)
 
     def open(self):
         if not self.file_open:

@@ -42,18 +42,23 @@ class TemplateProperties(TypedDict):
 
 
 class SpkManager:
-    def load_ks_data(self):
-        self._load_sparse_templates()
-        self._load_spike_templates()
-        self._load_spike_clusters()
-        self._load_spike_times()
-        self._load_amplitudes()
-        self._load_spike_waveforms()
+    def load_ks_data(self, load_type: str = "r+"):
+        self._load_sparse_templates(load_type=load_type)
+        self._load_spike_templates(load_type=load_type)
+        self._load_spike_clusters(load_type=load_type)
+        self._load_spike_times(load_type=load_type)
+        self._load_amplitudes(load_type=load_type)
+        self._load_spike_waveforms(load_type=load_type)
 
     def _load_amplitudes(self, load_type: str = "r+"):
-        self.amplitudes = np.load(
-            self.ks_directory / "amplitudes.npy", load_type
-        ).flatten()
+        if load_type == "memory":
+            self.amplitudes = np.array(
+                np.load(self.ks_directory / "amplitudes.npy", "r").flatten()
+            )
+        else:
+            self.amplitudes = np.load(
+                self.ks_directory / "amplitudes.npy", load_type
+            ).flatten()
 
     def _remove_file(self, file_ending):
         temp_path = Path(self.ks_directory / file_ending)
@@ -63,22 +68,37 @@ class SpkManager:
     def _load_sparse_templates(self, load_type: str = "r+"):
         temp_path = self.ks_directory / "templates.npy"
         if temp_path.exists():
-            self.sparse_templates = np.load(
-                self.ks_directory / "templates.npy", load_type
-            )
+            if load_type == "memory":
+                self.sparse_templates = np.array(
+                    np.load(self.ks_directory / "templates.npy", "r")
+                )
+            else:
+                self.sparse_templates = np.load(
+                    self.ks_directory / "templates.npy", load_type
+                )
         else:
             self.sparse_templates = np.zeros((0, 0, 0))
 
     def _load_spike_templates(self, load_type: str = "r+"):
-        self.spike_templates = np.load(
-            self.ks_directory / "spike_templates.npy", load_type
-        ).flatten()
+        if load_type == "memory":
+            self.spike_templates = np.array(
+                np.load(self.ks_directory / "spike_templates.npy", "r").flatten()
+            )
+        else:
+            self.spike_templates = np.load(
+                self.ks_directory / "spike_templates.npy", load_type
+            ).flatten()
         self.template_ids = np.unique(self.spike_templates)
 
     def _load_spike_clusters(self, load_type: str = "r+"):
-        self.spike_clusters = np.load(
-            self.ks_directory / "spike_clusters.npy", load_type
-        ).flatten()
+        if load_type == "memory":
+            self.spike_clusters = np.array(
+                np.load(self.ks_directory / "spike_clusters.npy", "r").flatten()
+            )
+        else:
+            self.spike_clusters = np.load(
+                self.ks_directory / "spike_clusters.npy", load_type
+            ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
 
     def _create_chan_clusters(self):
@@ -87,14 +107,22 @@ class SpkManager:
             self.chan_clusters[chan].append(cluster)
 
     def _load_spike_times(self, load_type: str = "r+"):
-        self.spike_times = np.load(
-            self.ks_directory / "spike_times.npy", load_type
-        ).flatten()
+        if load_type == "memory":
+            self.spike_times = np.array(
+                np.load(self.ks_directory / "spike_times.npy", "r").flatten()
+            )
+        else:
+            self.spike_times = np.load(
+                self.ks_directory / "spike_times.npy", load_type
+            ).flatten()
 
     def _load_spike_waveforms(self, load_type: str = "r+"):
         temp_path = self.ks_directory / "_phy_spikes_subset.waveforms.npy"
         if temp_path.exists():
-            self.spike_waveforms = np.load(temp_path, load_type)
+            if load_type == "memory":
+                self.spike_waveforms = np.array(np.load(temp_path, "r"))
+            else:
+                self.spike_waveforms = np.load(temp_path, load_type)
         else:
             self.spike_waveforms = np.zeros((0, 0, 0))
             np.save(temp_path, self.spike_waveforms)
@@ -134,7 +162,7 @@ class SpkManager:
         fs: int = 40000,
         start: int = -1,
         end: int = -1,
-        isi_threshold=0.00015,
+        isi_threshold=1.5,
         min_isi=0,
     ) -> SpikeProperties:
         if start == -1:
