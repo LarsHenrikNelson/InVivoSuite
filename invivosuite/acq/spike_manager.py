@@ -34,6 +34,7 @@ class TemplateProperties(TypedDict):
     amplitude_Float: np.ndarray[float]
     trough_to_peak: np.ndarray[int]
     start_to_peak: np.ndarray[int]
+    start_to_end: np.ndarray[int]
     half_width: np.ndarray[float]
     peak_value: np.ndarray[float]
     cluster_id: np.ndarray[int]
@@ -237,6 +238,7 @@ class SpkManager:
         stdevs = np.zeros(self.cluster_ids.size, dtype=int)
         trough_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
         start_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
+        start_to_end = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
@@ -258,6 +260,7 @@ class SpkManager:
             )[0]
             trough_to_peak[temp_index] = rb - peak_index
             start_to_peak[temp_index] = peak_index - lb
+            start_to_end[temp_index] = rb - lb
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
