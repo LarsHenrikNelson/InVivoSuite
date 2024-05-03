@@ -150,6 +150,11 @@ class SpkManager:
                 iei.append(diffs)
                 fr_iei.append(1 / diffs)
                 fr.append(times.size / (end - start))
+                isi_violations(
+                    times,
+                    start,
+                    end,
+                )
             else:
                 iei.append(0)
                 fr.append(0)
