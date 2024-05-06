@@ -1,5 +1,8 @@
+from typing import TypedDict
+
 import numpy as np
 from numba import njit, prange
+from scipy import signal
 
 from ...utils import where_count
 
@@ -12,7 +15,16 @@ __all__ = [
     "find_minmax_exponent_3",
     "get_multichan_spikes",
     "get_template_parts",
+    "template_properties",
 ]
+
+
+class TemplateProperties(TypedDict):
+    half_width: float
+    start_to_peak: int
+    peak_to_end: int
+    amplitude_left: float
+    amplitude_right: float
 
 
 @njit(cache=True)
@@ -37,6 +49,26 @@ def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
     amplitude = template[index]
     trough_to_peak = template[end_index] - amplitude
     return start_index, end_index, index, amplitude, trough_to_peak
+
+
+def template_properties(template: np.ndarray, negative: bool = True):
+    if negative:
+        multiplier = -1
+    else:
+        multiplier = 1
+    peak_index = np.argmin(template)
+    _, Lb, Rb = signal.peak_prominences(template * multiplier, [peak_index])
+    widths, _, _, _ = signal.peak_widths(template * multiplier, [peak_index])
+    aL = template[Lb] - template[peak_index]
+    aR = template[Rb] - template[peak_index]
+    t_props = TemplateProperties(
+        half_width=widths[0],
+        peak_to_end=Rb - peak_index,
+        start_to_peak=peak_index - Lb,
+        amplitude_left=aL,
+        amplitude_right=aR,
+    )
+    return t_props
 
 
 @njit(cache=True)

@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Literal, TypedDict, Union, Optional
 
 import numpy as np
-from scipy import signal
 
 from send2trash import send2trash
 
@@ -15,6 +14,7 @@ from .spike_functions import (
     sttc,
     sttc_ele,
     isi_violations,
+    template_properties,
 )
 
 
@@ -32,11 +32,9 @@ class SpikeProperties(TypedDict):
 class TemplateProperties(TypedDict):
     amplitude_Left: np.ndarray[float]
     amplitude_Float: np.ndarray[float]
-    trough_to_peak: np.ndarray[int]
+    peak_to_end: np.ndarray[int]
     start_to_peak: np.ndarray[int]
-    start_to_end: np.ndarray[int]
     half_width: np.ndarray[float]
-    peak_value: np.ndarray[float]
     cluster_id: np.ndarray[int]
     stdev: np.ndarray[int]
     channel: np.ndarray[int]
@@ -159,7 +157,6 @@ class SpkManager:
 
     def get_spikes_properties(
         self,
-        templates: np.ndarray,
         fs: int = 40000,
         start: int = -1,
         end: int = -1,
@@ -170,8 +167,6 @@ class SpkManager:
             start = self.start / fs
         if end == -1:
             end = self.end / fs
-
-        _, channels = self.get_template_channels(templates, nchans=8, total_chans=64)
 
         size = len(self.cluster_ids)
 
@@ -210,7 +205,6 @@ class SpkManager:
             presence_ratio=presence_ratios,
             iei=iei,
             n_spikes=n_spikes,
-            channel=channels[self.cluster_ids, 0],
             cluster_id=self.cluster_ids,
             fr=fr,
             fp_rate=frate,
@@ -225,58 +219,40 @@ class SpkManager:
         total_chans: int,
         negative: bool = True,
     ) -> TemplateProperties:
-        if negative:
-            multiplier = -1
-        else:
-            multiplier = 1
-        amplitude = np.zeros(self.cluster_ids.size)
         ampR = np.zeros(self.cluster_ids.size)
         ampL = np.zeros(self.cluster_ids.size)
         hw = np.zeros(self.cluster_ids.size)
         channel = np.zeros(self.cluster_ids.size, dtype=int)
         cid = np.zeros(self.cluster_ids.size, dtype=int)
         stdevs = np.zeros(self.cluster_ids.size, dtype=int)
-        trough_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
+        peak_to_end = np.zeros(self.cluster_ids.size, dtype=int)
         start_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
-        start_to_end = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
                 templates[i], nchans=nchans, total_chans=total_chans
             )
-            peak_index = np.argmin(templates[i, :, chan])
-            _, lb, rb = signal.peak_prominences(
-                templates[i, :, chan] * multiplier, [peak_index]
-            )
-            widths, _, _, _ = signal.peak_widths(
-                templates[i, :, chan] * multiplier, [peak_index]
-            )
-            hw[temp_index] = widths[0]
-            ampL[temp_index] = (
-                templates[i, lb, chan] - templates[i, peak_index, chan]
-            )[0]
-            ampR[temp_index] = (
-                templates[i, rb, chan] - templates[i, peak_index, chan]
-            )[0]
-            trough_to_peak[temp_index] = rb - peak_index
-            start_to_peak[temp_index] = peak_index - lb
-            start_to_end[temp_index] = rb - lb
+            t_props = template_properties(templates[i, :, chan], negative=negative)
+            hw[temp_index] = t_props["half_width"]
+            ampL[temp_index] = t_props["amplitude_left"]
+            ampR[temp_index] = t_props["amplitude_right"]
+            peak_to_end[temp_index] = t_props["peak_to_end"]
+            start_to_peak[temp_index] = t_props["start_to_peak"]
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
-                np.std(temp_spikes_waveforms[:, :, int(chan - start_chan)], axis=0)
+                np.std(temp_spikes_waveforms[:, int(chan - start_chan)], axis=0)
             )
             channel[temp_index] = chan
             cid[temp_index] = i
             stdevs[temp_index] = template_stdev
         temp = TemplateProperties(
-            peak_value=amplitude,
             amp_Right=ampR,
             amp_Left=ampL,
             half_width=hw,
             channel=channel,
             stdev=stdevs,
-            trough_to_peak=trough_to_peak,
+            peak_to_end=peak_to_end,
             start_to_peak=start_to_peak,
             cluster_id=cid,
         )
@@ -287,7 +263,7 @@ class SpkManager:
         temp_props = self.get_templates_properties(
             self.sparse_templates, nchans, total_chans
         )
-        spk_props = self.get_spikes_properties(self.sparse_templates, fs=fs)
+        spk_props = self.get_spikes_properties(fs=fs)
         output_dict.update(temp_props)
         output_dict.update(spk_props)
         return output_dict
@@ -453,15 +429,17 @@ class SpkManager:
 
     def extract_waveforms_chunk(
         self,
-        output,
-        recording_chunk,
-        nchans,
-        start,
-        end,
-        waveform_length,
-        peaks,
-        channels,
-        template_amplitudes,
+        output: np.ndarray,
+        recording_chunk: np.ndarray,
+        nchans: int,
+        start: int,
+        end: int,
+        waveform_length: int,
+        center: Optional[int],
+        peaks: np.ndarray,
+        channels: int,
+        template_amplitudes: np.ndarray,
+        subtract: bool = True,
     ):
 
         # Get only the current spikes
@@ -473,8 +451,14 @@ class SpkManager:
         extract_indexes = np.argsort(template_amplitudes[current_spikes])
 
         spk_chans = nchans * 2
-        width = waveform_length / 2
-        cutoff_end = end - width
+        if center is None:
+            wbegin = waveform_length // 2
+            wend = wbegin
+            cutoff_end = end - wend
+        else:
+            wend = waveform_length - center
+            wbegin = center
+            cutoff_end = end - wend
         for i in extract_indexes:
             # Get the spike info in loop
             curr_spk_index = current_spikes[i]
@@ -483,21 +467,22 @@ class SpkManager:
             cur_template = self.sparse_templates[cur_template_index]
             chans = channels[cur_template_index, 1:3]
             peak_chan = channels[cur_template_index, 0]
-            if (cur_spk_time < cutoff_end) and ((cur_spk_time - width) > start):
+            if (cur_spk_time < cutoff_end) and ((cur_spk_time - wbegin) > start):
                 output[curr_spk_index, :, :spk_chans] = recording_chunk[
-                    int(cur_spk_time - start - width) : int(
-                        cur_spk_time - start + width
+                    int(cur_spk_time - start - wbegin) : int(
+                        cur_spk_time - start + wend
                     ),
                     chans[0] : chans[1],
                 ]
                 tt = recording_chunk[int(cur_spk_time - start), peak_chan]
                 tj = peaks[cur_template_index, 0] / (tt + 1e-10)
-                recording_chunk[
-                    int(cur_spk_time - start - width) : int(
-                        cur_spk_time - start + width
-                    ),
-                    chans[0] : chans[1],
-                ] -= cur_template[:, chans[0] : chans[1]] / (tj + 1e-10)
+                if subtract:
+                    recording_chunk[
+                        int(cur_spk_time - start - wbegin) : int(
+                            cur_spk_time - start + wend
+                        ),
+                        chans[0] : chans[1],
+                    ] -= cur_template[:, chans[0] : chans[1]] / (tj + 1e-10)
             # else:
             #     size = int(cutoff_end - (cur_spk_time - start - width))
             #     output[curr_spk_index, :size, :spk_chans] = recording_chunk[
@@ -509,6 +494,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
+        center: Optional[int] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -541,6 +527,11 @@ class SpkManager:
         for i in range(template_amplitudes.size):
             template_amplitudes[i] = template_peaks[self.spike_templates[i]]
 
+        if acq_type == "wideband":
+            subtract = False
+        else:
+            subtract = True
+
         for index, i in enumerate(chunk_starts):
             callback(
                 f"Starting chunk {index+1} start at {i} and ending at {i+chunk_size}."
@@ -556,6 +547,7 @@ class SpkManager:
                 start=chunk_start,
                 end=i + chunk_size,
             ).T
+
             self.extract_waveforms_chunk(
                 output=output,
                 recording_chunk=recording_chunk,
@@ -563,9 +555,11 @@ class SpkManager:
                 start=chunk_start,
                 end=i + chunk_size,
                 waveform_length=waveform_length,
+                center=center,
                 peaks=peaks,
                 channels=channels,
                 template_amplitudes=template_amplitudes,
+                subtract=subtract,
             )
         leftover = (end - start) % (chunk_size)
         if leftover > 0:
@@ -588,55 +582,19 @@ class SpkManager:
                 start=i,
                 end=end,
                 waveform_length=waveform_length,
+                center=center,
                 peaks=peaks,
                 channels=channels,
                 template_amplitudes=template_amplitudes,
+                subtract=subtract,
             )
         return output
-
-    def get_wideband_templates(
-        self,
-        waveform_length: int = 82,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
-        ref_probe: str = "all",
-        map_channel: bool = False,
-        probe: str = "all",
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
-        output_chans: int = 16,
-        callback=print,
-    ):
-        channel_map = self.get_grp_dataset("channel_maps", probe)
-        _, channels = self.get_template_channels(
-            self.sparse_templates, nchans=8, total_chans=channel_map.size
-        )
-        best_channels = channels[:, 2].flatten()
-        best_channels
-
-    def extract_spike_channels(self, probe, nchans, output_chans):
-        channel_map = self.get_grp_dataset("channel_maps", probe)
-        _, channels = self.get_template_channels(
-            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
-        )
-        spike_channels = np.full(
-            (self.sparse_templates.shape[0], output_chans), fill_value=-1
-        )
-        for i in range(channels.shape[0]):
-            num_channels = channels[i, 2] - channels[i, 1]
-            spike_channels[i, :num_channels] = np.arange(channels[i, 1], channels[i, 2])
-        full_spike_channels = np.full(
-            (self.spike_times.shape[0], output_chans), fill_value=-1
-        )
-        for i in range(self.spike_templates.shape[0]):
-            temp_index = self.spike_templates[i]
-            full_spike_channels[i] = spike_channels[temp_index]
-        return full_spike_channels
 
     def export_phy_waveforms(
         self,
         nchans: int = 4,
         waveform_length: int = 82,
+        center: Optional[int] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -662,6 +620,7 @@ class SpkManager:
         self.spike_waveforms = self.extract_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,
+            center=center,
             ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
@@ -719,19 +678,24 @@ class SpkManager:
         callback("Finished exporting data.")
         self._load_spike_waveforms()
 
-    def recompute_templates(
-        self, nchans: int, total_chans: int, waveform_length: int, callback: callable
+    def extract_templates(
+        self,
+        spike_waveforms: np.ndarray,
+        nchans: int = 4,
+        total_chans: int = 64,
+        waveform_length: int = 84,
+        callback: callable = print,
     ):
         _, channels = self.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
         sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
-        callback("Starting to recompute templates")
+        callback("Beginning template extraction")
         self.spike_templates = np.array(self.spike_templates)
         for clust_id in self.cluster_ids:
-            callback(f"Recomputing cluster {clust_id} template")
+            callback(f"Extracting cluster {clust_id} template")
             indexes = np.where(self.spike_clusters == clust_id)[0]
-            temp_spikes_waveforms = self.spike_waveforms[indexes]
+            temp_spikes_waveforms = spike_waveforms[indexes]
             test = np.mean(temp_spikes_waveforms, axis=0)
             temp_index = np.unique(self.spike_templates[indexes])[0]
             start_chan = channels[temp_index][0] - nchans
@@ -750,6 +714,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
+        center: Optional[int] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -766,6 +731,7 @@ class SpkManager:
             self.export_to_phy(
                 nchans=nchans,
                 waveform_length=waveform_length,
+                center=center,
                 ref=ref,
                 ref_type=ref_type,
                 ref_probe=ref_probe,
@@ -781,17 +747,17 @@ class SpkManager:
             self._load_spike_waveforms()
 
         channel_map = self.get_grp_dataset("channel_maps", probe)
-        _, channels = self.get_template_channels(
-            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
-        )
 
-        self.sparse_templates = self.recompute_templates(
+        self.sparse_templates = self.extract_templates(
+            spike_waveforms=self.spike_waveforms,
             nchans=nchans,
             total_chans=channel_map.size,
             waveform_length=waveform_length,
             callback=callback,
         )
 
+        # Not the most efficient way to store data but it is more fool proof
+        # Template == cluster_id
         for clust_id in self.cluster_ids:
             indexes = np.where(self.spike_clusters == clust_id)[0]
             self.spike_templates[indexes] = clust_id
@@ -825,6 +791,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
+        center: Optional[int] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -834,12 +801,13 @@ class SpkManager:
         end: Union[None, int] = None,
         chunk_size: int = 240000,
         output_chans: int = 16,
-        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
+        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         callback=print,
     ):
         self.export_phy_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,
+            center=center,
             ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
@@ -852,7 +820,7 @@ class SpkManager:
             dtype=dtype,
             callback=callback,
         )
-        self.recompute_templates(
+        self.save_templates(
             nchans=nchans,
             waveform_length=waveform_length,
             ref=ref,
