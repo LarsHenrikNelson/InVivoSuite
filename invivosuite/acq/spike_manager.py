@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypedDict, Union, Optional
 
@@ -16,6 +17,8 @@ from .spike_functions import (
     isi_violations,
     template_properties,
 )
+
+Callback = Callable[[str], None]
 
 
 class SpikeProperties(TypedDict):
@@ -224,7 +227,7 @@ class SpkManager:
         hw = np.zeros(self.cluster_ids.size)
         channel = np.zeros(self.cluster_ids.size, dtype=int)
         cid = np.zeros(self.cluster_ids.size, dtype=int)
-        stdevs = np.zeros(self.cluster_ids.size, dtype=int)
+        stdevs = np.zeros(self.cluster_ids.size, dtype=float)
         peak_to_end = np.zeros(self.cluster_ids.size, dtype=int)
         start_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
@@ -241,7 +244,7 @@ class SpkManager:
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
-                np.std(temp_spikes_waveforms[:, int(chan - start_chan)], axis=0)
+                np.std(temp_spikes_waveforms, axis=0)[:, int(chan - start_chan)]
             )
             channel[temp_index] = chan
             cid[temp_index] = i
@@ -336,18 +339,15 @@ class SpkManager:
         fs: int = 40000,
         nchans: int = 4,
         total_chans: int = 64,
-        callback=print,
+        callback: Callback = print,
     ):
         callback("Calculating spike template properties.")
         out_data = self.get_properties(fs, nchans, total_chans)
         out_data["ch"] = out_data["channel"]
-        out_data["Amplitude"] = out_data["amplitude"]
+        out_data["Amplitude"] = out_data["amp_Right"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
-        del out_data["amplitude"]
         del out_data["channel"]
-        del out_data["start_index"]
-        del out_data["end_index"]
-        del out_data["peak_index"]
+        del out_data["amp_Right"]
 
         callback("Saving cluster info.")
         if file_path is None:
@@ -393,7 +393,7 @@ class SpkManager:
         )
         callback("Finished exporting Phy data.")
 
-    def get_template_channels(self, templates, nchans, total_chans):
+    def get_template_channels(self, templates, nchans: int, total_chans: int):
         channel_output = np.zeros((templates.shape[0], 3), dtype=int)
         peak_output = np.zeros((templates.shape[0], 1))
         for i in range(templates.shape[0]):
@@ -415,7 +415,7 @@ class SpkManager:
             peak_output[i, 0] = np.min(templates[i, :, chan])
         return peak_output, channel_output
 
-    def _template_channels(self, template: np.ndarray, nchans, total_chans):
+    def _template_channels(self, template: np.ndarray, nchans: int, total_chans: int):
         best_chan = np.argmin(np.min(template, axis=0))
         start_chan = best_chan - nchans
         end_chan = best_chan + nchans
@@ -505,7 +505,8 @@ class SpkManager:
         chunk_size: int = 240000,
         output_chans: int = 16,
         acq_type: Literal["spike", "lfp", "wideband"] = "spike",
-        callback=print,
+        subtract: bool = False,
+        callback: Callback = print,
     ):
         if start is None:
             start = self.get_file_attr("start")
@@ -526,11 +527,6 @@ class SpkManager:
         template_amplitudes = np.zeros((self.spike_templates.size))
         for i in range(template_amplitudes.size):
             template_amplitudes[i] = template_peaks[self.spike_templates[i]]
-
-        if acq_type == "wideband":
-            subtract = False
-        else:
-            subtract = True
 
         for index, i in enumerate(chunk_starts):
             callback(
@@ -590,6 +586,17 @@ class SpkManager:
             )
         return output
 
+    def _extract_spikes_channels(self, channels):
+        size = channels[0, 1] - channels[0, 0]
+        output = np.zeros((self.spike_clusters.size, size), dtype=int)
+        for clust_id in self.cluster_ids:
+            indexes = np.where(self.spike_clusters == clust_id)[0]
+            start = channels[clust_id, 0]
+            end = channels[clust_id, 1]
+            tt = np.arange(start, end)
+            output[indexes, :] = tt
+        return output
+
     def export_phy_waveforms(
         self,
         nchans: int = 4,
@@ -605,7 +612,8 @@ class SpkManager:
         chunk_size: int = 240000,
         output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
-        callback=print,
+        subtract: bool = False,
+        callback: Callback = print,
     ):
         callback("Extracting spike waveforms.")
 
@@ -630,14 +638,17 @@ class SpkManager:
             end=end,
             chunk_size=chunk_size,
             output_chans=output_chans,
+            subtract=subtract,
             callback=callback,
         )
         callback("Spike waveforms extracted.")
 
         callback("Finding spike channels.")
-        full_spike_channels = self.extract_spike_channels(
-            probe=probe, nchans=nchans, output_chans=output_chans
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+        _, channels = self.get_template_channels(
+            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
+        full_spike_channels = self._extract_spikes_channels(channels[:, 1:])
 
         if dtype != "f64":
             callback(f"Converting to dtype {dtype}.")
@@ -725,7 +736,7 @@ class SpkManager:
         chunk_size: int = 240000,
         output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
-        callback: callable = print,
+        callback: Callback = print,
     ):
         if self.spike_waveforms.size == 0:
             self.export_to_phy(
@@ -802,7 +813,8 @@ class SpkManager:
         chunk_size: int = 240000,
         output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
-        callback=print,
+        subtract: bool = False,
+        callback: callable = print,
     ):
         self.export_phy_waveforms(
             nchans=nchans,
@@ -818,6 +830,7 @@ class SpkManager:
             chunk_size=chunk_size,
             output_chans=output_chans,
             dtype=dtype,
+            subtract=subtract,
             callback=callback,
         )
         self.save_templates(
