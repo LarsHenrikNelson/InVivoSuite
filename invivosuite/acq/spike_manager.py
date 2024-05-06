@@ -33,14 +33,16 @@ class SpikeProperties(TypedDict):
 
 
 class TemplateProperties(TypedDict):
-    amplitude_Left: np.ndarray[float]
-    amplitude_Float: np.ndarray[float]
+    peak_Left: np.ndarray[float]
+    peak_Float: np.ndarray[float]
+    trough: np.ndarray[float]
     peak_to_end: np.ndarray[int]
     start_to_peak: np.ndarray[int]
     half_width: np.ndarray[float]
     cluster_id: np.ndarray[int]
     stdev: np.ndarray[int]
     channel: np.ndarray[int]
+    half_width_zero: np.ndarray[int]
 
 
 class SpkManager:
@@ -224,7 +226,9 @@ class SpkManager:
     ) -> TemplateProperties:
         ampR = np.zeros(self.cluster_ids.size)
         ampL = np.zeros(self.cluster_ids.size)
+        trough = np.zeros(self.cluster_ids.size)
         hw = np.zeros(self.cluster_ids.size)
+        hw_zero = np.zeros(self.cluster_ids.size)
         channel = np.zeros(self.cluster_ids.size, dtype=int)
         cid = np.zeros(self.cluster_ids.size, dtype=int)
         stdevs = np.zeros(self.cluster_ids.size, dtype=float)
@@ -237,10 +241,12 @@ class SpkManager:
             )
             t_props = template_properties(templates[i, :, chan], negative=negative)
             hw[temp_index] = t_props["half_width"]
-            ampL[temp_index] = t_props["amplitude_left"]
-            ampR[temp_index] = t_props["amplitude_right"]
+            ampL[temp_index] = t_props["peak_Left"]
+            ampR[temp_index] = t_props["peak_Right"]
             peak_to_end[temp_index] = t_props["peak_to_end"]
             start_to_peak[temp_index] = t_props["start_to_peak"]
+            trough[temp_index] = t_props["trough"]
+            hw_zero[temp_index] = t_props["half_width_zero"]
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
@@ -250,14 +256,16 @@ class SpkManager:
             cid[temp_index] = i
             stdevs[temp_index] = template_stdev
         temp = TemplateProperties(
-            amp_Right=ampR,
-            amp_Left=ampL,
+            peak_Right=ampR,
+            peak_Left=ampL,
             half_width=hw,
             channel=channel,
             stdev=stdevs,
             peak_to_end=peak_to_end,
             start_to_peak=start_to_peak,
             cluster_id=cid,
+            trough=trough,
+            half_width_zero=hw_zero,
         )
         return temp
 
@@ -344,10 +352,9 @@ class SpkManager:
         callback("Calculating spike template properties.")
         out_data = self.get_properties(fs, nchans, total_chans)
         out_data["ch"] = out_data["channel"]
-        out_data["Amplitude"] = out_data["amp_Right"]
+        out_data["Amplitude"] = out_data["trough"] - out_data["peak_Right"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
         del out_data["channel"]
-        del out_data["amp_Right"]
 
         callback("Saving cluster info.")
         if file_path is None:

@@ -21,10 +21,12 @@ __all__ = [
 
 class TemplateProperties(TypedDict):
     half_width: float
+    half_width_zero: float
     start_to_peak: int
     peak_to_end: int
-    amplitude_left: float
-    amplitude_right: float
+    trough: float
+    peak_Left: float
+    peak_Right: float
 
 
 @njit(cache=True)
@@ -59,14 +61,16 @@ def template_properties(template: np.ndarray, negative: bool = True):
     peak_index = np.argmin(template)
     _, Lb, Rb = signal.peak_prominences(template * multiplier, [peak_index])
     widths, _, _, _ = signal.peak_widths(template * multiplier, [peak_index])
-    aL = template[Lb] - template[peak_index]
-    aR = template[Rb] - template[peak_index]
+    tt = np.where(template > 0, 0, template)
+    widths_zero, _, _, _ = signal.peak_widths(tt * multiplier, [peak_index])
     t_props = TemplateProperties(
         half_width=widths[0],
+        half_width_zero=widths_zero,
         peak_to_end=Rb - peak_index,
         start_to_peak=peak_index - Lb,
-        amplitude_left=aL,
-        amplitude_right=aR,
+        trough=template[peak_index],
+        peak_Left=template[Lb],
+        peak_Right=template[Rb],
     )
     return t_props
 
