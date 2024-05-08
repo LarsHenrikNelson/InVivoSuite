@@ -152,7 +152,7 @@ class SpkManager:
     def get_cluster_best_template_waveform(
         self, cluster_id: int, nchans: int = 4, total_chans: int = 64
     ) -> np.ndarray:
-        template_index = np.where(self.cluster_ids == cluster_id)[0]
+        template_index = np.where(self.cluster_ids == cluster_id)[0][0]
         chan, _, _ = self._template_channels(
             self.sparse_templates[template_index],
             nchans=nchans,
@@ -253,9 +253,11 @@ class SpkManager:
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
-                templates[i], nchans=nchans, total_chans=total_chans
+                templates[temp_index], nchans=nchans, total_chans=total_chans
             )
-            t_props = template_properties(templates[i, :, chan], negative=negative)
+            t_props = template_properties(
+                templates[temp_index, :, chan], negative=negative
+            )
             hw[temp_index] = t_props["half_width"]
             ampL[temp_index] = t_props["peak_Left"]
             ampR[temp_index] = t_props["peak_Right"]
@@ -725,9 +727,9 @@ class SpkManager:
         )
         sparse_templates_new = np.zeros((self.cluster_ids.size, waveform_length, 64))
         callback("Beginning template extraction")
-        spk_templates = np.zeros(self.cluster_ids.size, dtype=int)
-        for i in range(self.cluster_ids.size):
-            clust_id = self.cluster_ids[i]
+        spk_templates = np.zeros(self.spike_clusters.size, dtype=int)
+        for template_index in range(self.cluster_ids.size):
+            clust_id = self.cluster_ids[template_index]
             callback(f"Extracting cluster {clust_id} template")
             indexes = np.where(self.spike_clusters == clust_id)[0]
             temp_spikes_waveforms = spike_waveforms[indexes]
@@ -742,10 +744,10 @@ class SpkManager:
                 start_chan -= end_chan - total_chans
                 end_chan = total_chans
             best_chans = np.arange(start_chan, end_chan)
-            sparse_templates_new[clust_id, :, best_chans] = test.T
+            sparse_templates_new[template_index, :, best_chans] = test.T
 
             indexes = np.where(self.spike_clusters == clust_id)[0]
-            spk_templates[indexes] = i
+            spk_templates[indexes] = template_index
         return sparse_templates_new, spk_templates
 
     def save_templates(
