@@ -30,6 +30,7 @@ class SpikeProperties(TypedDict):
     fp_rate: np.ndarray[float]
     num_violations: np.ndarray[float]
     fr: np.ndarray[float]
+    fr_iei: np.ndarray[float]
 
 
 class TemplateProperties(TypedDict):
@@ -209,6 +210,7 @@ class SpkManager:
         data = SpikeProperties(
             presence_ratio=presence_ratios,
             iei=iei,
+            fr_iei=fr_iei,
             n_spikes=n_spikes,
             cluster_id=self.cluster_ids,
             fr=fr,

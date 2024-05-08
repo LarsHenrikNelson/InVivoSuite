@@ -31,26 +31,24 @@ class TemplateProperties(TypedDict):
 
 @njit(cache=True)
 def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
-    index = np.argmin(template)
-    start_index = index
-    end_index = index
-    current = template[index]
+    peak_index = np.argmin(template)
+    start_index = peak_index
+    end_index = peak_index
+    current = template[peak_index]
     previous = current - 1
     while previous < current and start_index > 0:
         previous = current
         start_index -= 1
         current = template[start_index]
     start_index += 1
-    current = template[index]
+    current = template[peak_index]
     previous = current - 1
     while previous < current and end_index < template.size - 1:
         previous = current
         end_index += 1
         current = template[end_index]
     end_index -= 1
-    amplitude = template[index]
-    trough_to_peak = template[end_index] - amplitude
-    return start_index, end_index, index, amplitude, trough_to_peak
+    return start_index, peak_index, end_index
 
 
 def template_properties(template: np.ndarray, negative: bool = True):
