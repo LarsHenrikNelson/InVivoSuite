@@ -146,6 +146,20 @@ class SpkManager:
         cid = np.where(self.spike_clusters == cluster_id)[0]
         return np.unique(self.spike_templates[cid])
 
+    def get_cluster_template_waveforms(self, cluster_id: int) -> np.ndarray:
+        return self.sparse_self.sparse_templates[cluster_id, :, :]
+
+    def get_cluster_best_template_waveform(
+        self, cluster_id: int, nchans: int = 4, total_chans: int = 64
+    ) -> np.ndarray:
+        template_index = np.where(self.cluster_ids == cluster_id)[0]
+        chan, _, _ = self._template_channels(
+            self.sparse_templates[template_index],
+            nchans=nchans,
+            total_chans=total_chans,
+        )
+        return self.sparse_templates[template_index, :, chan]
+
     def get_cluster_spike_times(
         self,
         cluster_id: int,
@@ -709,10 +723,11 @@ class SpkManager:
         _, channels = self.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
-        sparse_templates_new = np.zeros((self.cluster_ids[-1] + 1, waveform_length, 64))
+        sparse_templates_new = np.zeros((self.cluster_ids.size, waveform_length, 64))
         callback("Beginning template extraction")
-        self.spike_templates = np.array(self.spike_templates)
-        for clust_id in self.cluster_ids:
+        spk_templates = np.zeros(self.cluster_ids.size, dtype=int)
+        for i in range(self.cluster_ids.size):
+            clust_id = self.cluster_ids[i]
             callback(f"Extracting cluster {clust_id} template")
             indexes = np.where(self.spike_clusters == clust_id)[0]
             temp_spikes_waveforms = spike_waveforms[indexes]
@@ -728,7 +743,10 @@ class SpkManager:
                 end_chan = total_chans
             best_chans = np.arange(start_chan, end_chan)
             sparse_templates_new[clust_id, :, best_chans] = test.T
-        return sparse_templates_new
+
+            indexes = np.where(self.spike_clusters == clust_id)[0]
+            spk_templates[indexes] = i
+        return sparse_templates_new, spk_templates
 
     def save_templates(
         self,
@@ -744,7 +762,7 @@ class SpkManager:
         end: Union[None, int] = None,
         chunk_size: int = 240000,
         output_chans: int = 16,
-        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
+        dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         callback: Callback = print,
     ):
         if self.spike_waveforms.size == 0:
@@ -768,19 +786,13 @@ class SpkManager:
 
         channel_map = self.get_grp_dataset("channel_maps", probe)
 
-        self.sparse_templates = self.extract_templates(
+        self.sparse_templates, self.spike_templates = self.extract_templates(
             spike_waveforms=self.spike_waveforms,
             nchans=nchans,
             total_chans=channel_map.size,
             waveform_length=waveform_length,
             callback=callback,
         )
-
-        # Not the most efficient way to store data but it is more fool proof
-        # Template == cluster_id
-        for clust_id in self.cluster_ids:
-            indexes = np.where(self.spike_clusters == clust_id)[0]
-            self.spike_templates[indexes] = clust_id
 
         callback("Saving templates.")
         self._remove_file("templates.npy")
@@ -819,7 +831,7 @@ class SpkManager:
         probe: str = "all",
         start: Union[None, int] = None,
         end: Union[None, int] = None,
-        chunk_size: int = 240000,
+        chunk_size: int = 480000,
         output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         subtract: bool = False,
