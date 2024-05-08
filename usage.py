@@ -129,6 +129,7 @@ for i in acqs:
 """
 Compute the whitening matrix.
 This requires that a channel map is set.
+Neighbors is the
 """
 for i in acqs:
     i.compute_whitening_matrix(
@@ -143,7 +144,7 @@ for i in acqs:
 
 # %%
 """
-Setting some random attributes
+Setting some file random attributes
 """
 for i in acqs:
     s_temp = i.file_path.stem.split("_")
@@ -151,6 +152,18 @@ for i in acqs:
     i.set_file_attr("sex", s_temp[3])
     i.set_file_attr("id", s_temp[4])
     i.set_file_attr("genotype", s_temp[5])
+
+# %%
+"""
+Setting some random group attributes
+"""
+for i in acqs:
+    s_temp = i.file_path.stem.split("_")
+    i.set_grp_attr("metadata", "date", f"{s_temp[0]}_{s_temp[1]}_{s_temp[2]}")
+    i.set_grp_attr("metadata", "sex", s_temp[3])
+    i.set_grp_attr("metadata", "id", s_temp[4])
+    i.set_grp_attr("metadata", "genotype", s_temp[5])
+
 
 # %%
 """
