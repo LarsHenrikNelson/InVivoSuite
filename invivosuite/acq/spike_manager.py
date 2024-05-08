@@ -614,10 +614,11 @@ class SpkManager:
     def _extract_spikes_channels(self, channels):
         size = channels[0, 1] - channels[0, 0]
         output = np.zeros((self.spike_clusters.size, size), dtype=int)
-        for clust_id in self.cluster_ids:
+        for index in range(self.cluster_ids.size):
+            clust_id = self.cluster_ids[index]
             indexes = np.where(self.spike_clusters == clust_id)[0]
-            start = channels[clust_id, 0]
-            end = channels[clust_id, 1]
+            start = channels[index, 0]
+            end = channels[index, 1]
             tt = np.arange(start, end)
             output[indexes, :] = tt
         return output
