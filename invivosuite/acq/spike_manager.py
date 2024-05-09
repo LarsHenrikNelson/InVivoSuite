@@ -528,7 +528,6 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 240000,
-        output_chans: int = 16,
         acq_type: Literal["spike", "lfp", "wideband"] = "spike",
         subtract: bool = False,
         callback: Callback = print,
@@ -539,7 +538,7 @@ class SpkManager:
             end = self.get_file_attr("end")
         n_chunks = (end - start) // (chunk_size)
         chunk_starts = np.arange(n_chunks) * chunk_size
-        output = np.zeros((len(self.spike_times), waveform_length, output_chans))
+        output = np.zeros((len(self.spike_times), waveform_length, (nchans * 2)))
 
         # Get the best range of channels for each template
         channel_map = self.get_grp_dataset("channel_maps", probe)
@@ -558,16 +557,18 @@ class SpkManager:
                 f"Starting chunk {index+1} start at {i} and ending at {i+chunk_size}."
             )
             chunk_start = max(0, i - waveform_length)
-            recording_chunk = self.get_multichans(
-                acq_type=acq_type,
-                ref=ref,
-                ref_probe=ref_probe,
-                ref_type=ref_type,
-                map_channel=map_channel,
-                probe=probe,
-                start=chunk_start,
-                end=i + chunk_size,
-            ).T
+            recording_chunk = np.array(
+                self.get_multichans(
+                    acq_type=acq_type,
+                    ref=ref,
+                    ref_probe=ref_probe,
+                    ref_type=ref_type,
+                    map_channel=map_channel,
+                    probe=probe,
+                    start=chunk_start,
+                    end=i + chunk_size,
+                ).T
+            )
 
             self.extract_waveforms_chunk(
                 output=output,
@@ -636,7 +637,6 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 240000,
-        output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
         subtract: bool = False,
         callback: Callback = print,
@@ -663,7 +663,6 @@ class SpkManager:
             start=start,
             end=end,
             chunk_size=chunk_size,
-            output_chans=output_chans,
             subtract=subtract,
             callback=callback,
         )
@@ -764,7 +763,6 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 240000,
-        output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         callback: Callback = print,
     ):
@@ -781,7 +779,6 @@ class SpkManager:
                 start=start,
                 end=end,
                 chunk_size=chunk_size,
-                output_chans=output_chans,
                 dtype=dtype,
                 callback=callback,
             )
@@ -835,7 +832,6 @@ class SpkManager:
         start: Union[None, int] = None,
         end: Union[None, int] = None,
         chunk_size: int = 480000,
-        output_chans: int = 16,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         subtract: bool = False,
         callback: callable = print,
@@ -852,7 +848,6 @@ class SpkManager:
             start=start,
             end=end,
             chunk_size=chunk_size,
-            output_chans=output_chans,
             dtype=dtype,
             subtract=subtract,
             callback=callback,
@@ -868,7 +863,6 @@ class SpkManager:
             start=start,
             end=end,
             chunk_size=chunk_size,
-            output_chans=output_chans,
             dtype=dtype,
             callback=callback,
         )
