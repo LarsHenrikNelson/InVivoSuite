@@ -19,7 +19,6 @@ class AcqManager(SpkManager, LFPManager):
     def __init__(self):
         self.file = None
         self.file_open = False
-        self.spike_data = {}
 
     def create_hdf5_file(
         self,
@@ -234,18 +233,6 @@ class AcqManager(SpkManager, LFPManager):
             cmr = ref(array, axis=0)
             self.set_grp_dataset(ref_type, probe, cmr)
 
-    # def compute_channel_means(self):
-    #     start = self.get_file_attr("start")
-    #     end = self.get_file_attr("end")
-    #     nchans = self.n_chans
-    #     means = np.zeros(nchans)
-    #     for i in range(nchans):
-    #         array = self.get_file_dataset(
-    #             "acqs", rows=i, columns=(start, end)
-    #         ) * self.get_file_dataset("coeffs", rows=i)
-    #         means[i] = array.mean()
-    #     self.set_file_dataset("chan_means", data=means)
-
     def compute_whitening_matrix(
         self,
         neighbors: int,
@@ -378,7 +365,7 @@ class AcqManager(SpkManager, LFPManager):
             # start_chan = channel - nchans
             end_chan = channel + nchans
             start_chan = max(0, int(channel - nchans))
-            end_chan = min(total_chans, int(channel + nchans + 1))
+            end_chan = min(total_chans, int(channel + nchans))
             multi_acq = np.zeros((end_chan - start_chan, int(end - start)))
         else:
             start_chan = 0
@@ -602,12 +589,6 @@ class AcqManager(SpkManager, LFPManager):
             data = self.get_grp_dataset("probes", probe)
             channel = int(channel + data[0])
         return channel
-
-    def set_spike_data(self, dir, id):
-        if self.file.get(id):
-            self.spike_data[id] = dir
-        else:
-            raise AttributeError("Must set name for spike first.")
 
     def save_kilosort_bin(
         self,

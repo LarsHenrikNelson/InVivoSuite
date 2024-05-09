@@ -150,15 +150,18 @@ class SpkManager:
         return self.sparse_self.sparse_templates[cluster_id, :, :]
 
     def get_cluster_best_template_waveform(
-        self, cluster_id: int, nchans: int = 4, total_chans: int = 64
+        self, cluster_id: int, nchans: int = 4
     ) -> np.ndarray:
-        template_index = np.where(self.cluster_ids == cluster_id)[0][0]
-        chan, _, _ = self._template_channels(
-            self.sparse_templates[template_index],
-            nchans=nchans,
-            total_chans=total_chans,
-        )
-        return self.sparse_templates[template_index, :, chan]
+        template_index = np.where(self.cluster_ids == cluster_id)[0]
+        if len(template_index) == 1:
+            chan, _, _ = self._template_channels(
+                self.sparse_templates[template_index[0]],
+                nchans=nchans,
+                total_chans=self.sparse_templates.shape[2],
+            )
+            return self.sparse_templates[template_index, :, chan]
+        else:
+            raise AttributeError(f"Cluster id {cluster_id} is not valid.")
 
     def get_cluster_spike_times(
         self,
@@ -557,18 +560,16 @@ class SpkManager:
                 f"Starting chunk {index+1} start at {i} and ending at {i+chunk_size}."
             )
             chunk_start = max(0, i - waveform_length)
-            recording_chunk = np.array(
-                self.get_multichans(
-                    acq_type=acq_type,
-                    ref=ref,
-                    ref_probe=ref_probe,
-                    ref_type=ref_type,
-                    map_channel=map_channel,
-                    probe=probe,
-                    start=chunk_start,
-                    end=i + chunk_size,
-                ).T
-            )
+            recording_chunk = self.get_multichans(
+                acq_type=acq_type,
+                ref=ref,
+                ref_probe=ref_probe,
+                ref_type=ref_type,
+                map_channel=map_channel,
+                probe=probe,
+                start=chunk_start,
+                end=i + chunk_size,
+            ).T
 
             self.extract_waveforms_chunk(
                 output=output,
