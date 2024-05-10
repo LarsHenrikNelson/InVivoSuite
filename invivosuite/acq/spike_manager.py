@@ -239,8 +239,9 @@ class SpkManager:
     def get_templates_properties(
         self,
         templates: np.ndarray,
-        nchans: int,
-        total_chans: int,
+        center: int = 41,
+        nchans: int = 4,
+        total_chans: int = 64,
         negative: bool = True,
     ) -> TemplateProperties:
         ampR = np.zeros(self.cluster_ids.size)
@@ -259,7 +260,7 @@ class SpkManager:
                 templates[temp_index], nchans=nchans, total_chans=total_chans
             )
             t_props = template_properties(
-                templates[temp_index, :, chan], negative=negative
+                templates[temp_index, :, chan], center=center, negative=negative
             )
             hw[temp_index] = t_props["half_width"]
             ampL[temp_index] = t_props["peak_Left"]
@@ -290,10 +291,12 @@ class SpkManager:
         )
         return temp
 
-    def get_properties(self, fs: int = 40000, nchans: int = 4, total_chans: int = 64):
+    def get_properties(
+        self, fs: int = 40000, center=41, nchans: int = 4, total_chans: int = 64
+    ):
         output_dict = {}
         temp_props = self.get_templates_properties(
-            self.sparse_templates, nchans, total_chans
+            self.sparse_templates, center, nchans, total_chans
         )
         spk_props = self.get_spikes_properties(fs=fs)
         output_dict.update(temp_props)
@@ -364,41 +367,32 @@ class SpkManager:
 
     def save_properties_phy(
         self,
-        file_path=None,
         fs: int = 40000,
+        center: int = 41,
         nchans: int = 4,
         total_chans: int = 64,
         callback: Callback = print,
     ):
         callback("Calculating spike template properties.")
-        out_data = self.get_properties(fs, nchans, total_chans)
+        out_data = self.get_properties(fs, center, nchans, total_chans)
         out_data["ch"] = out_data["channel"]
         out_data["Amplitude"] = out_data["trough"] - out_data["peak_Right"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
         del out_data["channel"]
 
         callback("Saving cluster info.")
-        if file_path is None:
-            save_path = self.ks_directory / "cluster_info"
-        else:
-            save_path = Path(file_path) / "cluster_info"
+        save_path = self.ks_directory / "cluster_info"
         save_tsv(save_path, out_data, mode="w")
 
         callback("Saving cluster Amplitude.")
-        if file_path is None:
-            save_path = self.ks_directory / "cluster_Amplitude"
-        else:
-            save_path = Path(file_path) / "cluster_Amplitude"
+        save_path = self.ks_directory / "cluster_Amplitude"
         save_tsv(
             save_path,
             {"cluster_id": out_data["cluster_id"], "Amplitude": out_data["Amplitude"]},
         )
 
         callback("Saving cluster ContamPct.")
-        if file_path is None:
-            save_path = self.ks_directory / "cluster_ContamPct"
-        else:
-            save_path = Path(file_path) / "cluster_ContamPct"
+        save_path = self.ks_directory / "cluster_ContamPct"
         save_tsv(
             save_path,
             {
@@ -408,10 +402,7 @@ class SpkManager:
         )
 
         callback("Saving cluster KSLabel.")
-        if file_path is None:
-            save_path = self.ks_directory / "cluster_KSLabel"
-        else:
-            save_path = Path(file_path) / "cluster_KSLabel"
+        save_path = self.ks_directory / "cluster_KSLabel"
         save_tsv(
             save_path,
             {
@@ -444,7 +435,8 @@ class SpkManager:
         return peak_output, channel_output
 
     def _template_channels(self, template: np.ndarray, nchans: int, total_chans: int):
-        best_chan = np.argmin(np.min(template, axis=0))
+        # best_chan = np.argmin(np.min(template, axis=0))
+        best_chan = np.argmax(np.sum(np.abs(template), axis=0))
         start_chan = best_chan - nchans
         end_chan = best_chan + nchans
         if start_chan < 0:
@@ -670,11 +662,6 @@ class SpkManager:
         callback("Spike waveforms extracted.")
 
         callback("Finding spike channels.")
-        channel_map = self.get_grp_dataset("channel_maps", probe)
-        _, channels = self.get_template_channels(
-            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
-        )
-        full_spike_channels = self._extract_spikes_channels(channels[:, 1:])
 
         if dtype != "f64":
             callback(f"Converting to dtype {dtype}.")
@@ -699,18 +686,15 @@ class SpkManager:
             np.arange(self.spike_times.shape[0]),
         )
 
-        callback("Saving spike channels.")
-        self._remove_file("_phy_spikes_subset.channels.npy")
-        np.save(
-            self.ks_directory / "_phy_spikes_subset.channels.npy",
-            full_spike_channels,
-        )
-
         callback("Saving template channel indices")
         self._remove_file("templates_ind.npy")
         shape = self.sparse_templates.shape
         temp_ind = np.zeros((shape[0], shape[-1]), dtype=np.int16)
         temp_ind[:, :] += np.arange(shape[-1])
+        np.save(
+            self.ks_directory / "templates_ind.npy",
+            temp_ind,
+        )
 
         callback("Finished exporting data.")
         self._load_spike_waveforms()
@@ -794,6 +778,10 @@ class SpkManager:
             waveform_length=waveform_length,
             callback=callback,
         )
+        _, channels = self.get_template_channels(
+            self.sparse_templates, nchans=nchans, total_chans=channel_map.size
+        )
+        full_spike_channels = self._extract_spikes_channels(channels[:, 1:])
 
         callback("Saving templates.")
         self._remove_file("templates.npy")
@@ -816,9 +804,18 @@ class SpkManager:
             self.spike_templates,
         )
 
+        callback("Saving spike channels.")
+        self._remove_file("_phy_spikes_subset.channels.npy")
+        np.save(
+            self.ks_directory / "_phy_spikes_subset.channels.npy",
+            full_spike_channels,
+        )
+
         self._load_sparse_templates()
-        self.save_properties_phy()
-        callback("Finished recomputing templates.")
+        self.save_properties_phy(
+            center=center, nchans=nchans, total_chans=channel_map.size
+        )
+        callback("Finished saving templates.")
 
     def export_to_phy(
         self,
@@ -856,6 +853,7 @@ class SpkManager:
         self.save_templates(
             nchans=nchans,
             waveform_length=waveform_length,
+            center=center,
             ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
@@ -867,7 +865,6 @@ class SpkManager:
             dtype=dtype,
             callback=callback,
         )
-        self.save_properties_phy()
 
     def compute_sttc(
         self,

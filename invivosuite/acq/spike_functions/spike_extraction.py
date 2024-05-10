@@ -1,8 +1,9 @@
-from typing import TypedDict
+from typing import TypedDict, Union
 
 import numpy as np
 from numba import njit, prange
 from scipy import signal
+from scipy import interpolate
 
 from ...utils import where_count
 
@@ -20,13 +21,17 @@ __all__ = [
 
 
 class TemplateProperties(TypedDict):
-    half_width: float
-    half_width_zero: float
-    start_to_peak: int
-    peak_to_end: int
-    trough: float
-    peak_Left: float
-    peak_Right: float
+    hwL: float
+    hwL_len: float
+    hwR: float
+    hwR_len: float
+    full_width: Union[int, float]
+    start: Union[int, float]
+    end: Union[int, float]
+    center: Union[int, float]
+    center_y: float
+    start_y: float
+    end_y: float
 
 
 @njit(cache=True)
@@ -51,24 +56,68 @@ def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
     return start_index, peak_index, end_index
 
 
-def template_properties(template: np.ndarray, negative: bool = True):
-    if negative:
-        multiplier = -1
+def simple_interpolation(template: np.ndarray, value: float, index: int):
+    y1 = template[index]
+    y0 = template[index - 1]
+    y = value
+    temp1 = np.abs((y1 - y0))
+    temp2 = np.abs((y0 - y))
+    out = (temp2 / temp1) if temp1 > temp2 else 0
+    return out + index - 1
+
+
+def template_properties(
+    template: np.ndarray, center: int, upsample_factor: int = 2, negative: bool = True
+):
+    # if negative:
+    #     multiplier = -1
+    # else:
+    #     multiplier = 1
+    spl = interpolate.CubicSpline(
+        np.linspace(0, template.size, num=template.size), template
+    )
+    yinterp = spl(np.linspace(0, template.size, num=template.size * upsample_factor))
+    center *= upsample_factor
+    i = signal.argrelmax(np.diff(yinterp[:center]), order=1)[0]
+    i = np.array([j for j in i if j > (center - 10)])
+    i = i[-1] if i.size > 0 else 0
+    j = signal.argrelmax(yinterp[:center], order=1)[0]
+    j = j[-1] if j.size > 0 else 0
+    Lb = i if i > j else j
+    k = np.argmax(yinterp[center:]) + center
+    Rb = k if k > (center + 10) else (yinterp.size - 1)
+
+    if ((Rb - Lb) / upsample_factor) > 10:
+        hwidth_L = yinterp[center] - ((yinterp[center] - yinterp[Lb]) / 2)
+        bb = np.where(yinterp[Lb:Rb] < hwidth_L)[0] + Lb
+        Lw1 = simple_interpolation(yinterp, hwidth_L, bb[0])
+        Lw2 = simple_interpolation(yinterp, hwidth_L, bb[-1] + 1)
+
+        hwidth_R = yinterp[center] - ((yinterp[center] - yinterp[Rb]) / 2)
+        bb = np.where(yinterp[Lb:Rb] < hwidth_R)[0] + Lb
+        Rw1 = simple_interpolation(yinterp, hwidth_R, bb[0])
+        Rw2 = simple_interpolation(yinterp, hwidth_R, bb[-1] + 1)
+
     else:
-        multiplier = 1
-    peak_index = np.argmin(template)
-    _, Lb, Rb = signal.peak_prominences(template * multiplier, [peak_index])
-    widths, _, _, _ = signal.peak_widths(template * multiplier, [peak_index])
-    tt = np.where(template > 0, 0, template)
-    widths_zero, _, _, _ = signal.peak_widths(tt * multiplier, [peak_index])
+        hwidth_L = np.nan
+        hwidth_R = np.nan
+        Lw1 = np.nan
+        Lw2 = np.nan
+        Rw1 = np.nan
+        Rw2 = np.nan
+
     t_props = TemplateProperties(
-        half_width=widths[0],
-        half_width_zero=widths_zero,
-        peak_to_end=Rb - peak_index,
-        start_to_peak=peak_index - Lb,
-        trough=template[peak_index],
-        peak_Left=template[Lb],
-        peak_Right=template[Rb],
+        hwL_len=(Lw2 - Lw1) / upsample_factor,
+        hwL=hwidth_L,
+        hwR_len=(Rw2 - Rw1) / upsample_factor,
+        hwR=hwidth_R,
+        full_width=(Rb - Lb) / upsample_factor,
+        end=Rb / upsample_factor,
+        center_x=center / upsample_factor,
+        start=Lb / upsample_factor,
+        center_y=yinterp[center],
+        start_y=yinterp[Lb],
+        end_y=yinterp[Rb],
     )
     return t_props
 
