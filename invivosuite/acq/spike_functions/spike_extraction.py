@@ -32,6 +32,9 @@ class TemplateProperties(TypedDict):
     center_y: float
     start_y: float
     end_y: float
+    center_diff: float
+    min_x: int
+    min_y: float
 
 
 @njit(cache=True)
@@ -78,16 +81,24 @@ def template_properties(
     )
     yinterp = spl(np.linspace(0, template.size, num=template.size * upsample_factor))
     center *= upsample_factor
-    i = signal.argrelmax(np.diff(yinterp[:center]), order=1)[0]
-    i = np.array([j for j in i if j > (center - 10)])
+
+    yinterp_diff = np.diff(yinterp)
+    min_diff = np.argmin(yinterp_diff)
+    min_st = np.argmin(yinterp)
+    min_x = np.argmin(yinterp)
+
+    # Find the start and end
+    i = signal.argrelmax(yinterp_diff[:center], order=1)[0]
+    i = np.array([j for j in i if j < (center - (5 * upsample_factor))])
     i = i[-1] if i.size > 0 else 0
     j = signal.argrelmax(yinterp[:center], order=1)[0]
+    j = np.array([m for m in j if m < (center - (5 * upsample_factor))])
     j = j[-1] if j.size > 0 else 0
     Lb = i if i > j else j
     k = np.argmax(yinterp[center:]) + center
-    Rb = k if k > (center + 10) else (yinterp.size - 1)
+    Rb = k if k > (center + (5 * upsample_factor)) else (yinterp.size - 1)
 
-    if ((Rb - Lb) / upsample_factor) > 10:
+    if ((Rb - Lb) / upsample_factor) > (5 * upsample_factor):
         hwidth_L = yinterp[center] - ((yinterp[center] - yinterp[Lb]) / 2)
         bb = np.where(yinterp[Lb:Rb] < hwidth_L)[0] + Lb
         Lw1 = simple_interpolation(yinterp, hwidth_L, bb[0])
@@ -113,11 +124,14 @@ def template_properties(
         hwR=hwidth_R,
         full_width=(Rb - Lb) / upsample_factor,
         end=Rb / upsample_factor,
-        center_x=center / upsample_factor,
+        center=center / upsample_factor,
         start=Lb / upsample_factor,
         center_y=yinterp[center],
         start_y=yinterp[Lb],
         end_y=yinterp[Rb],
+        center_diff=min_diff - min_st,
+        min_x=(min_x / upsample_factor),
+        min_y=yinterp[min_x],
     )
     return t_props
 

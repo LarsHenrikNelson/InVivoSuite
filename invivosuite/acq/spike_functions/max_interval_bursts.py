@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 
@@ -14,7 +14,7 @@ def ave_inter_burst_iei(bursts):
     return np.mean(diff)
 
 
-def ave_spikes_burst(bursts: list):
+def ave_spikes_burst(bursts: list[np.ndarray]):
     if len(bursts) == 0:
         return 0
     ave = 0
@@ -23,7 +23,7 @@ def ave_spikes_burst(bursts: list):
     return ave / len(bursts)
 
 
-def ave_intra_burst_iei(bursts: list) -> float:
+def ave_intra_burst_iei(bursts: list[np.ndarray]) -> float:
     """Get the average iei from each burst. Does not correct for sampling rate.
 
     Parameters
@@ -44,7 +44,7 @@ def ave_intra_burst_iei(bursts: list) -> float:
     return ave / len(bursts)
 
 
-def ave_burst_len(bursts):
+def ave_burst_len(bursts: list[np.ndarray]) -> float:
     if len(bursts) == 0:
         return 0
     ave = 0
@@ -53,13 +53,22 @@ def ave_burst_len(bursts):
     return ave / len(bursts)
 
 
-def get_burst_data(bursts):
-    data_dict = {}
-    data_dict["num_bursts"] = len(bursts)
-    data_dict["ave_burst_len"] = ave_burst_len(bursts)
-    data_dict["intra_burst_iei"] = ave_intra_burst_iei(bursts)
-    data_dict["ave_spks_burst"] = ave_spikes_burst(bursts)
-    data_dict["inter_burst_iei"] = ave_inter_burst_iei(bursts)
+class BurstProps(TypedDict):
+    num_bursts: int
+    ave_burst_len: float
+    intra_burst_iei: float
+    inter_burst_iei: float
+    ave_spikes_burst: float
+
+
+def get_burst_data(bursts: list[np.ndarray]) -> BurstProps:
+    data_dict = BurstProps(
+        num_bursts=len(bursts),
+        ave_burst_len=ave_burst_len(bursts),
+        intra_burst_iei=ave_intra_burst_iei(bursts),
+        ave_spikes_burst=ave_spikes_burst(bursts),
+        inter_burst_iei=ave_inter_burst_iei(bursts),
+    )
     return data_dict
 
 

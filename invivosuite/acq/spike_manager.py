@@ -34,16 +34,29 @@ class SpikeProperties(TypedDict):
 
 
 class TemplateProperties(TypedDict):
-    peak_Left: np.ndarray[float]
-    peak_Float: np.ndarray[float]
-    trough: np.ndarray[float]
-    peak_to_end: np.ndarray[int]
-    start_to_peak: np.ndarray[int]
-    half_width: np.ndarray[float]
-    cluster_id: np.ndarray[int]
-    stdev: np.ndarray[int]
+    hwL: np.ndarray[float]
+    hwL_len: np.ndarray[float]
+    hwR: np.ndarray[float]
+    hwR_len: np.ndarray[float]
+    full_width: np.ndarray[float]
+    start: np.ndarray[float]
+    end: np.ndarray[float]
+    center: np.ndarray[float]
+    min_x: np.ndarray[float]
+    center_y: np.ndarray[float]
+    start_y: np.ndarray[float]
+    end_y: np.ndarray[float]
+    min_y: np.ndarray[float]
+    stdev: np.ndarray[float]
     channel: np.ndarray[int]
-    half_width_zero: np.ndarray[int]
+
+
+class BurstProperties(TypedDict):
+    num_bursts: np.ndarray[int]
+    ave_burst_len: np.ndarray[float]
+    intra_burst_iei: np.ndarray[float]
+    inter_burst_iei: np.ndarray[float]
+    ave_spikes_burst: np.ndarray[float]
 
 
 class SpkManager:
@@ -242,65 +255,110 @@ class SpkManager:
         center: int = 41,
         nchans: int = 4,
         total_chans: int = 64,
+        upsample_factor: int = 2,
         negative: bool = True,
     ) -> TemplateProperties:
-        ampR = np.zeros(self.cluster_ids.size)
-        ampL = np.zeros(self.cluster_ids.size)
-        trough = np.zeros(self.cluster_ids.size)
-        hw = np.zeros(self.cluster_ids.size)
-        hw_zero = np.zeros(self.cluster_ids.size)
+        hwL = np.zeros(self.cluster_ids.size)
+        hwL_len = np.zeros(self.cluster_ids.size)
+        hwR = np.zeros(self.cluster_ids.size)
+        hwR_len = np.zeros(self.cluster_ids.size)
+        full_width = np.zeros(self.cluster_ids.size)
+        start_x = np.zeros(self.cluster_ids.size)
+        end_x = np.zeros(self.cluster_ids.size)
+        center_x = np.zeros(self.cluster_ids.size)
+        min_x = np.zeros(self.cluster_ids.size)
+        start_y = np.zeros(self.cluster_ids.size)
+        end_y = np.zeros(self.cluster_ids.size)
+        center_y = np.zeros(self.cluster_ids.size)
+        min_y = np.zeros(self.cluster_ids.size)
+        stdevs = np.zeros(self.cluster_ids.size)
         channel = np.zeros(self.cluster_ids.size, dtype=int)
-        cid = np.zeros(self.cluster_ids.size, dtype=int)
-        stdevs = np.zeros(self.cluster_ids.size, dtype=float)
-        peak_to_end = np.zeros(self.cluster_ids.size, dtype=int)
-        start_to_peak = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = self._template_channels(
                 templates[temp_index], nchans=nchans, total_chans=total_chans
             )
             t_props = template_properties(
-                templates[temp_index, :, chan], center=center, negative=negative
+                templates[temp_index, :, chan],
+                center=center,
+                upsample_factor=upsample_factor,
+                negative=negative,
             )
-            hw[temp_index] = t_props["half_width"]
-            ampL[temp_index] = t_props["peak_Left"]
-            ampR[temp_index] = t_props["peak_Right"]
-            peak_to_end[temp_index] = t_props["peak_to_end"]
-            start_to_peak[temp_index] = t_props["start_to_peak"]
-            trough[temp_index] = t_props["trough"]
-            hw_zero[temp_index] = t_props["half_width_zero"]
+            hwL[temp_index] = t_props["hwL"]
+            hwL_len[temp_index] = t_props["hwL_len"]
+            hwR[temp_index] = t_props["hwR"]
+            hwR_len[temp_index] = t_props["hwR_len"]
+            full_width[temp_index] = t_props["full_width"]
+            start_x[temp_index] = t_props["start"]
+            end_x[temp_index] = t_props["end"]
+            center_x[temp_index] = t_props["center"]
+            min_x[temp_index] = t_props["min_x"]
+            center_y[temp_index] = t_props["center_y"]
+            start_y[temp_index] = t_props["start_y"]
+            end_y[temp_index] = t_props["end_y"]
+            min_y[temp_index] = t_props["min_y"]
             indexes = np.where(self.spike_clusters == i)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
                 np.std(temp_spikes_waveforms, axis=0)[:, int(chan - start_chan)]
             )
-            channel[temp_index] = chan
-            cid[temp_index] = i
             stdevs[temp_index] = template_stdev
+            channel[temp_index] = chan
         temp = TemplateProperties(
-            peak_Right=ampR,
-            peak_Left=ampL,
-            half_width=hw,
-            channel=channel,
+            hwL=hwL,
+            hwR=hwR,
+            hwL_len=hwL_len,
+            hwR_len=hwR_len,
+            full_width=full_width,
+            start=start_x,
+            end=end_x,
+            center=center_x,
+            min_x=min_x,
+            start_y=start_y,
+            end_y=end_y,
+            center_y=center_y,
+            min_y=min_y,
             stdev=stdevs,
-            peak_to_end=peak_to_end,
-            start_to_peak=start_to_peak,
-            cluster_id=cid,
-            trough=trough,
-            half_width_zero=hw_zero,
+            channel=channel,
         )
         return temp
 
     def get_properties(
-        self, fs: int = 40000, center=41, nchans: int = 4, total_chans: int = 64
+        self,
+        templates: Optional[np.ndarray],
+        fs: int = 40000,
+        center=41,
+        nchans: int = 4,
+        total_chans: int = 64,
+        upsample_factor: int = 2,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        output_type: Literal["sec", "ms", "sample"] = "sec",
     ):
+        if templates is None:
+            templates = self.sparse_templates
         output_dict = {}
         temp_props = self.get_templates_properties(
-            self.sparse_templates, center, nchans, total_chans
+            templates=templates,
+            center=center,
+            nchans=nchans,
+            total_chans=total_chans,
+            upsample_factor=upsample_factor,
         )
         spk_props = self.get_spikes_properties(fs=fs)
+        burst_props = self.calculate_spike_bursts(
+            min_dur=min_dur,
+            max_start=max_start,
+            max_int=max_int,
+            max_end=max_end,
+            output_type=output_type,
+        )
+        output_dict["cluster_id"] = self.cluster_ids
         output_dict.update(temp_props)
         output_dict.update(spk_props)
+        output_dict.update(burst_props)
         return output_dict
 
     def calculate_spike_bursts(
@@ -311,22 +369,16 @@ class SpkManager:
         max_end: float = 0.34,
         output_type: Literal["sec", "ms", "sample"] = "sec",
         fs: Union[float, int] = 40000,
-    ):
-        output = []
-        for clust_id in self.cluster_ids:
+    ) -> BurstProperties:
+        num_bursts = np.ndarray(self.cluster_ids.size, dtype=int)
+        ave_burst_len = np.ndarray(self.cluster_ids.size, dtype=float)
+        intra_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
+        inter_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
+        ave_spikes_burst = np.ndarray(self.cluster_ids.size, dtype=float)
+        for cluster_index, clust_id in enumerate(self.cluster_ids):
             indexes = self.get_cluster_spike_times(
                 clust_id,
             )
-            data = {}
-            if indexes.size > 1:
-                temp_mean = np.mean(np.diff(indexes / fs))
-                if temp_mean == 0:
-                    data["hertz"] = 0.0
-                else:
-                    data["hertz"] = 1 / temp_mean
-            else:
-                data["hertz"] = 0.0
-            data["num_spikes"] = indexes.size
             b_data = max_int_bursts(
                 indexes,
                 fs,
@@ -336,12 +388,20 @@ class SpkManager:
                 max_end=max_end,
                 output_type=output_type,
             )
-            bursts_dict = get_burst_data(b_data)
-            data["id"] = self.ks_directory.stem
-            data["cluster_id"] = clust_id
-            data.update(bursts_dict)
-            output.append(data)
-        return output
+            burst_dict = get_burst_data(b_data)
+            num_bursts[cluster_index] = burst_dict["num_bursts"]
+            ave_burst_len[cluster_index] = burst_dict["ave_burst_len"]
+            intra_burst_iei[cluster_index] = burst_dict["intra_burst_iei"]
+            inter_burst_iei[cluster_index] = burst_dict["inter_burst_iei"]
+            ave_spikes_burst[cluster_index] = burst_dict["ave_spikes_burst"]
+        burst_props = BurstProperties(
+            ave_burst_len=ave_burst_len,
+            num_bursts=num_bursts,
+            intra_burst_iei=intra_burst_iei,
+            inter_burst_iei=inter_burst_iei,
+            ave_spikes_burst=ave_spikes_burst,
+        )
+        return burst_props
 
     def get_cluster_bursts(
         self,
@@ -702,14 +762,15 @@ class SpkManager:
     def extract_templates(
         self,
         spike_waveforms: np.ndarray,
-        nchans: int = 4,
         total_chans: int = 64,
-        waveform_length: int = 84,
         callback: callable = print,
     ):
+        nchans = spike_waveforms.shape[2] // 2
+
         _, channels = self.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
+        waveform_length = spike_waveforms.shape[1]
         sparse_templates_new = np.zeros((self.cluster_ids.size, waveform_length, 64))
         callback("Beginning template extraction")
         spk_templates = np.zeros(self.spike_clusters.size, dtype=int)
@@ -773,9 +834,7 @@ class SpkManager:
 
         self.sparse_templates, self.spike_templates = self.extract_templates(
             spike_waveforms=self.spike_waveforms,
-            nchans=nchans,
             total_chans=channel_map.size,
-            waveform_length=waveform_length,
             callback=callback,
         )
         _, channels = self.get_template_channels(
