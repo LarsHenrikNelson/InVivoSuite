@@ -16,6 +16,7 @@ from .spike_functions import (
     sttc_ele,
     isi_violations,
     template_properties,
+    get_template_channels,
 )
 
 Callback = Callable[[str], None]
@@ -472,41 +473,6 @@ class SpkManager:
         )
         callback("Finished exporting Phy data.")
 
-    def get_template_channels(self, templates, nchans: int, total_chans: int):
-        channel_output = np.zeros((templates.shape[0], 3), dtype=int)
-        peak_output = np.zeros((templates.shape[0], 1))
-        for i in range(templates.shape[0]):
-            chan, start_chan, end_chan = self._template_channels(
-                templates[i], nchans, total_chans
-            )
-            # chan = np.argmin(np.min(templates[i], axis=0))
-            # start_chan = chan - nchans
-            # end_chan = chan + nchans
-            # if start_chan < 0:
-            #     end_chan -= start_chan
-            #     start_chan = 0
-            # if end_chan > total_chans:
-            #     start_chan -= end_chan - total_chans
-            #     end_chan = total_chans
-            channel_output[i, 1] = start_chan
-            channel_output[i, 2] = end_chan
-            channel_output[i, 0] = chan
-            peak_output[i, 0] = np.min(templates[i, :, chan])
-        return peak_output, channel_output
-
-    def _template_channels(self, template: np.ndarray, nchans: int, total_chans: int):
-        # best_chan = np.argmin(np.min(template, axis=0))
-        best_chan = np.argmax(np.sum(np.abs(template), axis=0))
-        start_chan = best_chan - nchans
-        end_chan = best_chan + nchans
-        if start_chan < 0:
-            end_chan -= start_chan
-            start_chan = 0
-        if end_chan > total_chans:
-            start_chan -= end_chan - total_chans
-            end_chan = total_chans
-        return best_chan, start_chan, end_chan
-
     def extract_waveforms_chunk(
         self,
         output: np.ndarray,
@@ -597,7 +563,7 @@ class SpkManager:
 
         # Get the best range of channels for each template
         channel_map = self.get_grp_dataset("channel_maps", probe)
-        peaks, channels = self.get_template_channels(
+        peaks, channels = get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
 
@@ -767,7 +733,7 @@ class SpkManager:
     ):
         nchans = spike_waveforms.shape[2] // 2
 
-        _, channels = self.get_template_channels(
+        _, channels = get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
         waveform_length = spike_waveforms.shape[1]
@@ -837,7 +803,7 @@ class SpkManager:
             total_chans=channel_map.size,
             callback=callback,
         )
-        _, channels = self.get_template_channels(
+        _, channels = get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
         full_spike_channels = self._extract_spikes_channels(channels[:, 1:])

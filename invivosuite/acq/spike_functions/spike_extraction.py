@@ -15,9 +15,42 @@ __all__ = [
     "extract_single_channel_spikes",
     "find_minmax_exponent_3",
     "get_multichan_spikes",
+    "get_template_channels",
     "get_template_parts",
     "template_properties",
 ]
+
+
+def get_template_channels(
+    templates, nchans: int, total_chans: int
+) -> tuple[np.ndarray, np.ndarray]:
+    channel_output = np.zeros((templates.shape[0], 3), dtype=int)
+    peak_output = np.zeros((templates.shape[0], 1))
+    for i in range(templates.shape[0]):
+        chan, start_chan, end_chan = _template_channels(
+            templates[i], nchans, total_chans
+        )
+        channel_output[i, 1] = start_chan
+        channel_output[i, 2] = end_chan
+        channel_output[i, 0] = chan
+        peak_output[i, 0] = np.min(templates[i, :, chan])
+    return peak_output, channel_output
+
+
+def _template_channels(
+    template: np.ndarray, nchans: int, total_chans: int
+) -> tuple[int, int, int]:
+    # best_chan = np.argmin(np.min(template, axis=0))
+    best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+    start_chan = best_chan - nchans
+    end_chan = best_chan + nchans
+    if start_chan < 0:
+        end_chan -= start_chan
+        start_chan = 0
+    if end_chan > total_chans:
+        start_chan -= end_chan - total_chans
+        end_chan = total_chans
+    return best_chan, start_chan, end_chan
 
 
 class TemplateProperties(TypedDict):
