@@ -5,6 +5,64 @@ import numpy as np
 __all__ = ["max_int_bursts", "get_burst_data"]
 
 
+def sfa_local_var(iei):
+    """
+    This function calculates the local variance in spike frequency
+    accomadation that was drawn from the paper:
+    Shinomoto, Shima and Tanji. (2003). Differences in Spiking Patterns
+    Among Cortical Neurons. Neural Computation, 15, 2823-2842.
+
+    Returns
+    -------
+    None.
+
+    """
+    if len(iei) < 2 or iei is np.nan:
+        local_var = np.nan
+    else:
+        isi_shift = iei[1:]
+        isi_cut = iei[:-1]
+        n_minus_1 = len(isi_cut)
+        local_var = (
+            np.sum((3 * (isi_cut - isi_shift) ** 2) / (isi_cut + isi_shift) ** 2)
+            / n_minus_1
+        )
+    return local_var
+
+
+def sfa_divisor(iei):
+    """
+    The idea for the function was initially inspired by a program called
+    Easy Electropysiology (https://github.com/easy-electrophysiology).
+    """
+    if len(iei) > 1 or iei is np.nan:
+        sfa_divisor = iei[0] / iei[-1]
+    else:
+        sfa_divisor = np.nan
+    return sfa_divisor
+
+
+def sfa_abi(iei):
+    """
+    This function calculates the spike frequency adaptation. A positive
+    number means that the spikes are speeding up and a negative number
+    means that spikes are slowing down. This function was inspired by the
+    Allen Brain Institutes IPFX analysis program
+    https://github.com/AllenInstitute/ipfx/tree/
+    db47e379f7f9bfac455cf2301def0319291ad361
+    """
+    if len(iei) <= 1:
+        spike_adapt = np.nan
+    else:
+        # iei = iei.astype(float)
+        if np.allclose((iei[1:] + iei[:-1]), 0.0):
+            spike_adapt = np.nan
+        norm_diffs = (iei[1:] - iei[:-1]) / (iei[1:] + iei[:-1])
+        norm_diffs[(iei[1:] == 0) & (iei[:-1] == 0)] = 0.0
+        spike_adapt = np.nanmean(norm_diffs)
+    return spike_adapt
+
+
 def ave_inter_burst_iei(bursts):
     if len(bursts) <= 1:
         return 0
@@ -59,6 +117,9 @@ class BurstProps(TypedDict):
     intra_burst_iei: float
     inter_burst_iei: float
     ave_spikes_burst: float
+    local_sfa: float
+    divisor_sfa: float
+    abi_sfa: float
 
 
 def get_burst_data(bursts: list[np.ndarray]) -> BurstProps:
@@ -68,6 +129,9 @@ def get_burst_data(bursts: list[np.ndarray]) -> BurstProps:
         intra_burst_iei=ave_intra_burst_iei(bursts),
         ave_spikes_burst=ave_spikes_burst(bursts),
         inter_burst_iei=ave_inter_burst_iei(bursts),
+        local_sfa=np.mean([sfa_local_var(np.diff(i)) for i in bursts]),
+        divisor_sfa=np.mean([sfa_divisor(np.diff(i)) for i in bursts]),
+        abi_sfa=np.mean([sfa_abi(np.diff(i)) for i in bursts]),
     )
     return data_dict
 
