@@ -5,7 +5,7 @@ import numpy as np
 __all__ = ["max_int_bursts", "get_burst_data"]
 
 
-def sfa_local_var(iei):
+def sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
     """
     This function calculates the local variance in spike frequency
     accomadation that was drawn from the paper:
@@ -17,32 +17,38 @@ def sfa_local_var(iei):
     None.
 
     """
-    if len(iei) < 2 or iei is np.nan:
-        local_var = np.nan
-    else:
-        isi_shift = iei[1:]
-        isi_cut = iei[:-1]
-        n_minus_1 = len(isi_cut)
-        local_var = (
-            np.sum((3 * (isi_cut - isi_shift) ** 2) / (isi_cut + isi_shift) ** 2)
-            / n_minus_1
-        )
-    return local_var
+    output = np.zeros(bursts.shape[0])
+    for index, b in bursts:
+        iei = np.diff(b).astype(float)
+        if len(iei) < 2 or iei is np.nan:
+            output[index] = np.nan
+        else:
+            isi_shift = iei[1:]
+            isi_cut = iei[:-1]
+            n_minus_1 = len(isi_cut)
+            output[index] = (
+                np.sum((3 * (isi_cut - isi_shift) ** 2) / (isi_cut + isi_shift) ** 2)
+                / n_minus_1
+            )
+    return output
 
 
-def sfa_divisor(iei):
+def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
     """
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
     """
-    if len(iei) > 1 or iei is np.nan:
-        sfa_divisor = iei[0] / iei[-1]
-    else:
-        sfa_divisor = np.nan
-    return sfa_divisor
+    output = np.zeros(len(bursts.shape[0]))
+    for index, b in enumerate(bursts):
+        iei = np.diff(b).astype(float)
+        if len(iei) > 1 or np.isnan(iei):
+            output[index] = iei[0] / iei[-1]
+        else:
+            output[index] = np.nan
+    return output
 
 
-def sfa_abi(iei):
+def sfa_abi(bursts: list[np.ndarray]) -> np.ndarray[float]:
     """
     This function calculates the spike frequency adaptation. A positive
     number means that the spikes are speeding up and a negative number
@@ -51,37 +57,41 @@ def sfa_abi(iei):
     https://github.com/AllenInstitute/ipfx/tree/
     db47e379f7f9bfac455cf2301def0319291ad361
     """
-    if len(iei) <= 1:
-        spike_adapt = np.nan
-    else:
-        # iei = iei.astype(float)
-        if np.allclose((iei[1:] + iei[:-1]), 0.0):
-            spike_adapt = np.nan
-        norm_diffs = (iei[1:] - iei[:-1]) / (iei[1:] + iei[:-1])
-        norm_diffs[(iei[1:] == 0) & (iei[:-1] == 0)] = 0.0
-        spike_adapt = np.nanmean(norm_diffs)
-    return spike_adapt
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        if len(b) <= 1:
+            output[index] = np.nan
+        else:
+            iei = np.diff(b).astype(float)
+            if np.allclose((iei[1:] + iei[:-1]), 0.0):
+                output[index] = 0.0
+            else:
+                norm_diffs = (iei[1:] - iei[:-1]) / (iei[1:] + iei[:-1])
+                norm_diffs[(iei[1:] == 0) & (iei[:-1] == 0)] = 0.0
+                output[index] = np.nanmean(norm_diffs)
+    return output
 
 
-def ave_inter_burst_iei(bursts):
+def inter_burst_iei(bursts: list[np.ndarray]):
     if len(bursts) <= 1:
         return 0
-    diff = []
+    diff = np.zeros(len(bursts))
+    diff[-1] = np.nan
     for i in range(1, len(bursts)):
-        diff.append(bursts[i][0] - bursts[i - 1][-1])
-    return np.mean(diff)
+        diff[i - 1] = bursts[i][0] - bursts[i - 1][-1]
+    return diff
 
 
-def ave_spikes_burst(bursts: list[np.ndarray]):
+def spikes_per_burst(bursts: list[np.ndarray]) -> np.ndarray[float]:
     if len(bursts) == 0:
         return 0
-    ave = 0
-    for i in bursts:
-        ave += len(i)
-    return ave / len(bursts)
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = len(b)
+    return output
 
 
-def ave_intra_burst_iei(bursts: list[np.ndarray]) -> float:
+def intra_burst_iei(bursts: list[np.ndarray]) -> np.ndarray[float]:
     """Get the average iei from each burst. Does not correct for sampling rate.
 
     Parameters
@@ -95,45 +105,73 @@ def ave_intra_burst_iei(bursts: list[np.ndarray]) -> float:
         The average iei of all the bursts
     """
     if len(bursts) == 0:
-        return 0.0
-    ave = 0.0
-    for i in bursts:
-        ave += np.mean(np.diff(i))
-    return ave / len(bursts)
+        return np.ndarray([0.0])
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = np.mean(np.diff(b))
+    return output
 
 
-def ave_burst_len(bursts: list[np.ndarray]) -> float:
+def bursts_len(bursts: list[np.ndarray]) -> np.ndarray[float]:
     if len(bursts) == 0:
-        return 0
-    ave = 0
-    for i in bursts:
-        ave += i[-1] - i[0]
-    return ave / len(bursts)
+        return np.array([0.0])
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = b[-1] - b[0]
+    return output
 
 
 class BurstProps(TypedDict):
+    burst_len: np.ndarray[float]
+    intra_burst_iei: np.ndarray[float]
+    inter_burst_iei: np.ndarray[float]
+    spikes_per_burst: np.ndarray[float]
+    local_sfa: np.ndarray[float]
+    divisor_sfa: np.ndarray[float]
+    abi_sfa: np.ndarray[float]
+
+
+class BurstPropsMeans(TypedDict):
     num_bursts: int
     ave_burst_len: float
     intra_burst_iei: float
     inter_burst_iei: float
-    ave_spikes_burst: float
-    local_sfa: float
-    divisor_sfa: float
-    abi_sfa: float
+    ave_spikes_per_burst: float
+    ave_local_sfa: float
+    ave_divisor_sfa: float
+    ave_abi_sfa: float
+    total_burst_time: float
 
 
-def get_burst_data(bursts: list[np.ndarray]) -> BurstProps:
-    data_dict = BurstProps(
-        num_bursts=len(bursts),
-        ave_burst_len=ave_burst_len(bursts),
-        intra_burst_iei=ave_intra_burst_iei(bursts),
-        ave_spikes_burst=ave_spikes_burst(bursts),
-        inter_burst_iei=ave_inter_burst_iei(bursts),
-        local_sfa=np.mean([sfa_local_var(np.diff(i)) for i in bursts]),
-        divisor_sfa=np.mean([sfa_divisor(np.diff(i)) for i in bursts]),
-        abi_sfa=np.mean([sfa_abi(np.diff(i)) for i in bursts]),
+def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMeans]:
+    intra_iei = intra_burst_iei(bursts)
+    spk_per_burst = spikes_per_burst(bursts)
+    inter_iei = inter_burst_iei(bursts)
+    local_sfa = sfa_local_var(bursts)
+    divisor_sfa = sfa_divisor(bursts)
+    abi_sfa = sfa_abi(bursts)
+    b_len = bursts_len(bursts)
+    props_dict = BurstProps(
+        ave_burst_len=b_len,
+        intra_burst_iei=intra_iei,
+        ave_spikes_burst=spk_per_burst,
+        inter_burst_iei=inter_iei,
+        local_sfa=local_sfa,
+        divisor_sfa=divisor_sfa,
+        abi_sfa=abi_sfa,
     )
-    return data_dict
+    mean_dict = BurstPropsMeans(
+        num_bursts=len(bursts),
+        total_burst_time=np.nansum(b_len),
+        ave_burst_len=np.nanmean(b_len),
+        intra_burst_iei=np.nanmean(intra_iei),
+        ave_spikes_per_burst=np.nanmean(spk_per_burst),
+        inter_burst_iei=np.nanmean(inter_iei),
+        ave_local_sfa=np.nanmean(local_sfa),
+        ave_divisor_sfa=np.nanmean(divisor_sfa),
+        ave_abi_sfa=np.nanmean(abi_sfa),
+    )
+    return props_dict, mean_dict
 
 
 def clean_max_int_bursts(bursts, max_int):

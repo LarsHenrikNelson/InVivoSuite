@@ -57,7 +57,7 @@ class AcqManager(SpkManager, LFPManager):
             self.set_grp_dataset("ai", "units", ai[3])
         self.close()
 
-    def open_hdf5_file(self, file_path):
+    def load_hdf5(self, file_path):
         self.file_path = file_path
 
     def load_kilosort(self, file_directory, load_type: str = "r+"):

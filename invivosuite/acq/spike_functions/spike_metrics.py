@@ -1,8 +1,8 @@
 import math
-from typing import TypedDict
+from typing import TypedDict, Union
 
 import numpy as np
-from scipy import stats
+from scipy import stats, ndimage
 
 from ... import utils
 
@@ -98,9 +98,8 @@ def firing_rate(spike_train, min_time=None, max_time=None):
 
 def amplitude_cutoff(
     amplitudes: np.ndarray,
-    kernel: str = "biweight",
-    bw_method: str = "ISJ",
-    tol: float = 0.001,
+    num_histogram_bins: int = 500,
+    histogram_smoothing_value: Union[float, int] = 3,
 ):
     """Calculate approximate fraction of spikes missing from a distribution of amplitudes
 
@@ -121,11 +120,10 @@ def amplitude_cutoff(
 
     """
 
-    h, b = np.histogram(amplitudes, tol, density=True)
+    h, b = np.histogram(amplitudes, num_histogram_bins, density=True)
 
-    # pdf = ndimage.gaussian_filter1d(h, histogram_smoothing_value)
+    pdf = ndimage.gaussian_filter1d(h, histogram_smoothing_value)
     support = b[:-1]
-    x, pdf = utils.kde(amplitudes, kernel, bw_method, tol)
 
     peak_index = np.argmax(pdf)
     G = np.argmin(np.abs(pdf[peak_index:] - pdf[0])) + peak_index
