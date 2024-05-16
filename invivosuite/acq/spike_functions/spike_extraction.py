@@ -18,6 +18,7 @@ __all__ = [
     "get_template_channels",
     "get_template_parts",
     "template_properties",
+    "_template_channels",
 ]
 
 

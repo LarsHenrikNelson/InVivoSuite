@@ -12,6 +12,7 @@ from .spike_functions import (
     amplitude_cutoff,
     get_burst_data,
     get_template_channels,
+    _template_channels,
     isi_violations,
     max_int_bursts,
     presence,
@@ -168,7 +169,7 @@ class SpkManager:
     ) -> np.ndarray:
         template_index = np.where(self.cluster_ids == cluster_id)[0]
         if len(template_index) == 1:
-            chan, _, _ = self._template_channels(
+            chan, _, _ = _template_channels(
                 self.sparse_templates[template_index[0]],
                 nchans=nchans,
                 total_chans=self.sparse_templates.shape[2],
@@ -285,7 +286,7 @@ class SpkManager:
         channel = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
-            chan, start_chan, _ = self._template_channels(
+            chan, start_chan, _ = _template_channels(
                 templates[temp_index], nchans=nchans, total_chans=total_chans
             )
             t_props = template_properties(
@@ -332,6 +333,15 @@ class SpkManager:
             channel=channel,
         )
         return temp
+
+    def _clean_burst_data(self, burst_data):
+        burst_data = [i for i in burst_data if i["cluster_id"]]
+        output = {k: [] for k in burst_data[0].keys()}
+        for data in burst_data:
+            for key in data.keys():
+                output[key].append(data[key])
+        output = {k: np.concatenate(j) for k, j in output.items()}
+        return output
 
     def get_burst_properties(
         self,
@@ -388,11 +398,12 @@ class SpkManager:
             local_sfa=ave_local,
             total_time=total_time,
         )
+        other_props = self._clean_burst_data(other_props)
         return burst_props, other_props
 
     def get_properties(
         self,
-        templates: Optional[np.ndarray],
+        templates: Optional[np.ndarray] = None,
         fs: int = 40000,
         center=41,
         nchans: int = 4,
@@ -420,7 +431,7 @@ class SpkManager:
         spk_props = self.get_spikes_properties(
             fs=fs, isi_threshold=isi_threshold, min_isi=min_isi
         )
-        burst_props, other_props = self.get_burst_properties(
+        burst_props, other_burst_props = self.get_burst_properties(
             min_count=min_count,
             min_dur=min_dur,
             max_start=max_start,
@@ -432,7 +443,7 @@ class SpkManager:
         output_dict.update(temp_props)
         output_dict.update(spk_props)
         output_dict.update(burst_props)
-        return output_dict, other_props
+        return output_dict, other_burst_props
 
     def get_cluster_bursts(
         self,

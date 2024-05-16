@@ -77,7 +77,7 @@ def sfa_abi(bursts: list[np.ndarray]) -> np.ndarray[float]:
 
 def inter_burst_iei(bursts: list[np.ndarray]):
     if len(bursts) <= 1:
-        return 0
+        return np.array([np.nan])
     diff = np.zeros(len(bursts))
     diff[-1] = np.nan
     for i in range(1, len(bursts)):
