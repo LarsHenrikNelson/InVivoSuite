@@ -60,6 +60,10 @@ class BurstProperties(TypedDict):
     intra_burst_iei: np.ndarray[float]
     inter_burst_iei: np.ndarray[float]
     ave_spikes_burst: np.ndarray[float]
+    divisor_sfa: np.ndarray[float]
+    abi_sfa: np.ndarray[float]
+    local_sfa: np.ndarray[float]
+    total_time: np.ndarray[float]
 
 
 class SpkManager:
@@ -338,11 +342,16 @@ class SpkManager:
         output_type: Literal["sec", "ms", "sample"] = "sec",
         fs: Union[float, int] = 40000,
     ) -> BurstProperties:
+        other_props = []
         num_bursts = np.ndarray(self.cluster_ids.size, dtype=int)
         ave_burst_len = np.ndarray(self.cluster_ids.size, dtype=float)
         intra_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
         inter_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
         ave_spikes_burst = np.ndarray(self.cluster_ids.size, dtype=float)
+        ave_divisor = np.ndarray(self.cluster_ids.size, dtype=float)
+        ave_abi = np.ndarray(self.cluster_ids.size, dtype=float)
+        ave_local = np.ndarray(self.cluster_ids.size, dtype=float)
+        total_time = np.ndarray(self.cluster_ids.size, dtype=float)
         for cluster_index, clust_id in enumerate(self.cluster_ids):
             indexes = self.get_cluster_spike_times(
                 clust_id,
@@ -361,15 +370,25 @@ class SpkManager:
             ave_burst_len[cluster_index] = burst_dict["ave_burst_len"]
             intra_burst_iei[cluster_index] = burst_dict["intra_burst_iei"]
             inter_burst_iei[cluster_index] = burst_dict["inter_burst_iei"]
-            ave_spikes_burst[cluster_index] = burst_dict["ave_spikes_burst"]
+            ave_spikes_burst[cluster_index] = burst_dict["ave_spikes_per_burst"]
+            ave_divisor[cluster_index] = burst_dict["ave_divisor_sfa"]
+            ave_abi[cluster_index] = burst_dict["ave_abi_sfa"]
+            ave_local[cluster_index] = burst_dict["ave_local_sfa"]
+            total_time[cluster_index] = burst_dict["total_burst_time"]
+            props_dict["cluster_id"] = [clust_id] * len(b_data)
+            other_props.append(props_dict)
         burst_props = BurstProperties(
             ave_burst_len=ave_burst_len,
             num_bursts=num_bursts,
             intra_burst_iei=intra_burst_iei,
             inter_burst_iei=inter_burst_iei,
             ave_spikes_burst=ave_spikes_burst,
+            divisor_sfa=ave_divisor,
+            abi_sfa=ave_abi,
+            local_sfa=ave_local,
+            total_time=total_time,
         )
-        return burst_props, props_dict
+        return burst_props, other_props
 
     def get_properties(
         self,

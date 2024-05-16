@@ -17,8 +17,8 @@ def sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
     None.
 
     """
-    output = np.zeros(bursts.shape[0])
-    for index, b in bursts:
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
         iei = np.diff(b).astype(float)
         if len(iei) < 2 or iei is np.nan:
             output[index] = np.nan
@@ -38,7 +38,7 @@ def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
     """
-    output = np.zeros(len(bursts.shape[0]))
+    output = np.zeros(len(bursts))
     for index, b in enumerate(bursts):
         iei = np.diff(b).astype(float)
         if len(iei) > 1 or np.isnan(iei):
@@ -105,7 +105,7 @@ def intra_burst_iei(bursts: list[np.ndarray]) -> np.ndarray[float]:
         The average iei of all the bursts
     """
     if len(bursts) == 0:
-        return np.ndarray([0.0])
+        return np.array([0.0])
     output = np.zeros(len(bursts))
     for index, b in enumerate(bursts):
         output[index] = np.mean(np.diff(b))
@@ -154,7 +154,7 @@ def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMean
     props_dict = BurstProps(
         ave_burst_len=b_len,
         intra_burst_iei=intra_iei,
-        ave_spikes_burst=spk_per_burst,
+        spikes_per_burst=spk_per_burst,
         inter_burst_iei=inter_iei,
         local_sfa=local_sfa,
         divisor_sfa=divisor_sfa,
