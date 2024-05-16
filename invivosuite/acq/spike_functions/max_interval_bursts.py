@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, Union
 
 import numpy as np
 
@@ -42,7 +42,10 @@ def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
     for index, b in enumerate(bursts):
         iei = np.diff(b).astype(float)
         if len(iei) > 1 or np.isnan(iei):
-            output[index] = iei[0] / iei[-1]
+            if iei[-1] > 0:
+                output[index] = iei[0] / iei[-1]
+            else:
+                output[index] = np.nan
         else:
             output[index] = np.nan
     return output
@@ -174,14 +177,14 @@ def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMean
     return props_dict, mean_dict
 
 
-def clean_max_int_bursts(bursts, max_int):
+def clean_max_int_bursts(bursts: list[np.ndarray], max_int: float):
     cleaned_bursts = []
     i = 1
     if len(bursts) > 1:
         while i < len(bursts):
             temp = []
             temp.extend(bursts[i - 1])
-            while (bursts[i][0] - bursts[i - 1][-1]) < max_int:
+            while i < len(bursts) and (bursts[i][0] - bursts[i - 1][-1]) < max_int:
                 temp.extend(bursts[i])
                 i += 1
             cleaned_bursts.append(np.array(temp))
@@ -192,8 +195,8 @@ def clean_max_int_bursts(bursts, max_int):
 
 
 def max_int_bursts(
-    spikes,
-    fs,
+    spikes: np.ndarray,
+    fs: Union[float, int],
     min_count=5,
     min_dur=0,
     max_start=None,
@@ -225,7 +228,7 @@ def max_int_bursts(
                     i += 1
                 else:
                     add_spikes = False
-                    if len(bur) >= min_count and (bur[-1] - bur[0]) > min_dur:
+                    if (len(bur) >= min_count) and ((bur[-1] - bur[0]) > min_dur):
                         bursts.append(np.array(bur))
         else:
             i += 1

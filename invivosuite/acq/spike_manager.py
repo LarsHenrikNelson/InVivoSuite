@@ -449,6 +449,7 @@ class SpkManager:
         b_data = max_int_bursts(
             indexes,
             fs,
+            min_count=min_count,
             min_dur=min_dur,
             max_start=max_start,
             max_int=max_int,
