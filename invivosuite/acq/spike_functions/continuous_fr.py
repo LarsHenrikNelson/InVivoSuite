@@ -1,29 +1,35 @@
+from typing import Literal
+
 import numpy as np
-from scipy import ndimage
+from scipy import signal
 from scipy.signal import windows
+
+from .binarize_spikes import bin_spikes
 
 
 def getSDF(
-    spikes, startTimes, windowDur, sampInt=0.001, filt="gaussian", sigma=0.02, avg=True
+    spikes: np.ndarray,
+    binary_size: int,
+    nperseg: int,
+    fs: float = 40000.0,
+    filt: Literal["gaussian", "exponential"] = "gaussian",
+    sigma: float = 0.02,
 ):
-    t = np.arange(0, windowDur + sampInt, sampInt)
-    counts = np.zeros((startTimes.size, t.size - 1))
-    for i, start in enumerate(startTimes):
-        counts[i] = np.histogram(
-            spikes[(spikes >= start) & (spikes <= start + windowDur)] - start, t
-        )[0]
+    binned_spikes = bin_spikes(spikes, binary_size=binary_size, nperseg=nperseg)
 
-    if filt in ("exp", "exponential"):
+    sampInt = 1 / (fs / nperseg)
+    if filt == "exponential":
         filtPts = int(5 * sigma / sampInt)
-        expFilt = np.zeros(filtPts * 2)
-        expFilt[-filtPts:] = windows.exponential(
+        w = np.zeros(filtPts * 2)
+        w[-filtPts:] = windows.exponential(
             filtPts, center=0, tau=sigma / sampInt, sym=False
         )
-        expFilt /= expFilt.sum()
-        sdf = ndimage.filters.convolve1d(counts, expFilt, axis=1)
+        wlen = w.size
+        w /= w.sum()
     else:
-        sdf = ndimage.filters.gaussian_filter1d(counts, sigma / sampInt, axis=1)
-    if avg:
-        sdf = sdf.mean(axis=0)
-    sdf /= sampInt
-    return sdf, t[:-1]
+        wlen = int(4.0 * sampInt + 0.5) + 1
+        w = windows.gaussian(wlen, sampInt)
+        w /= w.sum()
+    sdf = signal.convolve(binned_spikes, w)
+    sdf = sdf[wlen // 2 : binned_spikes.size + wlen // 2]
+    return sdf

@@ -4,10 +4,23 @@ from typing import Union
 import numpy as np
 
 __all__ = [
+    "concatenate_dicts",
     "round_sig",
     "save_tsv",
     "tsv_row",
 ]
+
+
+def concatenate_dicts(data):
+    if len(data) > 1:
+        output = {k: [] for k in data[0].keys()}
+        for data in data:
+            for key in data.keys():
+                output[key].append(data[key])
+        output = {k: np.concatenate(j) for k, j in output.items()}
+    else:
+        output = data
+    return output
 
 
 def round_sig(x, sig=4):

@@ -159,7 +159,7 @@ def convolve(
     if mode == "fft":
         output = xconv_fft(array_1, array_2, circular=circular)
     else:
-        output = convolve(array_1, array_2)
+        output = convolve_loop(array_1, array_2)
     return output
 
 

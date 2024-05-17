@@ -7,7 +7,7 @@ import numpy as np
 
 from send2trash import send2trash
 
-from ..utils import save_tsv
+from ..utils import save_tsv, concatenate_dicts
 from .spike_functions import (
     amplitude_cutoff,
     get_burst_data,
@@ -337,15 +337,6 @@ class SpkManager:
         )
         return temp
 
-    def _clean_burst_data(self, burst_data):
-        burst_data = [i for i in burst_data if i["cluster_id"]]
-        output = {k: [] for k in burst_data[0].keys()}
-        for data in burst_data:
-            for key in data.keys():
-                output[key].append(data[key])
-        output = {k: np.concatenate(j) for k, j in output.items()}
-        return output
-
     def get_burst_properties(
         self,
         min_count: int = 5,
@@ -410,7 +401,8 @@ class SpkManager:
             peak_abi_sfa=peak_abi,
             peak_local_sfa=peak_local,
         )
-        other_props = self._clean_burst_data(other_props)
+        other_props = [i for i in other_props if i["cluster_id"]]
+        other_props = concatenate_dicts(other_props)
         return burst_props, other_props
 
     def get_properties(
