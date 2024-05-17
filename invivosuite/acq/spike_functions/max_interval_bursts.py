@@ -33,6 +33,17 @@ def sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
     return output
 
 
+def sfa_peak(sfa_values):
+    temp = sfa_values[~np.isnan(sfa_values)]
+    bins = temp.size // 4 if temp.size > 4 else temp.size
+    if bins > 4:
+        b, bb = np.histogram(temp, bins=bins)
+        peak = np.argmax(b)
+        return np.mean(bb[peak : peak + 1])
+    else:
+        return np.mean(temp)
+
+
 def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
     """
     The idea for the function was initially inspired by a program called
@@ -47,7 +58,7 @@ def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
             else:
                 output[index] = np.nan
         else:
-            output[index] = np.nan
+            output[index] = 0.0
     return output
 
 
@@ -141,8 +152,11 @@ class BurstPropsMeans(TypedDict):
     inter_burst_iei: float
     ave_spikes_per_burst: float
     ave_local_sfa: float
+    peak_local_sfa: float
     ave_divisor_sfa: float
+    peak_divisor_sfa: float
     ave_abi_sfa: float
+    peak_abi_sfa: float
     total_burst_time: float
 
 
@@ -173,6 +187,9 @@ def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMean
         ave_local_sfa=np.nanmean(local_sfa),
         ave_divisor_sfa=np.nanmean(divisor_sfa),
         ave_abi_sfa=np.nanmean(abi_sfa),
+        peak_local_sfa=sfa_peak(local_sfa),
+        peak_divisor_sfa=sfa_peak(divisor_sfa),
+        peak_abi_sfa=sfa_peak(abi_sfa),
     )
     return props_dict, mean_dict
 

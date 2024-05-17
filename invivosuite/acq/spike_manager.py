@@ -64,6 +64,9 @@ class BurstProperties(TypedDict):
     divisor_sfa: np.ndarray[float]
     abi_sfa: np.ndarray[float]
     local_sfa: np.ndarray[float]
+    peak_divisor_sfa: np.ndarray[float]
+    peak_abi_sfa: np.ndarray[float]
+    peak_local_sfa: np.ndarray[float]
     total_time: np.ndarray[float]
 
 
@@ -362,6 +365,9 @@ class SpkManager:
         ave_divisor = np.ndarray(self.cluster_ids.size, dtype=float)
         ave_abi = np.ndarray(self.cluster_ids.size, dtype=float)
         ave_local = np.ndarray(self.cluster_ids.size, dtype=float)
+        peak_divisor = np.ndarray(self.cluster_ids.size, dtype=float)
+        peak_abi = np.ndarray(self.cluster_ids.size, dtype=float)
+        peak_local = np.ndarray(self.cluster_ids.size, dtype=float)
         total_time = np.ndarray(self.cluster_ids.size, dtype=float)
         for cluster_index, clust_id in enumerate(self.cluster_ids):
             spk_times = self.get_cluster_spike_times(clust_id)
@@ -384,6 +390,9 @@ class SpkManager:
             ave_divisor[cluster_index] = burst_dict["ave_divisor_sfa"]
             ave_abi[cluster_index] = burst_dict["ave_abi_sfa"]
             ave_local[cluster_index] = burst_dict["ave_local_sfa"]
+            peak_divisor[cluster_index] = burst_dict["peak_divisor_sfa"]
+            peak_abi[cluster_index] = burst_dict["peak_abi_sfa"]
+            peak_local[cluster_index] = burst_dict["peak_local_sfa"]
             total_time[cluster_index] = burst_dict["total_burst_time"]
             props_dict["cluster_id"] = [clust_id] * len(b_data)
             other_props.append(props_dict)
@@ -397,6 +406,9 @@ class SpkManager:
             abi_sfa=ave_abi,
             local_sfa=ave_local,
             total_time=total_time,
+            peak_divisor_sfa=peak_divisor,
+            peak_abi_sfa=peak_abi,
+            peak_local_sfa=peak_local,
         )
         other_props = self._clean_burst_data(other_props)
         return burst_props, other_props
@@ -468,6 +480,31 @@ class SpkManager:
             output_type=output_type,
         )
         return b_data
+
+    def get_cluster_burst_properties(
+        self,
+        cluster_id: int,
+        min_count: int = 3,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        output_type: Literal["sec", "ms", "sample"] = "sec",
+        fs: Union[float, int] = 40000,
+    ) -> tuple[dict[str, Union[float, int]], dict[str, np.ndarray], list[np.ndarray]]:
+        indexes = self.get_cluster_spike_times(cluster_id)
+        bursts = max_int_bursts(
+            indexes,
+            fs,
+            min_count=min_count,
+            min_dur=min_dur,
+            max_start=max_start,
+            max_int=max_int,
+            max_end=max_end,
+            output_type=output_type,
+        )
+        props_dict, burst_dict = get_burst_data(bursts)
+        return props_dict, burst_dict, bursts
 
     def save_properties_phy(
         self,
