@@ -1,13 +1,17 @@
 import numpy as np
 import pyqtgraph as pg
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -48,8 +52,12 @@ class LFPWidget(QWidget):
         self.plot_spinbox.valueChanged.connect(self.plot_acq)
         self.plot_check_list.addRow("Acquisition", self.plot_spinbox)
 
-        self.plot_bursts = QCheckBox()
-        self.plot_check_list.addRow("Plot bursts", self.plot_bursts)
+        self.acq_type_selection = QComboBox(self)
+        self.acq_type_selection.addItems(["wideband", "spike", "lfp"])
+        self.plot_check_list.addRow("Signal", self.acq_type_selection)
+
+        # self.plot_bursts = QCheckBox()
+        # self.plot_check_list.addRow("Plot bursts", self.plot_bursts)
 
         self.channel_map = QCheckBox()
         self.plot_check_list.addRow("Map channels", self.channel_map)
@@ -60,12 +68,30 @@ class LFPWidget(QWidget):
         self.cmr_probe = QLineEdit()
         self.plot_check_list.addRow("CMR probe", self.cmr_probe)
 
+        self.probe = QLineEdit()
+        self.plot_check_list.addRow("Probe", self.probe)
+        self.left_button = QToolButton()
+        self.left_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.left_button.clicked.connect(self.leftButton)
+        self.left_button.setArrowType(Qt.LeftArrow)
+        self.left_button.setMinimumWidth(70)
+        self.left_button.setMaximumWidth(70)
+        self.plot_check_list.addRow(self.left_button)
+
+        self.right_button = QToolButton()
+        self.right_button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self.right_button.clicked.connect(self.rightButton)
+        self.right_button.setArrowType(Qt.RightArrow)
+        self.right_button.setMinimumWidth(70)
+        self.right_button.setMaximumWidth(70)
+        self.plot_check_list.addRow(self.right_button)
+
         self.plot_layout = QVBoxLayout()
         self.main_layout.addLayout(self.plot_layout)
         self.main_plot = pg.PlotWidget(useOpenGl=True)
         self.plot_layout.addWidget(self.main_plot)
-        self.ste_plot = pg.PlotWidget(useOpenGl=True)
-        self.plot_layout.addWidget(self.ste_plot)
+        # self.ste_plot = pg.PlotWidget(useOpenGl=True)
+        # self.plot_layout.addWidget(self.ste_plot)
         self.access_plot = pg.PlotWidget(useOpenGl=True)
         self.access_plot.setMaximumHeight(200)
         self.access_plot.plotItem.setMouseEnabled(x=False)
@@ -75,12 +101,30 @@ class LFPWidget(QWidget):
         self.region = pg.LinearRegionItem()
         self.region.sigRegionChanged.connect(self.update)
         self.main_plot.sigRangeChanged.connect(self.updateRegion)
-        self.ste_plot.sigRangeChanged.connect(self.updateRegion)
+        # self.ste_plot.sigRangeChanged.connect(self.updateRegion)
 
         # Set the initial bounds of the region and its layer
         # position.
         self.region.setRegion([0, 30])
         self.region.setZValue(10)
+
+    def leftButton(self):
+        if (self.start - 3000000) > 0:
+            self.current_chunk[0] -= 3000000
+            self.current_chunk[1] -= 3000000
+        else:
+            self.current_chunk[0] = 0
+            self.current_chunk[1] = 3000000
+        self.plot()
+
+    def rightButton(self):
+        if self.end >= (self.current_chunk[1] + 3000000):
+            self.current_chunk[0] += 3000000
+            self.current_chunk[1] += 3000000
+        else:
+            self.current_chunk[0] = self.end - 3000000
+            self.current_chunk[1] = self.end
+        self.plot()
 
     def update(self):
         """
@@ -90,7 +134,7 @@ class LFPWidget(QWidget):
         self.region.setZValue(10)
         minX, maxX = self.region.getRegion()
         self.main_plot.setXRange(minX, maxX, padding=0)
-        self.ste_plot.setXRange(minX, maxX, padding=0)
+        # self.ste_plot.setXRange(minX, maxX, padding=0)
 
     def updateRegion(self, window, viewRange):
         """
@@ -112,50 +156,62 @@ class LFPWidget(QWidget):
         self.load_widget.setData(self.exp_manager)
         self.main_plot.clear()
         self.access_plot.clear()
-        self.ste_plot.clear()
+        # self.ste_plot.clear()
 
     def set_acq_spinbox(self):
-        id = self.load_widget.getAcqID()
-        channels = self.exp_manager[id].n_chans
+        ident = self.load_widget.getAcqID()
+        channels = self.exp_manager[ident].n_chans
         self.plot_spinbox.setRange(1, channels)
 
     def plot_acq(self, num):
+        ident = self.load_widget.getAcqID()
+        self.start = self.exp_manager[ident].start
+        self.current_chunk = [0, 3000000]
+        self.end = self.exp_manager[ident].end
+        self.plot()
+        # fs = self.exp_manager[id].get_grp_attr("lfp", "sample_rate")
+        # wlen = self.exp_manager[id].get_grp_attr("lfp_bursts", "wlen")
+        # window = self.exp_manager[id].get_grp_attr("lfp_bursts", "window")
+        # ste = self.exp_manager[id].get_short_time_energy(
+        #     acq,
+        #     wlen=wlen,
+        #     window=window,
+        #     fs=fs,
+        # )
+        # baseline = self.exp_manager[id].get_ste_baseline(ste)
+        # self.ste_plot.plot(x=x, y=ste)
+        # self.ste_plot.plot(x=x, y=baseline, pen="r")
+        # if self.plot_bursts.isChecked():
+        #     b = self.exp_manager[id].get_lfp_burst_indexes(
+        #         num - 1, map_channel=self.channel_map.isChecked()
+        #     )
+        #     for i in range(b.shape[0]):
+        #         self.main_plot.plot(
+        #             x=x[int(b[i, 0]) : int(b[i, 1])],
+        #             y=acq[int(b[i, 0]) : int(b[i, 1])],
+        #             name=i,
+        #             pen="r",
+        #
+
+    def plot(self):
+        self.main_plot.setAutoVisible(y=True)
+        self.main_plot.enableAutoRange()
         self.main_plot.clear()
         self.access_plot.clear()
-        self.ste_plot.clear()
-        id = self.load_widget.getAcqID()
-        acq = self.exp_manager[id].acq(
-            num - 1,
-            "lfp",
+        # self.ste_plot.clear()
+        num = self.plot_spinbox.value()
+        ident = self.load_widget.getAcqID()
+        acq = self.exp_manager[ident].acq(
+            acq_num=num - 1,
+            acq_type=self.acq_type_selection.currentText(),
             map_channel=self.channel_map.isChecked(),
-            cmr_probe=self.cmr_probe.text(),
-            cmr=self.cmr.isChecked(),
+            ref_probe=self.cmr_probe.text(),
+            ref=self.cmr.isChecked(),
+            probe=self.probe.text(),
+            start=self.current_chunk[0],
+            end=self.current_chunk[1],
         )
-        x = np.arange(acq.size) / 1000
+        x = np.arange(self.current_chunk[0], self.current_chunk[1]) / 40000
         self.main_plot.plot(x=x, y=acq, name="main")
         self.access_plot.plot(x=x, y=acq, name="access")
         self.access_plot.addItem(self.region, ignoreBounds=True)
-        fs = self.exp_manager[id].get_grp_attr("lfp", "sample_rate")
-        wlen = self.exp_manager[id].get_grp_attr("lfp_bursts", "wlen")
-        window = self.exp_manager[id].get_grp_attr("lfp_bursts", "window")
-        ste = self.exp_manager[id].get_short_time_energy(
-            acq,
-            wlen=wlen,
-            window=window,
-            fs=fs,
-        )
-        baseline = self.exp_manager[id].get_ste_baseline(ste)
-        self.ste_plot.plot(x=x, y=ste)
-        self.ste_plot.plot(x=x, y=baseline, pen="r")
-        if self.plot_bursts.isChecked():
-            b = self.exp_manager[id].get_lfp_burst_indexes(
-                num - 1, map_channel=self.channel_map.isChecked()
-            )
-            for i in range(b.shape[0]):
-                self.main_plot.plot(
-                    x=x[int(b[i, 0]) : int(b[i, 1])],
-                    y=acq[int(b[i, 0]) : int(b[i, 1])],
-                    name=i,
-                    pen="r",
-                )
-        self.exp_manager[id].close()

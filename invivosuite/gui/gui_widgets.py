@@ -222,7 +222,7 @@ class ListModel(QAbstractListModel):
             urls = [PurePath(str(url.toLocalFile())) for url in urls]
         for value in urls:
             temp = AcqManager()
-            temp.open_hdf5_file(value)
+            temp.load_hdf5(value)
             self.exp_manager[value.stem] = temp
             self.acq_names.append(value.stem)
         self.layoutChanged.emit()
