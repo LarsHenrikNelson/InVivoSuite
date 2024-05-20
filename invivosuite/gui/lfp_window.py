@@ -194,10 +194,10 @@ class LFPWidget(QWidget):
         #
 
     def plot(self):
-        self.main_plot.setAutoVisible(y=True)
-        self.main_plot.enableAutoRange()
         self.main_plot.clear()
         self.access_plot.clear()
+        self.main_plot.setAutoVisible(y=True)
+        self.main_plot.enableAutoRange()
         # self.ste_plot.clear()
         num = self.plot_spinbox.value()
         ident = self.load_widget.getAcqID()
