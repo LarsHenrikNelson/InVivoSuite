@@ -511,7 +511,7 @@ class SpkManager:
             fs=fs, center=center, nchans=nchans, total_chans=total_chans
         )
         out_data["ch"] = out_data["channel"]
-        out_data["Amplitude"] = out_data["trough"] - out_data["peak_Right"]
+        out_data["Amplitude"] = out_data["center_y"] - out_data["start_y"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
         del out_data["channel"]
 
