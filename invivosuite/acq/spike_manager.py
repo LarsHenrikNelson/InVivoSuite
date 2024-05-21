@@ -290,7 +290,7 @@ class SpkManager:
         for temp_index in range(self.cluster_ids.size):
             i = self.cluster_ids[temp_index]
             chan, start_chan, _ = _template_channels(
-                templates[temp_index], nchans=nchans, total_chans=total_chans
+                templates[temp_index, :, :], nchans=nchans, total_chans=total_chans
             )
             t_props = template_properties(
                 templates[temp_index, :, chan],
@@ -507,7 +507,9 @@ class SpkManager:
         callback: Callback = print,
     ):
         callback("Calculating spike template properties.")
-        out_data = self.get_properties(fs, center, nchans, total_chans)
+        out_data, _ = self.get_properties(
+            fs=fs, center=center, nchans=nchans, total_chans=total_chans
+        )
         out_data["ch"] = out_data["channel"]
         out_data["Amplitude"] = out_data["trough"] - out_data["peak_Right"]
         out_data["ContamPct"] = [100.0] * len(out_data["cluster_id"])
