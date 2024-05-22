@@ -1,5 +1,10 @@
 import numpy as np
 
+__all__ = [
+    "bin_spikes",
+    "create_binary_spikes",
+]
+
 
 def create_binary_spikes(spikes, size):
     if len(spikes) > 0:
