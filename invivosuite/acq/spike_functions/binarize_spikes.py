@@ -9,11 +9,11 @@ __all__ = [
 def create_binary_spikes(spikes, size):
     if len(spikes) > 0:
         u, uc = np.unique(spikes, return_counts=True)
-        binary_spikes = np.zeros(shape=(size,))
+        binary_spikes = np.zeros(shape=(size,), dtype=np.int16)
         binary_spikes[u] = uc
         return binary_spikes
     else:
-        return np.zeros(shape=(size,))
+        return np.zeros(shape=(size,), dtype=np.int16)
 
 
 def _bin_spikes(binary_spks, bin_size):

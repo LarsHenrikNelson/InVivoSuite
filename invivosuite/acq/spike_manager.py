@@ -10,6 +10,8 @@ from send2trash import send2trash
 from ..utils import save_tsv, concatenate_dicts
 from .spike_functions import (
     amplitude_cutoff,
+    bin_spikes,
+    create_binary_spikes,
     get_burst_data,
     get_template_channels,
     _template_channels,
@@ -199,6 +201,63 @@ class SpkManager:
     def get_cluster_spike_amplitudes(self, cluster_id: int) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         return self.amplitudes[spike_ids]
+
+    def get_binary_spike_cluster(self, cluster_id: int) -> np.ndarray:
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        sample_indexes = self.spike_times[spike_ids]
+        return create_binary_spikes(sample_indexes, self.end - self.start)
+
+    def get_binned_spike_cluster(self, cluster_id: int, nperseg: int) -> np.ndarray:
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        sample_indexes = self.spike_times[spike_ids]
+        return bin_spikes(sample_indexes, self.end - self.start, nperseg)
+
+    def get_channel_clusters(self) -> dict[str, list[int]]:
+        channel_dict = defaultdict(list)
+        for temp_index in range(self.cluster_ids.size):
+            cid = self.cluster_ids[temp_index]
+            template = self.sparse_templates[temp_index, :, :]
+            best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            channel_dict[best_chan].append(cid)
+        return channel_dict
+
+    def get_cluster_channels(self) -> np.ndarray:
+        channels = np.zeros(self.cluster_ids.size, dtype=int)
+        for temp_index in range(self.cluster_ids.size):
+            template = self.sparse_templates[temp_index, :, :]
+            best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            channels[temp_index] = best_chan
+        return channels
+
+    def get_cluster_channel(self, cluster_id: int) -> int:
+        temp_index = np.where(self.cluster_ids == cluster_id)[0][0]
+        template = self.sparse_templates[temp_index, :, :]
+        return np.argmax(np.sum(np.abs(template), axis=0))
+
+    def get_all_binary_spikes(self) -> np.ndarray:
+        chan_cid_dict = self.get_channel_clusters()
+        chans = sorted(list(chan_cid_dict.keys()))
+        output = np.zeros(
+            (self.cluster_ids.size, self.end - self.start), dtype=np.int16
+        )
+        index = 0
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                output[index] = self.get_binary_spike_cluster(cid)
+                index += 1
+        return output
+
+    def get_all_binned_spikes(self, nperseg: int) -> np.ndarray:
+        chan_cid_dict = self.get_channel_clusters()
+        chans = sorted(list(chan_cid_dict.keys()))
+        length = (self.end - self.start) // nperseg
+        output = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
+        index = 0
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                output[index] = self.get_binned_spike_cluster(cid, nperseg=nperseg)
+                index += 1
+        return output
 
     def get_spikes_properties(
         self,
