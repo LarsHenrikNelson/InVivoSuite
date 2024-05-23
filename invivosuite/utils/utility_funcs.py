@@ -4,11 +4,33 @@ from typing import Union
 import numpy as np
 
 __all__ = [
+    "expand_data",
     "concatenate_dicts",
     "round_sig",
     "save_tsv",
     "tsv_row",
 ]
+
+
+def expand_data(
+    data: dict[str, np.ndarray],
+    column: str,
+    current_size: int,
+    new_size: int,
+):
+    start = new_size - current_size
+    for key, value in data.items():
+        temp = np.zeros(new_size, value.dtype)
+        temp[start:] = value
+        data[key] = temp
+    index = 0
+    for i in range(current_size):
+        temp_i = i + start
+        for j in range(data[column][i]):
+            for k in data.keys():
+                data[k][index] = data[k][temp_i]
+            index += 1
+    return data
 
 
 def concatenate_dicts(data):

@@ -9,10 +9,11 @@ from scipy import signal
 from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
+from .spike_lfp_manager import SpkLFPManager
 from ..utils import envelopes_idx, whitening_matrix
 
 
-class AcqManager(SpkManager, LFPManager):
+class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     filters = Filters
     windows = Windows
 
