@@ -11,9 +11,8 @@ See: https://docs.astropy.org/en/stable/index.html
 def periodic_mean_std(angles):
     sines = np.sin(angles)
     cosines = np.cos(angles)
-    n_ = len(angles)
     mean = np.arctan2(np.mean(sines), np.mean(cosines))
-    R = np.sqrt(np.sum(sines) ** 2 + np.sum(cosines) ** 2) / n_
+    R = np.sqrt(np.sum(sines) ** 2 + np.sum(cosines) ** 2) / len(angles)
     std = np.sqrt(-2 * np.log(R))
 
     return mean, std
