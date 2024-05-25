@@ -1,3 +1,5 @@
+from typing import Union
+
 import numpy as np
 from numba import njit
 
@@ -6,9 +8,11 @@ See: https://github.com/aarchiba/kuiper
 See: https://docs.astropy.org/en/stable/index.html
 """
 
+__all__ = ["periodic_mean_std", "rayleightest", "h_test"]
+
 
 @njit(cache=True)
-def periodic_mean_std(angles):
+def periodic_mean_std(angles: np.ndarray) -> tuple[float, float]:
     sines = np.sin(angles)
     cosines = np.cos(angles)
     mean = np.arctan2(np.mean(sines), np.mean(cosines))
@@ -19,7 +23,7 @@ def periodic_mean_std(angles):
 
 
 @njit(cache=True)
-def rayleightest(data):
+def rayleightest(data: np.ndarray) -> float:
     n = data.size
     S = np.sum(np.sin(data)) / n
     C = np.sum(np.cos(data)) / n
@@ -40,7 +44,7 @@ def rayleightest(data):
     return p_value
 
 
-def h_fpp(H):
+def h_fpp(H: Union[float, int]) -> float:
     # These values are obtained by fitting to simulations.
     a = 0.9999755
     b = 0.39802
@@ -60,7 +64,7 @@ def h_fpp(H):
         )
 
 
-def h_test(events):
+def h_test(events: np.ndarray) -> tuple[float, float, float]:
     """Apply the H test for uniformity on [0,1).
 
     The H test is an extension of the Z_m^2 or Rayleigh tests for

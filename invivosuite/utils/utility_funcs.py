@@ -33,13 +33,20 @@ def expand_data(
     return data
 
 
-def concatenate_dicts(data):
-    if len(data) > 1:
-        output = {k: [] for k in data[0].keys()}
-        for data in data:
+def concatenate_dicts(data_list):
+    if len(data_list) > 1:
+        output = {k: [] for k in data_list[0].keys()}
+        for data in data_list:
             for key in data.keys():
                 output[key].append(data[key])
-        output = {k: np.concatenate(j) for k, j in output.items()}
+        output = {
+            k: (
+                np.concatenate(j)
+                if isinstance(j[0], (list, np.ndarray))
+                else np.array(j)
+            )
+            for k, j in output.items()
+        }
     else:
         output = data
     return output
