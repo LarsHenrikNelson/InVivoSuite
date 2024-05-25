@@ -103,6 +103,7 @@ class SpkLFPManager:
                 callback(f"Extracting spike phase for cluster {cid}.")
                 stats, phases = self.extract_spike_phase_data(band_dict, cid, nperseg)
                 phases["channel"] = [chan] * phases["count"].size
+                phases["cluster_id"] = [chan] * phases["count"].size
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
                 analyzed_spk_phase.append(stats)
