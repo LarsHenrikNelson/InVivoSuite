@@ -63,6 +63,7 @@ class SpkLFPManager:
     ):
         b_spks = self.get_binned_spike_cluster(cluster_id, nperseg=nperseg)
         output_dict = {}
+        output_stats = {}
         spk_indexes = np.where(b_spks > 0)[0]
         output_dict["cluster_id"] = [cluster_id] * spk_indexes.size
         output_dict["count"] = b_spks[spk_indexes]
@@ -70,9 +71,11 @@ class SpkLFPManager:
             b_phases = phase[spk_indexes]
             output_dict[b_name] = b_phases
             stats = self.analyze_spike_phase(b_phases)
-            stats = {f"{b_name}_{key}": value for key, value in stats.items()}
-        stats["cluster_id"] = cluster_id
-        return (stats, output_dict)
+            output_stats.update(
+                {f"{b_name}_{key}": value for key, value in stats.items()}
+            )
+        output_stats["cluster_id"] = cluster_id
+        return (output_stats, output_dict)
 
     def spike_phase(
         self,
