@@ -304,7 +304,6 @@ class LFPManager:
         probe: str = "all",
         window: str = "hamming",
         wlen: float = 0.2,
-        fs: Union[float, int, None] = None,
     ):
         """This is a convience function to test out different short time energy settings
         or get the short time energy of an specific acquisition.

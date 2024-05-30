@@ -234,25 +234,31 @@ class SpkManager:
         template = self.sparse_templates[temp_index, :, :]
         return np.argmax(np.sum(np.abs(template), axis=0))
 
-    def get_all_binary_spikes(self) -> np.ndarray:
+    def get_all_binary_spikes(self, channel: Optional[int] = None) -> np.ndarray:
         chan_cid_dict = self.get_channel_clusters()
         chans = sorted(list(chan_cid_dict.keys()))
         output = np.zeros(
             (self.cluster_ids.size, self.end - self.start), dtype=np.int16
         )
         index = 0
+        if channel is not None:
+            chans = [channel]
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binary_spike_cluster(cid)
                 index += 1
         return output
 
-    def get_all_binned_spikes(self, nperseg: int) -> np.ndarray:
+    def get_all_binned_spikes(
+        self, nperseg: int, channel: Optional[int] = None
+    ) -> np.ndarray:
         chan_cid_dict = self.get_channel_clusters()
         chans = sorted(list(chan_cid_dict.keys()))
         length = (self.end - self.start) // nperseg
         output = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
         index = 0
+        if channel is not None:
+            chans = [channel]
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binned_spike_cluster(cid, nperseg=nperseg)
@@ -1029,7 +1035,8 @@ class SpkManager:
         dt: Union[float, int] = 200,
         start: Union[float, int] = -1,
         end: Union[float, int] = -1,
-        sttc_version: Literal["ivs, elephant"] = "ivs",
+        sttc_version: Literal["ivs", "elephant"] = "ivs",
+        callback: Callable = print,
     ):
         output_index = 0
         if start == -1:
@@ -1047,11 +1054,14 @@ class SpkManager:
 
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
-            indexes1 = self.get_cluster_spike_times(clust_id1)
+            indexes1 = self.get_cluster_spike_times(clust_id1, output_type="samples")
 
             for index2 in range(index1 + 1, self.cluster_ids.size):
                 clust_id2 = self.cluster_ids[index2]
-                indexes2 = self.get_cluster_spike_time(clust_id2)
+                callback(f"Analyzing sttc for cluster {clust_id1} and {clust_id2}.")
+                indexes2 = self.get_cluster_spike_times(
+                    clust_id2, output_type="samples"
+                )
 
                 if sttc_version == "ivs":
                     sttc_index, num1dt, num1_2, num2dt, num2_1 = sttc(
@@ -1071,11 +1081,10 @@ class SpkManager:
                 cluster_ids[output_index, 0] = clust_id1
                 cluster_ids[output_index, 1] = clust_id2
                 cluster_ids[output_index, 2] = indexes1.size
-                cluster_ids[output_index, 1] = indexes2.size
+                cluster_ids[output_index, 3] = indexes2.size
                 output_index += 1
 
         data = {}
-        data["id"] = [self.ks_directory.stem] * size
         data["sttc"] = sttc_data
         data["cluster1_id"] = cluster_ids[:, 0].flatten()
         data["cluster2_id"] = cluster_ids[:, 1].flatten()
