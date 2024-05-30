@@ -249,16 +249,18 @@ class SpkManager:
                 index += 1
         return output
 
-    def get_all_binned_spikes(
+    def get_binned_spikes_channel(
         self, nperseg: int, channel: Optional[int] = None
     ) -> np.ndarray:
         chan_cid_dict = self.get_channel_clusters()
         chans = sorted(list(chan_cid_dict.keys()))
         length = (self.end - self.start) // nperseg
-        output = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
         index = 0
         if channel is not None:
             chans = [channel]
+            output = np.zeros((len(chan_cid_dict[channel]), length), dtype=np.int16)
+        else:
+            output = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binned_spike_cluster(cid, nperseg=nperseg)
@@ -513,6 +515,73 @@ class SpkManager:
         output_dict.update(spk_props)
         output_dict.update(burst_props)
         return output_dict, other_burst_props
+
+    def get_cluster_binary_burst(
+        self,
+        cluster_id: int,
+        min_count: int = 3,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        nperseg: int = 1,
+    ):
+        b_data = self.get_cluster_bursts(
+            cluster_id=cluster_id,
+            min_count=min_count,
+            min_dur=min_dur,
+            max_start=max_start,
+            max_int=max_int,
+            max_end=max_end,
+            output_type="sample",
+        )
+        length = self.end - self.start
+        output_data = np.zeros(length // nperseg, dtype=int)
+        for i in b_data:
+            start = i[0] // nperseg
+            end = i[1] // nperseg
+            output_data[start:end] = 1
+        return output_data
+
+    def get_channel_binary_burst(
+        self,
+        channel: Optional[int] = None,
+        min_count: int = 3,
+        min_dur: float = 0.01,
+        max_start: float = 0.170,
+        max_int: float = 0.3,
+        max_end: float = 0.34,
+        nperseg: int = 1,
+    ):
+        length = self.end - self.start
+        chan_cid_dict = self.get_channel_clusters()
+        chans = sorted(list(chan_cid_dict.keys()))
+        length = (self.end - self.start) // nperseg
+        index = 0
+        if channel is not None:
+            chans = [channel]
+            output_data = np.zeros(
+                (len(chan_cid_dict[channel]), length), dtype=np.int16
+            )
+        else:
+            output_data = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
+        for channel in chans:
+            for cluster_id in chan_cid_dict[channel]:
+                b_data = self.get_cluster_bursts(
+                    cluster_id=cluster_id,
+                    min_count=min_count,
+                    min_dur=min_dur,
+                    max_start=max_start,
+                    max_int=max_int,
+                    max_end=max_end,
+                    output_type="sample",
+                )
+                for i in b_data:
+                    start = i[0] // nperseg
+                    end = i[1] // nperseg
+                    output_data[index, start:end] = 1
+                index += 1
+        return output_data
 
     def get_cluster_bursts(
         self,
