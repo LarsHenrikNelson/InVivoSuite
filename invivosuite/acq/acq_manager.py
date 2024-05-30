@@ -290,7 +290,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     def acq(
         self,
-        acq_num: int,
+        channel: int,
         acq_type: Literal["spike", "lfp", "wideband"],
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
@@ -304,10 +304,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             start = self.get_file_attr("start")
         if end is None:
             end = self.get_file_attr("end")
-        acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
+        channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
-            "acqs", rows=int(acq_num), columns=(start, end)
-        ) * self.get_file_dataset("coeffs", rows=int(acq_num))
+            "acqs", rows=int(channel), columns=(start, end)
+        ) * self.get_file_dataset("coeffs", rows=int(channel))
         array -= array.mean()
         if ref:
             median = self.get_grp_dataset(ref_type, ref_probe)
@@ -315,7 +315,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if acq_type == "wideband":
             return array
         filter_dict = self.get_filter(acq_type)
-        sample_rate = self.get_file_dataset("sample_rate", rows=int(acq_num))
+        sample_rate = self.get_file_dataset("sample_rate", rows=int(channel))
         acq = filter_array(
             array,
             sample_rate=sample_rate,
@@ -374,7 +374,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             multi_acq = np.zeros((end_chan, int(end - start)))
         for channel in range(start_chan, end_chan):
             multi_acq[int(channel - start_chan), :] = self.acq(
-                acq_num=channel,
+                channel=channel,
                 acq_type=acq_type,
                 ref=ref,
                 ref_type=ref_type,

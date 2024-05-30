@@ -125,7 +125,7 @@ class LFPManager:
 
     def pxx(
         self,
-        acq_num: int,
+        channel: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
@@ -134,11 +134,11 @@ class LFPManager:
         probe: str = "all",
     ):
         pxx_attrs = self.get_spectral_settings(pxx_type)
-        if acq_num > self.n_chans:
-            raise ValueError(f"{acq_num} does not exist.")
+        if channel > self.n_chans:
+            raise ValueError(f"{channel} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
         array = self.acq(
-            acq_num,
+            channel,
             "lfp",
             ref=ref,
             ref_type=ref_type,
@@ -175,7 +175,7 @@ class LFPManager:
 
     def sxx(
         self,
-        acq_num: int,
+        channel: int,
         sxx_type: Literal["cwt", "spectrogram"],
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
@@ -184,11 +184,11 @@ class LFPManager:
         probe: str = "all",
     ):
         sxx_attrs = self.get_grp_attrs(sxx_type)
-        if acq_num > self.n_chans:
-            raise ValueError(f"{acq_num} does not exist.")
+        if channel > self.n_chans:
+            raise ValueError(f"{channel} does not exist.")
         fs = self.get_grp_attr("lfp", "sample_rate")
         array = self.acq(
-            acq_num,
+            channel,
             "lfp",
             ref=ref,
             ref_type=ref_type,
@@ -215,7 +215,7 @@ class LFPManager:
 
     def hilbert(
         self,
-        acq_num: int,
+        channel: int,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -234,11 +234,11 @@ class LFPManager:
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        sample_rate = self.get_file_dataset("sample_rate", rows=acq_num)
-        acq_num = self.get_mapped_channel(acq_num, probe=probe, map_channel=map_channel)
+        sample_rate = self.get_file_dataset("sample_rate", rows=channel)
+        channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
-            "acqs", rows=acq_num, columns=(start, end)
-        ) * self.get_file_dataset("coeffs", rows=acq_num)
+            "acqs", rows=channel, columns=(start, end)
+        ) * self.get_file_dataset("coeffs", rows=channel)
         array -= array.mean()
         if ref:
             ref_data = self.get_grp_dataset(ref_type, ref_probe)
@@ -296,7 +296,7 @@ class LFPManager:
 
     def get_short_time_energy(
         self,
-        acq_num: Union[None, int] = None,
+        channel: Union[None, int] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -311,7 +311,7 @@ class LFPManager:
         Args:
             acq (Union[None, np.ndarray], optional): Numpy array containing the acq.
             Defaults to None.
-            acq_num (Union[None, int], optional): Acquistion number must be supplied as
+            channel (Union[None, int], optional): Acquistion number must be supplied as
             a zero-indexed (e.g. 1 is 0, 2 is 1, etc). Defaults to None.
             window (str, optional): _description_. Defaults to "hamming".
             wlen (float, optional): _description_. Defaults to 0.2.
@@ -319,14 +319,14 @@ class LFPManager:
             map_channel (bool, optional): _description_. Defaults to None.
 
         Raises:
-            AttributeError: Raises error is acq or acq_num is not supplied.
+            AttributeError: Raises error is acq or channel is not supplied.
             AttributeError: Raises error if fs is not supplied if an acq is supplied.
 
         Returns:
             np.ndarray: The short time energy
         """
         acq = self.acq(
-            acq_num,
+            channel,
             "lfp",
             ref=ref,
             ref_type=ref_type,
@@ -425,24 +425,24 @@ class LFPManager:
                 self.set_grp_dataset("lfp_bursts", str(int(i + start)), bursts)
 
     def get_lfp_burst_indexes(
-        self, acq_num: int, map_channel: bool = False, probe: str = "none"
+        self, channel: int, map_channel: bool = False, probe: str = "none"
     ):
         if map_channel:
-            acq_num = self.get_mapped_channel(acq_num, probe)
-        indexes = self.get_grp_dataset("lfp_bursts", str(acq_num))
+            channel = self.get_mapped_channel(channel, probe)
+        indexes = self.get_grp_dataset("lfp_bursts", str(channel))
         return indexes
 
     def get_burst_baseline(
-        self, acq_num: int, map_channel: bool = False, probe: str = "none"
+        self, channel: int, map_channel: bool = False, probe: str = "none"
     ):
         if map_channel:
-            acq_num = self.get_mapped_channel(acq_num, probe)
-        bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
+            channel = self.get_mapped_channel(channel, probe)
+        bursts = self.get_grp_dataset("lfp_bursts", str(channel))
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
         size = int(end - start)
         fs_lfp = self.get_grp_attr("lfp", "sample_rate")
-        fs_raw = self.get_file_dataset("sample_rate", rows=acq_num)
+        fs_raw = self.get_file_dataset("sample_rate", rows=channel)
         size = int(size / (fs_raw / fs_lfp))
         burst_baseline = lfp.burst_baseline_periods(bursts, size)
         self.close()
@@ -450,21 +450,21 @@ class LFPManager:
 
     def lfp_burst_stats_channel(
         self,
-        acq_num: int,
+        channel: int,
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
         map_channel: bool = False,
         probe: str = "none",
     ):
-        b_stats = {"channel": acq_num}
+        b_stats = {"channel": channel}
         if map_channel:
-            acq_num = self.get_mapped_channel(probe, acq_num)
-        b_stats["mapped_channel"] = acq_num
-        acq = self.acq(acq_num, "lfp")
-        bursts = self.get_grp_dataset("lfp_bursts", str(acq_num))
+            channel = self.get_mapped_channel(probe, channel)
+        b_stats["mapped_channel"] = channel
+        acq = self.acq(channel, "lfp")
+        bursts = self.get_grp_dataset("lfp_bursts", str(channel))
         fs = self.get_grp_attr("lfp", "sample_rate")
         baseline = self.get_burst_baseline(
-            acq_num, map_channel=map_channel, probe=probe
+            channel, map_channel=map_channel, probe=probe
         )
         temp = lfp.burst_stats(acq, bursts, baseline, bands, fs)
         if calc_average:
