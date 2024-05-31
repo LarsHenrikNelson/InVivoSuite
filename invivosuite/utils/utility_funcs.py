@@ -20,7 +20,11 @@ def expand_data(
 ):
     start = new_size - current_size
     for key, value in data.items():
-        temp = np.zeros(new_size, value.dtype)
+        if len(value.shape) > 1:
+            shape = (new_size, value.shape[1])
+        else:
+            shape = new_size
+        temp = np.zeros(shape, value.dtype)
         temp[start:] = value
         data[key] = temp
     index = 0

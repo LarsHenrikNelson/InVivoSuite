@@ -29,7 +29,15 @@ def _bin_spikes(binary_spks, bin_size):
         binary_spks.strides[-1],
     )
     temp = np.lib.stride_tricks.as_strided(binary_spks, shape=shape, strides=strides)
-    output = temp.sum(axis=1)
+    temp = temp.sum(axis=1)
+    left_over = binary_spks.size % bin_size
+    if left_over > 0:
+        output = np.zeros(temp.size + 1)
+        output[: temp.size] = temp
+        start = binary_spks.size - left_over
+        output[-1] = bin_spikes[start:].sum()
+    else:
+        output = temp
     return output
 
 

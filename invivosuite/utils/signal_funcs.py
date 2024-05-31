@@ -1,7 +1,8 @@
+from typing import Literal
+
 import KDEpy
 import numpy as np
 from numba import njit, prange
-from numpy.random import default_rng
 from scipy import interpolate, optimize, signal
 
 from ..spectral import fft
@@ -18,8 +19,6 @@ __all__ = [
     "fit_sine",
     "kde",
     "mad",
-    "ppc_numba",
-    "ppc_sampled",
     "sinefunc",
     "where_count",
     "whitening_matrix",
@@ -27,6 +26,22 @@ __all__ = [
     "xcorr_fft",
     "xcorr_lag",
 ]
+
+
+@njit()
+def sliding_count(array, window, closed: Literal["left", "right"] = "left"):
+    output = np.zeros(array.size, dtype=int)
+    if closed == "left":
+        for i in range(window):
+            output[i] = array[:i].sum()
+        for i in range(window, array.size):
+            output[i] = array[i : i + window].sum()
+    else:
+        for i in range(array.size - window):
+            output[i] = array[i : i + window].sum()
+        for i in range(array.size - window, array.size):
+            output[i] = array[i : array.size].sum()
+    return output
 
 
 def mad(array):
@@ -294,48 +309,6 @@ def bin_data_unsorted(data: np.ndarray, bins: np.ndarray, func: callable):
         indexes = np.where((data >= bins[i]) & (data < bins[i + 1]))
         binned_data = func(data[indexes])
     return binned_data
-
-
-@njit(cache=True)
-def ppc_numba(spike_phases):
-    outer_sums = np.zeros(spike_phases.size - 1)
-    array1 = np.zeros(2)
-    array2 = np.zeros(2)
-    for index1 in range(0, spike_phases.size - 1):
-        temp_sum = np.zeros(spike_phases.size - index1 + 1)
-        array1[0] = np.cos(spike_phases[index1])
-        array1[1] = np.sin(spike_phases[index1])
-        for index2 in range(index1 + 1, spike_phases.size):
-            array2[0] = np.cos(spike_phases[index2])
-            array2[1] = np.sin(spike_phases[index2])
-            dp = np.dot(array1, array2)
-            temp_sum[index2 - index1] = dp
-        outer_sums[index1] = temp_sum.sum()
-    dp_sum = np.sum(outer_sums)
-    ppc_output = dp_sum / int(len(spike_phases) * (len(spike_phases) - 1) / 2)
-    return ppc_output
-
-
-def ppc_sampled(spike_phases, size, iterations, seed=42):
-    """This
-
-    Args:
-        spike_phases (_type_): _description_
-        size (_type_): _description_
-        iterations (_type_): _description_
-        seed (int, optional): _description_. Defaults to 42.
-
-    Returns:
-        _type_: _description_
-    """
-    rng = default_rng(seed)
-    output_array = np.zeros(iterations)
-    for i in range(iterations):
-        spk_sampled = np.ascontiguousarray(
-            rng.choice(spike_phases, size=size, replace=False)
-        )
-        output_array[i] = ppc_numba(spk_sampled)
-    return output_array.mean()
 
 
 def kde(

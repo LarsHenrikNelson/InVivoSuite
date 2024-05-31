@@ -37,6 +37,7 @@ class SpikeProperties(TypedDict):
     fr: np.ndarray[float]
     fr_iei: np.ndarray[float]
     amplitude_cutoff: np.ndarray[float]
+    fano_factor: np.ndarray[float]
 
 
 class TemplateProperties(TypedDict):
@@ -272,8 +273,9 @@ class SpkManager:
         fs: int = 40000,
         start: int = -1,
         end: int = -1,
-        isi_threshold=1.5,
-        min_isi=0,
+        isi_threshold: float = 1.5,
+        min_isi: float = 0.0,
+        nperseg: int = 40,
     ) -> SpikeProperties:
         if start == -1:
             start = self.start / fs
@@ -290,11 +292,14 @@ class SpkManager:
         frate = np.zeros(size)
         num_violations = np.zeros(size, dtype=int)
         amp_cutoff = np.zeros(size)
+        ff = np.zeros(size)
 
         for i in range(size):
             clust_id = self.cluster_ids[i]
             times = self.get_cluster_spike_times(clust_id, fs=fs, output_type="sec")
             amps = self.get_cluster_spike_amplitudes(clust_id)
+            binned = self.get_binned_spike_cluster(cluster_id=clust_id, nperseg=nperseg)
+            ff[i] = binned.var() / binned.mean()
             if times.size > 2:
                 diffs = np.mean(np.diff(times))
                 iei[i] = diffs
@@ -327,6 +332,7 @@ class SpkManager:
             fp_rate=frate,
             num_violations=num_violations,
             amplitude_cutoff=amp_cutoff,
+            fano_factor=ff,
         )
         return data
 
@@ -481,6 +487,7 @@ class SpkManager:
         total_chans: int = 64,
         upsample_factor: int = 2,
         isi_threshold: float = 1.5,
+        nperseg: int = 40,
         min_isi: float = 0.0,
         min_count: int = 5,
         min_dur: float = 0.01,
@@ -500,7 +507,7 @@ class SpkManager:
             upsample_factor=upsample_factor,
         )
         spk_props = self.get_spikes_properties(
-            fs=fs, isi_threshold=isi_threshold, min_isi=min_isi
+            fs=fs, isi_threshold=isi_threshold, min_isi=min_isi, nperseg=nperseg
         )
         burst_props, other_burst_props = self.get_burst_properties(
             min_count=min_count,
