@@ -246,7 +246,7 @@ class SpkLFPManager:
                     power_dict=band_dict, cluster_id=cid, nperseg=nperseg, window=window
                 )
                 output["channel"] = [chan] * output["count"].size
-                output["cluster_id"] = [chan] * output["count"].size
+                output["cluster_id"] = [cid] * output["count"].size
                 output_data.append(output)
         output_data = concatenate_dicts(output_data)
         c_size = output_data["count"].size
