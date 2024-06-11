@@ -197,11 +197,12 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if bin_size != 0:
             cmr = np.zeros(end - start)
             means = np.zeros((chans[1], 1))
-            for i in range(chans[1]):
+            for i in range(chans[0], chans[1]):
                 array = self.get_file_dataset(
                     "acqs", rows=i, columns=(start, end)
                 ) * self.get_file_dataset("coeffs", rows=i)
-                means[i] = array.mean()
+                index = i - chans[0]
+                means[index] = array.mean()
             for i in range((end - start) // bin_size):
                 begin = int(start + i * bin_size)
                 stop = int(start + i * bin_size) + bin_size

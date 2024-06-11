@@ -214,7 +214,7 @@ class SpkLFPManager:
         self,
         freq_bands: dict[str, Iterable],
         sxx_type: Literal["cwt", "hilbert"] = "cwt",
-        output_type: Literal["power", "frequency"] = "power",
+        output_type: Literal["power", "frequency"] = "frequency",
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -254,4 +254,17 @@ class SpkLFPManager:
         output_data = expand_data(
             data=output_data, column="count", current_size=c_size, new_size=n_size
         )
-        return output_data
+        mean_data = self.lfp_mean_per_cluster(output_data, list(freq_bands.keys()))
+        return output_data, mean_data
+
+    def lfp_mean_per_cluster(self, input, freq_bands):
+        cid = np.unique(input["cluster_id"])
+        output_dict = {}
+        for band in freq_bands:
+            output_dict[freq_bands] = np.zeros((cid.size, input["gamma"].shape[1]))
+        for index, i in enumerate(cid):
+            indexes = np.where(input["cluster_id"] == i)[0]
+            for band in freq_bands:
+                temp = input["theta"][indexes]
+                output_dict[band][index] = temp.mean(axis=0)
+        return output_dict
