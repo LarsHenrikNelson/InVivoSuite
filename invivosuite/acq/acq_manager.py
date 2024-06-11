@@ -196,7 +196,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             chans = self.get_grp_dataset("probes", probe)
         if bin_size != 0:
             cmr = np.zeros(end - start)
-            means = np.zeros((chans[1], 1))
+            means = np.zeros((chans[1] - chans[0], 1))
             for i in range(chans[0], chans[1]):
                 array = self.get_file_dataset(
                     "acqs", rows=i, columns=(start, end)
