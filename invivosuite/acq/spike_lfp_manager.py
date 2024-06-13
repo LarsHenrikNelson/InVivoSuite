@@ -261,10 +261,10 @@ class SpkLFPManager:
         cid = np.unique(input["cluster_id"])
         output_dict = {}
         for band in freq_bands:
-            output_dict[freq_bands] = np.zeros((cid.size, input["gamma"].shape[1]))
+            output_dict[band] = np.zeros((cid.size, input[band].shape[1]))
         for index, i in enumerate(cid):
             indexes = np.where(input["cluster_id"] == i)[0]
             for band in freq_bands:
-                temp = input["theta"][indexes]
+                temp = input[band][indexes]
                 output_dict[band][index] = temp.mean(axis=0)
         return output_dict

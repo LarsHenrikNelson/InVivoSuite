@@ -97,6 +97,16 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.close()
         return shape
 
+    def index_to_time(self, index, fs, output_type: Literal["samples", "ms", "sec"]):
+        if output_type == "samples":
+            return index
+        if output_type == "ms":
+            return index / (fs / 1000)
+        elif output_type == "sec":
+            return index / fs
+        else:
+            raise AttributeError("Outputype not recognized.")
+
     # @property
     # def id(self):
     #     self.open()

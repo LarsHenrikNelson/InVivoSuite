@@ -20,6 +20,7 @@ from .spike_functions import (
     presence,
     sttc_ele,
     sttc,
+    sttc_python,
     template_properties,
 )
 
@@ -191,13 +192,12 @@ class SpkManager:
         output_type: Literal["sec", "ms", "samples"] = "sec",
     ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
-        if fs is None:
+        if fs is None or output_type == "samples":
             return self.spike_times[spike_ids]
         if output_type == "ms":
-            times = self.spike_times[spike_ids].flatten() / (fs / 1000)
+            return self.spike_times[spike_ids].flatten() / (fs / 1000)
         elif output_type == "sec":
-            times = self.spike_times[spike_ids].flatten() / fs
-        return times
+            return self.spike_times[spike_ids].flatten() / fs
 
     def get_cluster_spike_amplitudes(self, cluster_id: int) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
@@ -1112,13 +1112,15 @@ class SpkManager:
         start: Union[float, int] = -1,
         end: Union[float, int] = -1,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
+        output_type: Literal["sec", "ms", "samples"] = "samples",
+        fs: float = 40000.0,
         callback: Callable = print,
     ):
         output_index = 0
         if start == -1:
-            start = self.start
+            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
         if end == -1:
-            end = self.end
+            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         sttc_data = np.zeros(size)
         cluster_ids = np.zeros((size, 4), dtype=int)
@@ -1130,13 +1132,15 @@ class SpkManager:
 
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
-            indexes1 = self.get_cluster_spike_times(clust_id1, output_type="samples")
+            indexes1 = self.get_cluster_spike_times(
+                clust_id1, output_type=output_type, fs=fs
+            )
 
             for index2 in range(index1 + 1, self.cluster_ids.size):
                 clust_id2 = self.cluster_ids[index2]
                 callback(f"Analyzing sttc for cluster {clust_id1} and {clust_id2}.")
                 indexes2 = self.get_cluster_spike_times(
-                    clust_id2, output_type="samples"
+                    clust_id2, output_type=output_type, fs=fs
                 )
 
                 if sttc_version == "ivs":
@@ -1148,9 +1152,20 @@ class SpkManager:
                     num2dt_array[output_index] = num2dt
                     num1_2_array[output_index] = num1_2
                     num2_1_array[output_index] = num2_1
-                else:
+                elif sttc_version == "elephant":
                     sttc_index = sttc_ele(
                         indexes1, indexes2, dt=dt, start=start, stop=end
+                    )
+                    sttc_data[output_index] = sttc_index
+                else:
+                    sttc_index = sttc_python(
+                        indexes1,
+                        indexes2,
+                        indexes1.size,
+                        indexes2.size,
+                        dt=dt,
+                        start=start,
+                        stop=end,
                     )
                     sttc_data[output_index] = sttc_index
 

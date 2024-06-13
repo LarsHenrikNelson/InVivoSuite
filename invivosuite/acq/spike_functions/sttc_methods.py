@@ -4,7 +4,7 @@ from typing import Union
 import numpy as np
 from numba import njit
 
-__all__ = ["sttc", "sttc_ele"]
+__all__ = ["sttc", "sttc_ele", "sttc_python"]
 
 
 @njit()
@@ -95,23 +95,22 @@ def sttc(
         dt = float(dt)
         t = stop - start
         tA = run_T(spk_times_1, dt, start, stop)
-        tA /= t
+        tA = float(tA) / float(t)
         tB = run_T(spk_times_2, dt, start, stop)
-        tB /= t
+        tB = float(tB) / float(t)
         pA_a, kA = run_P(spk_times_1, spk_times_2, dt)
-        pA = pA_a / spk_times_1.size
+        pA = pA_a / float(spk_times_1.size)
         pB_b, kB = run_P(spk_times_2, spk_times_1, dt)
-        pB = pB_b / spk_times_2.size
-        if pA * tB == 1 and pB * tA == 1:
-            index = 1.0
-        elif pA * tB == 1:
-            index = 0.5 + 0.5 * (pB - tA) / (1 - pB * tA)
-        elif pB * tA == 1:
-            index = 0.5 + 0.5 * (pA - tB) / (1 - pA * tB)
-        else:
-            index = (0.5 * ((pA - tB) / (1 - pA * tB))) + (
-                0.5 * ((pB - tA) / (1 - pB * tA))
-            )
+        pB = pB_b / float(spk_times_2.size)
+        # if (pA * tB) == 1 and (pB * tA) == 1:
+        #     index = 1.0
+        # elif (pA * tB) == 1:
+        #     index = 0.5 + 0.5 * (pB - tA) / (1 - pB * tA)
+        # elif (pB * tA) == 1:
+        #     index = 0.5 + 0.5 * (pA - tB) / (1 - pA * tB)
+        # else:
+        #     index = 0.5 * (pA - tB) / (1 - tB * pA) + 0.5 * (pB - tA) / (1 - tA * pB)
+        index = 0.5 * (pA - tB) / (1 - tB * pA) + 0.5 * (pB - tA) / (1 - tA * pB)
         return index, pA_a, kA, pB_b, kB
 
 
@@ -173,8 +172,10 @@ def sttc_ele(spiketrain_i, spiketrain_j, dt, start, stop):
     if len(spiketrain_i) == 0 or len(spiketrain_j) == 0:
         index = np.nan
     else:
-        spiketrain_i = spiketrain_i.astype(int)
-        spiketrain_j = spiketrain_j.astype(int)
+        if spiketrain_i.dtype != float:
+            spiketrain_i = spiketrain_i.astype(float)
+        if spiketrain_j.dtype != float:
+            spiketrain_j = spiketrain_j.astype(float)
         TA = run_t(spiketrain_j, dt, start, stop)
         TB = run_t(spiketrain_i, dt, start, stop)
         PA = run_p(spiketrain_j, spiketrain_i, dt)
@@ -195,3 +196,69 @@ def sttc_ele(spiketrain_i, spiketrain_j, dt, start, stop):
         else:
             index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
     return index
+
+@njit()
+def run_T_python(spiketrain, N, dt, start, stop):
+    """
+    Calculate the proportion of the total recording time 'tiled' by spikes.
+    """
+    time_A = 2 * N * dt  # maxium possible time
+
+    if N == 1:  # for just one spike in train
+        if spiketrain[0] - start < dt:
+            time_A = time_A - dt + spiketrain[0] - start
+        elif spiketrain[0] + dt > stop:
+            time_A = time_A - dt - spiketrain[0] + stop
+
+    else:  # if more than one spike in train
+        '''
+            This part of code speeds up calculation with respect to the original version
+        '''
+        diff = np.diff(spiketrain)
+        idx = np.where(diff<(2*dt))[0]
+        Lidx = len(idx)
+        time_A = time_A - 2 * Lidx * dt + diff[idx].sum()
+
+        if (spiketrain[0] - start) < dt:
+            time_A = time_A + spiketrain[0] - dt - start
+
+        if (stop - spiketrain[N - 1]) < dt:
+            time_A = time_A - spiketrain[-1] - dt + stop
+
+    T = (time_A / (stop - start)) #.item()
+    return T
+
+@njit()
+def run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt):
+    """
+    Check every spike in train 1 to see if there's a spike in train 2
+    within dt
+    """
+    Nab = 0
+    j = 0
+    for i in range(N1):
+        L=0
+        while j < N2:  # don't need to search all j each iteration
+            if np.abs(spiketrain_1[i] - spiketrain_2[j]) <= dt:
+                Nab = Nab + 1
+                L+=1
+                break
+            elif spiketrain_2[j] > spiketrain_1[i]:
+                break
+            else:
+                j = j + 1
+    return Nab
+
+def sttc_python(spiketrain_1,spiketrain_2,N1,N2,dt,start=0,stop=3e5):
+    '''
+    '''
+    TA = run_T_python(spiketrain_1, N1, dt, start=start, stop=stop)
+    TB = run_T_python(spiketrain_2, N2, dt, start=start, stop=stop)
+    PA = run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt)
+    PA = PA / float(N1)
+    PB = run_P_python(spiketrain_2, spiketrain_1, N2, N1, dt)
+    PB = PB / float(N2)
+    index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
+    return index
+
+ 
