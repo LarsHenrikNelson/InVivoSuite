@@ -208,6 +208,20 @@ class SpkManager:
         sample_indexes = self.spike_times[spike_ids]
         return create_binary_spikes(sample_indexes, self.end - self.start)
 
+    def get_reconstucted_cluster(self, cluster_id: int) -> np.ndarray:
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        sample_indexes = self.spike_times[spike_ids]
+        output_array = np.zeros(self.end.self.start)
+        template = self.get_cluster_best_template_waveform(cluster_id=cluster_id)
+        template -= template[0, 0]
+        start_len = np.min(template) - 1
+        end_len = template.size - start_len
+        for i in sample_indexes:
+            start = int(i - start_len)
+            end = int(i + end_len)
+            output_array[start:end] = template
+        return output_array
+
     def get_binned_spike_cluster(self, cluster_id: int, nperseg: int) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         sample_indexes = self.spike_times[spike_ids]
@@ -1186,4 +1200,52 @@ class SpkManager:
             data["2_before_1"] = num2_1_array
             data["1_dt_2"] = num1dt_array
             data["2_dt_1"] = num2dt_array
+        return data
+
+    def compute_correlation(
+        self,
+        dt: Union[float, int] = 200,
+        start: Union[float, int] = -1,
+        end: Union[float, int] = -1,
+        output_type: Literal["sec", "ms", "samples"] = "samples",
+        fs: float = 40000.0,
+        callback: Callable = print,
+    ):
+        output_index = 0
+        if start == -1:
+            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+        if end == -1:
+            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+        size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
+        correlation_data = np.zeros(size)
+        cluster_ids = np.zeros((size, 4), dtype=int)
+
+        for index1 in range(self.cluster_ids.size - 1):
+            clust_id1 = self.cluster_ids[index1]
+            indexes1 = self.get_cluster_spike_times(
+                clust_id1, output_type=output_type, fs=fs
+            )
+
+            for index2 in range(index1 + 1, self.cluster_ids.size):
+                clust_id2 = self.cluster_ids[index2]
+                callback(f"Analyzing sttc for cluster {clust_id1} and {clust_id2}.")
+                indexes2 = self.get_cluster_spike_times(
+                    clust_id2, output_type=output_type, fs=fs
+                )
+
+                cluster_ids[output_index, 0] = clust_id1
+                cluster_ids[output_index, 1] = clust_id2
+                cluster_ids[output_index, 2] = indexes1.size
+                cluster_ids[output_index, 3] = indexes2.size
+                correlation_data[output_index] = sttc(
+                    indexes1, indexes2, dt=dt, start=start, stop=end
+                )
+                output_index += 1
+
+        data = {}
+        data["sttc"] = correlation_data
+        data["cluster1_id"] = cluster_ids[:, 0].flatten()
+        data["cluster2_id"] = cluster_ids[:, 1].flatten()
+        data["cluster1_size"] = cluster_ids[:, 2].flatten()
+        data["cluster2_size"] = cluster_ids[:, 3].flatten()
         return data

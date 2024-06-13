@@ -16,7 +16,7 @@ def create_binary_spikes(spikes, size):
         return np.zeros(shape=(size,), dtype=np.int16)
 
 
-def _bin_spikes(binary_spks, bin_size):
+def bin_binary_spikes(binary_spks, bin_size):
     noverlap = 0
     nperseg = bin_size
     step = nperseg - noverlap
@@ -35,7 +35,7 @@ def _bin_spikes(binary_spks, bin_size):
         output = np.zeros(temp.size + 1)
         output[: temp.size] = temp
         start = binary_spks.size - left_over
-        output[-1] = bin_spikes[start:].sum()
+        output[-1] = binary_spks[start:].sum()
     else:
         output = temp
     return output
@@ -43,5 +43,5 @@ def _bin_spikes(binary_spks, bin_size):
 
 def bin_spikes(spikes, binary_size, nperseg):
     binary_spikes = create_binary_spikes(spikes, binary_size)
-    binned_spikes = _bin_spikes(binary_spikes, nperseg)
+    binned_spikes = bin_binary_spikes(binary_spikes, nperseg)
     return binned_spikes
