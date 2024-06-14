@@ -203,10 +203,10 @@ class SpkManager:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         return self.amplitudes[spike_ids]
 
-    def get_binary_spike_cluster(self, cluster_id: int) -> np.ndarray:
+    def get_binary_spike_cluster(self, cluster_id: int, dt: int = 0) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
-        sample_indexes = self.spike_times[spike_ids]
-        return create_binary_spikes(sample_indexes, self.end - self.start)
+        spike_indexes = self.spike_times[spike_ids]
+        return create_binary_spikes(spike_indexes, self.end - self.start, dt=dt)
 
     def get_reconstucted_cluster(self, cluster_id: int) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
@@ -249,7 +249,9 @@ class SpkManager:
         template = self.sparse_templates[temp_index, :, :]
         return np.argmax(np.sum(np.abs(template), axis=0))
 
-    def get_all_binary_spikes(self, channel: Optional[int] = None) -> np.ndarray:
+    def get_all_binary_spikes(
+        self, channel: Optional[int] = None, dt: int = 0
+    ) -> np.ndarray:
         chan_cid_dict = self.get_channel_clusters()
         chans = sorted(list(chan_cid_dict.keys()))
         output = np.zeros(
@@ -260,7 +262,7 @@ class SpkManager:
             chans = [channel]
         for chan in chans:
             for cid in chan_cid_dict[chan]:
-                output[index] = self.get_binary_spike_cluster(cid)
+                output[index] = self.get_binary_spike_cluster(cid, dt=dt)
                 index += 1
         return output
 
