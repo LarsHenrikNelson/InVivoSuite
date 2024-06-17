@@ -1137,6 +1137,11 @@ class SpkManager:
             start = self.index_to_time(self.start, fs=fs, output_type=output_type)
         if end == -1:
             end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+
+        # Correct for recordings that don't start at zero b/c Kilosort
+        # starts all indexes as zero.
+        end -= start
+        start -= start
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         sttc_data = np.zeros(size)
         cluster_ids = np.zeros((size, 4), dtype=int)
