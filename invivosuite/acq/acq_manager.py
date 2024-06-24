@@ -644,6 +644,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.set_file_attr("start", start)
 
     def set_end(self, end):
+        self.open()
+        len_of_rec = self.file["acqs"].shape[1]
+        if end > len_of_rec:
+            raise ValueError(
+                f"{end} is longer than the length of the recording ({len_of_rec})"
+            )
+        self.close()
         self.set_file_attr("end", end)
 
     def set_probe(self, probe: str, array: np.array):
