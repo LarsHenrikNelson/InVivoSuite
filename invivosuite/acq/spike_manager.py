@@ -299,10 +299,11 @@ class SpkManager:
         fs: int = 40000,
         start: int = -1,
         end: int = -1,
-        isi_threshold: float = 1.5,
-        R: Optional[float] = None,
+        isi_threshold: float = 0.0015,
+        R: Optional[float] = 0.005,
         min_isi: float = 0.0,
         nperseg: int = 40,
+        output_type: Literal["sec", "ms"] = "sec",
     ) -> SpikeProperties:
         if start == -1:
             start = self.start / fs
@@ -335,14 +336,17 @@ class SpkManager:
                 isi = np.diff(times)
                 mean_isi = np.mean(isi)
                 iei[i] = mean_isi
-                fr_iei[i] = 1 / mean_isi
+                if output_type == "sec":
+                    fr_iei[i] = 1 / mean_isi
+                else:
+                    fr_iei[i] = 1000 / mean_isi
                 fr[i] = times.size / (end - start)
                 abi_sfa[i] = sfa_abi(isi)
                 local_sfa[i] = sfa_local_var(isi)
                 rlocal_sfa[i] = sfa_rlocal_var(isi, R)
                 div_sfa[i] = sfa_divisor(isi)
                 fpRate, nv = isi_violations(
-                    spike_train=times * 1000,
+                    spike_train=times,
                     min_time=start,
                     max_time=end,
                     isi_threshold=isi_threshold,
@@ -358,7 +362,11 @@ class SpkManager:
                 rlocal_sfa[i] = np.nan
                 div_sfa[i] = np.nan
             n_spikes[i] = times.size
-            pr = presence(times, self.start / fs, self.end / fs)
+            if output_type == "sec":
+                divisor = fs
+            else:
+                divisor = fs / 1000
+            pr = presence(times, self.start / divisor, self.end / divisor)
             presence_ratios[i] = pr["presence_ratio"]
             cutoff = amplitude_cutoff(amps)
             amp_cutoff[i] = cutoff
@@ -373,6 +381,10 @@ class SpkManager:
             num_violations=num_violations,
             amplitude_cutoff=amp_cutoff,
             fano_factor=ff,
+            divisor_sfa=div_sfa,
+            abi_sfa=abi_sfa,
+            local_sfa=local_sfa,
+            rlocal_sfa=rlocal_sfa,
         )
         return data
 
