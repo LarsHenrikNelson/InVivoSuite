@@ -1,14 +1,11 @@
+from typing import Union
+
 import numpy as np
 
-__all__ = [
-    "sfa_local_var",
-    "sfa_peak",
-    "sfa_divisor",
-    "sfa_abi",
-]
+__all__ = ["sfa_local_var", "sfa_divisor", "sfa_abi", "sfa_rlocal_var"]
 
 
-def sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
+def sfa_local_var(isi: np.ndarray) -> float:
     """
     This function calculates the local variance in spike frequency
     accomadation that was drawn from the paper:
@@ -20,52 +17,55 @@ def sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
     None.
 
     """
-    output = np.zeros(len(bursts))
-    for index, b in enumerate(bursts):
-        iei = np.diff(b).astype(float)
-        if len(iei) < 2 or iei is np.nan:
-            output[index] = np.nan
-        else:
-            isi_shift = iei[1:]
-            isi_cut = iei[:-1]
-            n_minus_1 = len(isi_cut)
-            output[index] = (
-                np.sum((3 * (isi_cut - isi_shift) ** 2) / (isi_cut + isi_shift) ** 2)
-                / n_minus_1
-            )
+    if len(isi) < 2 or isi is np.nan:
+        return np.nan
+    isi_shift = isi[1:]
+    isi_cut = isi[:-1]
+    n_minus_1 = len(isi_cut)
+    output = (
+        np.sum((3 * (isi_cut - isi_shift) ** 2) / (isi_cut + isi_shift) ** 2)
+        / n_minus_1
+    )
     return output
 
 
-def sfa_peak(sfa_values):
-    temp = sfa_values[~np.isnan(sfa_values)]
-    bins = temp.size // 4 if temp.size > 4 else temp.size
-    if bins > 4:
-        b, bb = np.histogram(temp, bins=bins)
-        peak = np.argmax(b)
-        return np.mean(bb[peak : peak + 1])
-    else:
-        return np.mean(temp)
+def sfa_rlocal_var(isi: np.ndarray, R: Union[float, int]) -> float:
+    """
+    This function calculates the revised local variance in spike frequency
+    accomadation that was drawn from the paper:
+    Shinomoto, S. et al. Relating Neuronal Firing Patterns to Functional Differentiation
+    of Cerebral Cortex. PLoS Comput Biol 5, e1000433 (2009).
 
 
-def sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
+    Returns
+    -------
+    None.
+
+    """
+    if len(isi) < 2 or isi is np.nan:
+        return np.nan
+    isi_plus = isi[1:] + isi[:1]
+    isi_mult = (isi[1:] * isi[:1]) * 4
+    intermediate = (1 - 4 * isi_mult / (isi_plus**2)) * (1 + 4 * R / isi_plus)
+    multiplier = 3 / (isi.size - 1)
+    return multiplier * np.sum(intermediate)
+
+
+def sfa_divisor(isi: list[np.ndarray]) -> np.ndarray[float]:
     """
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
     """
-    output = np.zeros(len(bursts))
-    for index, b in enumerate(bursts):
-        iei = np.diff(b).astype(float)
-        if len(iei) > 1 or np.isnan(iei):
-            if iei[-1] > 0:
-                output[index] = iei[0] / iei[-1]
-            else:
-                output[index] = np.nan
+    if len(isi) > 1 or np.isnan(isi):
+        if isi[-1] > 0:
+            return isi[0] / isi[-1]
         else:
-            output[index] = 0.0
-    return output
+            return np.nan
+    else:
+        return 0.0
 
 
-def sfa_abi(bursts: list[np.ndarray]) -> np.ndarray[float]:
+def sfa_abi(isi: list[np.ndarray]) -> np.ndarray[float]:
     """
     This function calculates the spike frequency adaptation. A positive
     number means that the spikes are speeding up and a negative number
@@ -74,16 +74,12 @@ def sfa_abi(bursts: list[np.ndarray]) -> np.ndarray[float]:
     https://github.com/AllenInstitute/ipfx/tree/
     db47e379f7f9bfac455cf2301def0319291ad361
     """
-    output = np.zeros(len(bursts))
-    for index, b in enumerate(bursts):
-        if len(b) <= 1:
-            output[index] = np.nan
+    if len(isi) <= 1:
+        return np.nan
+    else:
+        if np.allclose((isi[1:] + isi[:-1]), 0.0):
+            return 0.0
         else:
-            iei = np.diff(b).astype(float)
-            if np.allclose((iei[1:] + iei[:-1]), 0.0):
-                output[index] = 0.0
-            else:
-                norm_diffs = (iei[1:] - iei[:-1]) / (iei[1:] + iei[:-1])
-                norm_diffs[(iei[1:] == 0) & (iei[:-1] == 0)] = 0.0
-                output[index] = np.nanmean(norm_diffs)
-    return output
+            norm_diffs = (isi[1:] - isi[:-1]) / (isi[1:] + isi[:-1])
+            norm_diffs[(isi[1:] == 0) & (isi[:-1] == 0)] = 0.0
+            return np.nanmean(norm_diffs)

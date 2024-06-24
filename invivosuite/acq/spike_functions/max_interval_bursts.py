@@ -2,9 +2,88 @@ from typing import Literal, TypedDict, Union
 
 import numpy as np
 
-from .spike_freq_adapt import sfa_peak, sfa_local_var, sfa_abi, sfa_divisor
+from .spike_freq_adapt import (
+    sfa_abi,
+    sfa_divisor,
+    sfa_local_var,
+    sfa_rlocal_var,
+)
 
 __all__ = ["max_int_bursts", "get_burst_data"]
+
+
+def _sfa_local_var(bursts: list[np.ndarray]) -> np.ndarray[float]:
+    """
+    This function calculates the local variance in spike frequency
+    accomadation that was drawn from the paper:
+    Shinomoto, Shima and Tanji. (2003). Differences in Spiking Patterns
+    Among Cortical Neurons. Neural Computation, 15, 2823-2842.
+
+    Returns
+    -------
+    None.
+
+    """
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = sfa_local_var(b)
+    return output
+
+
+def _sfa_revised_local(bursts: list[np.ndarray], R: Union[float, int]):
+    """
+    This function calculates the revised local variance in spike frequency
+    accomadation that was drawn from the paper:
+    Shinomoto, S. et al. Relating Neuronal Firing Patterns to Functional Differentiation
+    of Cerebral Cortex. PLoS Comput Biol 5, e1000433 (2009).
+
+
+    Returns
+    -------
+    None.
+
+    """
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = sfa_rlocal_var(b, R)
+    return output
+
+
+def _sfa_divisor(bursts: list[np.ndarray]) -> np.ndarray[float]:
+    """
+    The idea for the function was initially inspired by a program called
+    Easy Electropysiology (https://github.com/easy-electrophysiology).
+    """
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = sfa_divisor(b)
+    return output
+
+
+def _sfa_abi(bursts: list[np.ndarray]) -> np.ndarray[float]:
+    """
+    This function calculates the spike frequency adaptation. A positive
+    number means that the spikes are speeding up and a negative number
+    means that spikes are slowing down. This function was inspired by the
+    Allen Brain Institutes IPFX analysis program
+    https://github.com/AllenInstitute/ipfx/tree/
+    db47e379f7f9bfac455cf2301def0319291ad361
+    """
+    output = np.zeros(len(bursts))
+    for index, b in enumerate(bursts):
+        output[index] = sfa_abi(b)
+    return output
+
+
+def sfa_peak(sfa_values):
+    temp = sfa_values[~np.isnan(sfa_values)]
+    bins = temp.size // 4 if temp.size > 4 else temp.size
+    if bins > 4:
+        b, bb = np.histogram(temp, bins=bins)
+        peak = np.argmax(b)
+        return np.mean(bb[peak : peak + 1])
+    else:
+        return np.mean(temp)
 
 
 def inter_burst_iei(bursts: list[np.ndarray]):
@@ -62,6 +141,7 @@ class BurstProps(TypedDict):
     inter_burst_iei: np.ndarray[float]
     spikes_per_burst: np.ndarray[float]
     local_sfa: np.ndarray[float]
+    rlocal_sfa: np.ndarray[float]
     divisor_sfa: np.ndarray[float]
     abi_sfa: np.ndarray[float]
 
@@ -78,16 +158,22 @@ class BurstPropsMeans(TypedDict):
     peak_divisor_sfa: float
     ave_abi_sfa: float
     peak_abi_sfa: float
+    ave_rlocal_sfa: float
+    peak_rlocal_sfa: float
     total_burst_time: float
 
 
-def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMeans]:
+def get_burst_data(
+    bursts: list[np.ndarray], R: float
+) -> tuple[BurstProps, BurstPropsMeans]:
+    iei_bursts = [np.diff(i) for i in bursts]
     intra_iei = intra_burst_iei(bursts)
     spk_per_burst = spikes_per_burst(bursts)
     inter_iei = inter_burst_iei(bursts)
-    local_sfa = sfa_local_var(bursts)
-    divisor_sfa = sfa_divisor(bursts)
-    abi_sfa = sfa_abi(bursts)
+    local_sfa = _sfa_local_var(iei_bursts)
+    revised_local = _sfa_revised_local(iei_bursts, R)
+    divisor_sfa = _sfa_divisor(iei_bursts)
+    abi_sfa = _sfa_abi(iei_bursts)
     b_len = bursts_len(bursts)
     props_dict = BurstProps(
         ave_burst_len=b_len,
@@ -95,6 +181,7 @@ def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMean
         spikes_per_burst=spk_per_burst,
         inter_burst_iei=inter_iei,
         local_sfa=local_sfa,
+        rlocal_sfa=revised_local,
         divisor_sfa=divisor_sfa,
         abi_sfa=abi_sfa,
     )
@@ -108,9 +195,11 @@ def get_burst_data(bursts: list[np.ndarray]) -> tuple[BurstProps, BurstPropsMean
         ave_local_sfa=np.nanmean(local_sfa),
         ave_divisor_sfa=np.nanmean(divisor_sfa),
         ave_abi_sfa=np.nanmean(abi_sfa),
+        ave_rlocal_sfa=np.nanmean(revised_local),
         peak_local_sfa=sfa_peak(local_sfa),
         peak_divisor_sfa=sfa_peak(divisor_sfa),
         peak_abi_sfa=sfa_peak(abi_sfa),
+        peak_rlocal_sfa=sfa_peak(revised_local),
     )
     return props_dict, mean_dict
 

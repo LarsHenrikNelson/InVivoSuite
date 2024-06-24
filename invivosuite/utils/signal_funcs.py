@@ -384,3 +384,15 @@ def _center_spikes(spike_times, spk_acq, size=45):
         else:
             mod_spk_times[i] = spike_times[i]
     return mod_spk_times
+
+
+def gauss_kernel(sigma):
+    """
+    Computes a 1-D Gaussian convolution kernel.
+    """
+    radius = 4 * sigma + 0.5
+    sigma2 = sigma * sigma
+    x = np.arange(-radius, radius + 1)
+    phi_x = np.exp(-0.5 / sigma2 * x**2)
+    phi_x = phi_x / phi_x.sum()
+    return phi_x
