@@ -248,7 +248,7 @@ Load HDF5 data and KS data
 hdf5_path = r"D:\in_vivo_ephys\P16\acqs\2023_02_17\2023_02_17_M_L5_WT.hdf5"
 ks_path = r"F:\acc_kilosort\2023_02_17_M_L5_WT_ivs"
 acq_manager = AcqManager()
-acq_manager.open_hdf5_file(hdf5_path)
+acq_manager.load_hdf5(hdf5_path)
 acq_manager.load_kilosort(ks_path)
 
 # %%
