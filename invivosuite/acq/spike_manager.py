@@ -13,6 +13,7 @@ from .spike_functions import (
     amplitude_cutoff,
     bin_spikes,
     create_binary_spikes,
+    create_continuous_spikes,
     get_burst_data,
     get_template_channels,
     isi_violations,
@@ -213,10 +214,33 @@ class SpkManager:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         return self.amplitudes[spike_ids]
 
-    def get_binary_spike_cluster(self, cluster_id: int, dt: int = 0) -> np.ndarray:
+    def get_binary_spike_cluster(
+        self,
+        cluster_id: int,
+        dt: int = 0,
+    ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
         return create_binary_spikes(spike_indexes, self.end - self.start, dt=dt)
+
+    def get_continuous_spike_cluster(
+        self,
+        cluster_id: int,
+        fs: float = 40000.0,
+        nperseg: int = 0,
+        window: Literal["exponential", "gaussian"] = "gaussian",
+        sigma: float = 200
+    ):
+        spike_ids = np.where(self.spike_clusters == cluster_id)[0]
+        spike_indexes = self.spike_times[spike_ids]
+        return create_continuous_spikes(
+            spike_indexes,
+            self.end - self.start,
+            nperseg=nperseg,
+            fs=fs,
+            window=window,
+            sigma=sigma
+        )
 
     def get_reconstucted_cluster(self, cluster_id: int) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
