@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 # from .spike_metrics import calculate_metrics
-from . import spike
+from .spike_functions import spike
 
 
 class SpikeModel:
