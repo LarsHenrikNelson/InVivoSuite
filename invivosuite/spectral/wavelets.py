@@ -2,6 +2,14 @@ import numpy as np
 from numba import njit
 
 
+def morlet(w, mu):
+    cs = (1 + np.exp(-(mu**2)) - 2 * np.exp(-3 / 4 * mu**2)) ** (-0.5)
+    ks = np.exp(-0.5 * mu**2)
+    C1 = np.sqrt(2) * cs * np.pi**0.25
+    C0 = -0.5
+    return C1 * (np.exp(C0 * (w - mu) ** 2) - ks * np.exp(C0 * w**2))
+
+
 @njit(cache=True, parallel=True)
 def fcwt_wavelet(mu, size, scale=2.0):
     toradians = (2 * np.pi) / size

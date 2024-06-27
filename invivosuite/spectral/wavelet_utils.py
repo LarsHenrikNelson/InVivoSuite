@@ -3,6 +3,35 @@ from typing import Union
 import numpy as np
 
 
+def get_support(fb, scale):
+    return fb * scale * 3.0
+
+
+def fwhm_sigma(sigma):
+    return sigma * 2 * np.sqrt(2 * np.log(2))
+
+
+def fwhm_freq(freq, n_cycles=7.0):
+    sigma = n_cycles / (2.0 * np.pi * freq)
+    return sigma * 2 * np.sqrt(2 * np.log(2))
+
+
+def fwhm_to_cycles(fwhm, freqs):
+    return fwhm * np.pi * np.array(freqs) / np.sqrt(2 * np.log(2))
+
+
+def f_to_s(
+    fc: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
+):
+    return n_cycles * fs / (2 * fc * np.pi)
+
+
+def s_to_f(
+    s: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
+):
+    return n_cycles * fs / (2 * s * np.pi)
+
+
 def get_wavelet_length(fc: float, fs: float, n_cycles: float = 7.0, gauss_sd=5.0):
     inv_fs = 1.0 / fs
     sigma_t = n_cycles / (

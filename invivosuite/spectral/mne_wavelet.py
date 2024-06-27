@@ -263,37 +263,3 @@ class mneCWT:
         self.forward_fft()
 
         return self.output
-
-
-def get_support(fb, scale):
-    return fb * scale * 3.0
-
-
-# Not necessarily correct
-def f_to_s(freqs, fs):
-    return fs / freqs
-
-
-def s_to_f(scales, fs):
-    return fs / scales
-
-
-def fwhm_sigma(sigma):
-    return sigma * 2 * np.sqrt(2 * np.log(2))
-
-
-def fwhm_freq(freq, n_cycles=7.0):
-    sigma = n_cycles / (2.0 * np.pi * freq)
-    return sigma * 2 * np.sqrt(2 * np.log(2))
-
-
-def fwhm_to_cycles(fwhm, freqs):
-    return fwhm * np.pi * np.array(freqs) / np.sqrt(2 * np.log(2))
-
-
-def morlet(w, mu):
-    cs = (1 + np.exp(-(mu**2)) - 2 * np.exp(-3 / 4 * mu**2)) ** (-0.5)
-    ks = np.exp(-0.5 * mu**2)
-    C1 = np.sqrt(2) * cs * np.pi**0.25
-    C0 = -0.5
-    return C1 * (np.exp(C0 * (w - mu) ** 2) - ks * np.exp(C0 * w**2))
