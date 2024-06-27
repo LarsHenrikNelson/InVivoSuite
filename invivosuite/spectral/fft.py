@@ -1,5 +1,5 @@
 import os
-from typing import Literal
+from typing import Literal, Union
 
 import numpy as np
 import pyfftw
@@ -15,8 +15,11 @@ __all__ = [
 ]
 
 
-def next_power_two(data: np.ndarray):
-    return 1 << int(np.ceil(np.log2(data.size)))
+def next_power_two(data: Union[np.ndarray, float]):
+    if isinstance(data, np.ndarray):
+        return 1 << int(np.ceil(np.log2(data.size)))
+    else:
+        return 1 << int(np.ceil(np.log2(data)))
 
 
 def norm_fft(array: np.ndarray, norm: Literal["none", "sqrt", "n"] = "none"):

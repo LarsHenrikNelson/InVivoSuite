@@ -6,28 +6,18 @@ import numpy as np
 import pyfftw
 from numba import njit, prange
 
+from .wavelet_utils import get_amp_scale
+from .wavelets import fcwt_wavelet, mne_wavelet, scipy_wavelet
+
 
 # Reimplemented fcwt in "pure" python as a learning resource
 
 __all__ = [
     "daughter_wavelet_multiplication",
-    "fcwt_wavelet",
     "fft_normalize",
     "pyfcwt_cwt",
 ]
 
-
-@njit(cache=True, parallel=True)
-def fcwt_wavelet(mu, size, scale=2.0):
-    toradians = (2 * np.pi) / size
-    norm = np.sqrt(2 * np.pi) * np.power(np.pi, -1 / 4)
-
-    mother = np.zeros(size)
-    for i in range(size):
-        temp1 = (scale * i * toradians) * mu - 2.0 * np.pi * mu
-        temp1 = -(temp1**2) / 2
-        mother[i] = norm * np.exp(temp1)
-    return mother
 
 
 @njit(cache=True, parallel=True)
@@ -69,6 +59,8 @@ def daughter_wavelet_multiplication(
     batchsize = endpoint / athreads
     mm = isizef - 1
     s1 = isize - 1
+
+    get_amp_scale
 
     output = np.zeros(input_fft.size, dtype=np.complex128)
 
@@ -219,3 +211,11 @@ def pyfcwt_cwt(
         fft_normalize(cwt, newsize)
 
     return cwt
+
+
+class PyFCWT:
+
+    def __init__(self, fs: float):
+        self.fs = fs
+
+    def mother_wavelet()

@@ -2,6 +2,18 @@ from typing import Union
 
 import numpy as np
 
+__all__ = [
+    "f_to_s",
+    "fwhm_freq",
+    "fwhm_sigma",
+    "fwhm_to_cycles",
+    "gen_freqs",
+    "get_amp_scale",
+    "get_support",
+    "get_wavelet_length",
+    "s_to_f",
+]
+
 
 def get_support(fb, scale):
     return fb * scale * 3.0
@@ -30,6 +42,14 @@ def s_to_f(
     s: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
 ):
     return n_cycles * fs / (2 * s * np.pi)
+
+
+def gen_freqs(f0, f1, num_steps, scaling="log"):
+    if scaling == "linear":
+        freqs = np.linspace(start=f0, stop=f1, num=num_steps)
+    else:
+        freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=num_steps)
+    return freqs
 
 
 def get_wavelet_length(fc: float, fs: float, n_cycles: float = 7.0, gauss_sd=5.0):
@@ -65,9 +85,3 @@ def get_amp_scale(f0: float, f1: float):
         float: amplitude scaling factor
     """
     return np.exp(-0.5 * np.log(f0) + (0.5 * np.log(f1) + -8.077e-7))
-
-
-def f_to_s(
-    fc: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
-):
-    return n_cycles * fs / (2 * fc * np.pi)

@@ -10,7 +10,7 @@ import pyfftw
 
 from ..spectral import fft
 
-__all__ = ["mne_wavelets", "mne_cwt", "gen_cwt", "s_to_f", "f_to_s"]
+__all__ = ["mne_wavelets", "mne_cwt", "gen_cwt"]
 
 """
 This is  modified version of MNE tfr: 
