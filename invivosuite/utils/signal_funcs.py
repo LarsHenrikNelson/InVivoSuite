@@ -11,14 +11,15 @@ __all__ = [
     "aligned",
     "bin_data_sorted",
     "bin_data_unsorted",
-    "convolve_loop",
     "convolve",
     "corr_acq",
     "cross_corr",
     "envelopes_idx",
     "fit_sine",
+    "gauss_kernel",
     "kde",
     "mad",
+    "ndconvolve",
     "sinefunc",
     "where_count",
     "whitening_matrix",
@@ -158,23 +159,66 @@ def xcorr_lag(
     return lags, output[int(mid - lag) : int(mid + lag)]
 
 
-@njit(cache=True, parallel=True)
-def convolve_loop(array_1: np.ndarray, array_2: np.ndarray):
+@njit(cache=True)
+def _convolve(array_1: np.ndarray, array_2: np.ndarray):
     # This a tiny bit faster than scipy version
     output = np.zeros(array_1.size + array_2.size - 1)
-    for i in prange(array_2.size):
+    for i in range(array_2.size):
         for j in range(array_1.size):
             output[i + j] += array_1[j] * array_2[i]
     return output
 
 
-def convolve(
-    array_1: np.ndarray, array_2: np.ndarray, mode: str = "fft", circular: bool = False
+def ndconvolve(
+    array_1: np.ndarray,
+    array_2: np.ndarray,
+    conv_type: Literal["oa", "fft"] = "oa",
+    mode: Literal["same", "full", "valid", "zero"] = "zero",
+    circular: bool = False,
 ):
-    if mode == "fft":
+    nrows = array_1.shape[0]
+    if mode == "full":
+        ncols = array_1.size + array_2.size - 1
+    elif mode == "same":
+        ncols = max(array_1.size, array_2.size)
+    elif mode == "valid":
+        ncols = max(array_1.size, array_2.size) - min(array_1.size, array_2.size) + 1
+    elif mode == "zero":
+        ncols = max(array_1.size, array_2.size)
+    output = np.zeros((nrows, ncols))
+    for i in range(array_1.shape[0]):
+        output[i, :] = convolve(
+            array_1[i], array_2, conv_type=conv_type, mode=mode, circular=circular
+        )
+    return output
+
+
+def convolve(
+    array_1: np.ndarray,
+    array_2: np.ndarray,
+    conv_type: Literal["oa", "fft"] = "oa",
+    mode: Literal["same", "full", "valid", "zero"] = "zero",
+    circular: bool = False,
+):
+    if conv_type == "fft":
         output = xconv_fft(array_1, array_2, circular=circular)
     else:
-        output = convolve_loop(array_1, array_2)
+        output = _convolve(
+            array_1,
+            array_2,
+        )
+    if mode == "full":
+        return output
+    elif mode == "same":
+        output_len = max(array_1.size, array_2.size)
+        output = output[:output_len]
+    elif mode == "valid":
+        length = max(array_1.size, array_2.size) - min(array_1.size, array_2.size) + 1
+        output = output[:length]
+    elif mode == "zero":
+        wlen = min(array_1.size, array_2.size) // 2
+        h = max(array_1.size, array_2.size)
+        output = output[wlen : h + wlen]
     return output
 
 
