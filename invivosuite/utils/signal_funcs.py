@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import KDEpy
 import numpy as np
@@ -430,7 +430,7 @@ def _center_spikes(spike_times, spk_acq, size=45):
     return mod_spk_times
 
 
-def gauss_kernel(sigma):
+def gauss_kernel(sigma, norm: Optional[Literal["standard"]] = None):
     """
     Computes a 1-D Gaussian convolution kernel.
     """
@@ -438,5 +438,6 @@ def gauss_kernel(sigma):
     sigma2 = sigma * sigma
     x = np.arange(-radius, radius + 1)
     phi_x = np.exp(-0.5 / sigma2 * x**2)
-    phi_x = phi_x / phi_x.sum()
+    if norm == "standard":
+        phi_x = phi_x / phi_x.sum()
     return phi_x
