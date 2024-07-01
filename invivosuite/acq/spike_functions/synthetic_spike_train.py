@@ -4,14 +4,33 @@ import numpy as np
 from scipy import stats
 
 
+__all__ = ["fit_iei", "gen_spike_train"]
+
+
+def fit_iei(
+    spk_train: np.ndarray,
+    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+):
+    iei = np.diff(spk_train)
+    if gen_type == "poisson":
+        output = stats.expon.fit(iei)
+    elif gen_type == "gamma":
+        output = stats.gamma.fit(iei)
+    elif gen_type == "inverse_gaussian":
+        output = stats.invgauss.fit(iei)
+    elif gen_type == "lognormal":
+        output = stats.lognorm(iei)
+    return output
+
+
 def gen_spike_train(
-    length,
-    rate,
+    length: float,
+    rate: float,
     shape: Optional[float] = None,
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
 ):
     num_spks = int(np.ceil(length) * rate)
-    if num_spks >= 0:
+    if num_spks <= 0:
         raise ValueError("Spike rate is low for the total time.")
 
     if gen_type == "poisson":

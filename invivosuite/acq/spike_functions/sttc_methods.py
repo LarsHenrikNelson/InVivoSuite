@@ -1,10 +1,111 @@
-from typing import Union
-
+from typing import Literal, Union
 
 import numpy as np
 from numba import njit
+from numpy.random import default_rng
 
-__all__ = ["sttc", "sttc_ele", "sttc_python"]
+from .synthetic_spike_train import gen_spike_train
+
+__all__ = ["_gen_bootstrap_sttc", "_shuffle_bootstrap_sttc", "sttc", "sttc_ele", "sttc_python"]
+
+
+def _gen_bootstrap_sttc(
+        spk_rate_1: float,
+        spk_rate_2: float,
+        shape_1: float,
+        shape_2: float,
+        dt: Union[float, int],
+        start: Union[float, int],
+        end: Union[float, int],
+        gen_type: Literal[
+            "poisson", "gamma", "inverse_gaussian", "lognormal"
+        ] = "poisson",
+        reps: int = 1000,
+        sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+        output_type: Literal["sec", "ms", "samples"] = "ms",
+    ):
+        sttc_data = np.zeros(reps)
+        rec_length = end - start
+        if output_type == "ms":
+            multiplier = 1000
+        else:
+            multiplier = 1
+        for i in range(reps):
+            indexes1 = (
+                gen_spike_train(
+                    rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type
+                )
+                * multiplier
+            )
+            indexes2 = (
+                gen_spike_train(
+                    rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type
+                )
+                * multiplier
+            )
+            if sttc_version == "ivs":
+                sttc_index, _, _, _, _ = sttc(
+                    indexes1, indexes2, dt=dt, start=start, stop=end
+                )
+                sttc_data[i] = sttc_index
+            elif sttc_version == "elephant":
+                sttc_index = sttc_ele(indexes1, indexes2, dt=dt, start=start, stop=end)
+                sttc_data[i] = sttc_index
+            else:
+                sttc_index = sttc_python(
+                    indexes1,
+                    indexes2,
+                    indexes1.size,
+                    indexes2.size,
+                    dt=dt,
+                    start=start,
+                    stop=end,
+                )
+                sttc_data[i] = sttc_index
+        return
+
+def _shuffle_bootstrap_sttc(
+        iei_1: np.ndarray,
+        iei_2: np.ndarray,
+        dt: float,
+        start: float,
+        end: float,
+        reps: int,
+        sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+    ):
+
+        rng = default_rng(seed=42)
+
+        sttc_data = np.zeros(reps)
+        for i in range(reps):
+            temp_1 = rng.permutation(iei_1)
+            temp_2 = rng.permutation(iei_2)
+
+            shuffle_times_1 = np.cumsum(temp_1)
+            shuffle_times_2 = np.cumsum(temp_2)
+
+            if sttc_version == "ivs":
+                sttc_index, _, _, _, _ = sttc(
+                    shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
+                )
+                sttc_data[i] = sttc_index
+            elif sttc_version == "elephant":
+                sttc_index = sttc_ele(
+                    shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
+                )
+                sttc_data[i] = sttc_index
+            else:
+                sttc_index = sttc_python(
+                    shuffle_times_1,
+                    shuffle_times_2,
+                    shuffle_times_1.size,
+                    shuffle_times_2.size,
+                    dt=dt,
+                    start=start,
+                    stop=end,
+                )
+                sttc_data[i] = sttc_index
+        return sttc_data
 
 
 @njit()

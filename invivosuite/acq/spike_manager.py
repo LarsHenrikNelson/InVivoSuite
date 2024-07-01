@@ -1,19 +1,21 @@
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, TypedDict, Union, Optional
+from typing import Literal, Optional, TypedDict, Union
 
 import numpy as np
-
+from scipy import stats
 from send2trash import send2trash
 
-from ..utils import save_tsv, concatenate_dicts
+from ..utils import concatenate_dicts, save_tsv
 from .spike_functions import (
     _template_channels,
     amplitude_cutoff,
     bin_spikes,
     create_binary_spikes,
     create_continuous_spikes,
+    fit_iei,
+    _gen_bootstrap_sttc,
     get_burst_data,
     get_template_channels,
     isi_violations,
@@ -23,9 +25,10 @@ from .spike_functions import (
     sfa_divisor,
     sfa_local_var,
     sfa_rlocal_var,
+    _shuffle_bootstrap_sttc,
+    sttc,
     sttc_ele,
     sttc_python,
-    sttc,
     template_properties,
 )
 
@@ -229,7 +232,7 @@ class SpkManager:
         fs: float = 40000.0,
         nperseg: int = 0,
         window: Literal["exponential", "gaussian"] = "gaussian",
-        sigma: float = 200
+        sigma: float = 200,
     ):
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
@@ -239,7 +242,7 @@ class SpkManager:
             nperseg=nperseg,
             fs=fs,
             window=window,
-            sigma=sigma
+            sigma=sigma,
         )
 
     def get_reconstucted_cluster(self, cluster_id: int) -> np.ndarray:
@@ -1195,8 +1198,9 @@ class SpkManager:
         start: Union[float, int] = -1,
         end: Union[float, int] = -1,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
-        output_type: Literal["sec", "ms", "samples"] = "samples",
+        output_type: Literal["sec", "ms", "samples"] = "ms",
         fs: float = 40000.0,
+        test_sig: Optional[Literal["shuffle", "generate"]] = None,
         callback: Callable = print,
     ):
         output_index = 0
@@ -1223,6 +1227,7 @@ class SpkManager:
             indexes1 = self.get_cluster_spike_times(
                 clust_id1, output_type=output_type, fs=fs
             )
+            iei_1 = np.diff(indexes1)
 
             for index2 in range(index1 + 1, self.cluster_ids.size):
                 clust_id2 = self.cluster_ids[index2]
@@ -1230,6 +1235,7 @@ class SpkManager:
                 indexes2 = self.get_cluster_spike_times(
                     clust_id2, output_type=output_type, fs=fs
                 )
+                iei_2 = np.diff(indexes2)
 
                 if sttc_version == "ivs":
                     sttc_index, num1dt, num1_2, num2dt, num2_1 = sttc(
