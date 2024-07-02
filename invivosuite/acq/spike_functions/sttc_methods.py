@@ -3,109 +3,161 @@ from typing import Literal, Union
 import numpy as np
 from numba import njit
 from numpy.random import default_rng
+from scipy import stats
 
-from .synthetic_spike_train import gen_spike_train
+from .synthetic_spike_train import gen_spike_train, _fit_iei
 
-__all__ = ["_gen_bootstrap_sttc", "_shuffle_bootstrap_sttc", "sttc", "sttc_ele", "sttc_python"]
+__all__ = [
+    "_gen_bootstrap_sttc",
+    "_shuffle_bootstrap_sttc",
+    "sttc",
+    "sttc_ele",
+    "sttc_python",
+]
+
+
+def _sttc_sig(
+    sttc_value: float,
+    iei_1: np.ndarray,
+    iei_2: np.ndarray,
+    dt: float,
+    start: float,
+    end: float,
+    reps: int,
+    sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+    test_version: Literal["distribution", "shuffle"] = "shuffle",
+    **kwargs):
+    if test_version == "shuffle":
+        dist = _shuffle_bootstrap_sttc(
+            iei_1=iei_1,
+            iei_2=iei_2,
+            dt=dt,
+            start=start,
+            end=end,
+            reps=reps,
+            sttc_version=sttc_version,
+        )
+    else:
+        fit1 = _fit_iei(iei_1)
+        fit2 = _fit_iei(iei_2)
+        dist = _gen_bootstrap_sttc(
+            spk_rate_1=1 / (iei_1.size + 1),
+            spk_rate_2=1 / (iei_1.size + 1),
+            shape_1=fit1[0],
+            shape_2=fit2[0],
+            start=start,
+            end=end,
+            sttc_version=sttc_version,
+            **kwargs,
+        )
+
+    emp_diff_pctile_rnk = stats.percentileofscore(
+        dist, sttc_value
+    )
+    auc_right = emp_diff_pctile_rnk / 100
+    auc_left = 1 - emp_diff_pctile_rnk / 100
+    auc_tail = auc_left if auc_left < auc_right else auc_right
+    p_value = auc_tail * 2
+    return p_value
 
 
 def _gen_bootstrap_sttc(
-        spk_rate_1: float,
-        spk_rate_2: float,
-        shape_1: float,
-        shape_2: float,
-        dt: Union[float, int],
-        start: Union[float, int],
-        end: Union[float, int],
-        gen_type: Literal[
-            "poisson", "gamma", "inverse_gaussian", "lognormal"
-        ] = "poisson",
-        reps: int = 1000,
-        sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
-        output_type: Literal["sec", "ms", "samples"] = "ms",
-    ):
-        sttc_data = np.zeros(reps)
-        rec_length = end - start
-        if output_type == "ms":
-            multiplier = 1000
+    spk_rate_1: float,
+    spk_rate_2: float,
+    shape_1: float,
+    shape_2: float,
+    dt: Union[float, int],
+    start: Union[float, int],
+    end: Union[float, int],
+    gen_type: Literal[
+        "poisson", "gamma", "inverse_gaussian", "lognormal"
+    ] = "poisson",
+    reps: int = 1000,
+    sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+    output_type: Literal["sec", "ms", "samples"] = "ms",
+):
+    sttc_data = np.zeros(reps)
+    rec_length = end - start
+    if output_type == "ms":
+        multiplier = 1000
+    else:
+        multiplier = 1
+    for i in range(reps):
+        indexes1 = (
+            gen_spike_train(
+                rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type
+            )
+            * multiplier
+        )
+        indexes2 = (
+            gen_spike_train(
+                rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type
+            )
+            * multiplier
+        )
+        if sttc_version == "ivs":
+            sttc_index, _, _, _, _ = sttc(
+                indexes1, indexes2, dt=dt, start=start, stop=end
+            )
+            sttc_data[i] = sttc_index
+        elif sttc_version == "elephant":
+            sttc_index = sttc_ele(indexes1, indexes2, dt=dt, start=start, stop=end)
+            sttc_data[i] = sttc_index
         else:
-            multiplier = 1
-        for i in range(reps):
-            indexes1 = (
-                gen_spike_train(
-                    rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type
-                )
-                * multiplier
+            sttc_index = sttc_python(
+                indexes1,
+                indexes2,
+                indexes1.size,
+                indexes2.size,
+                dt=dt,
+                start=start,
+                stop=end,
             )
-            indexes2 = (
-                gen_spike_train(
-                    rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type
-                )
-                * multiplier
-            )
-            if sttc_version == "ivs":
-                sttc_index, _, _, _, _ = sttc(
-                    indexes1, indexes2, dt=dt, start=start, stop=end
-                )
-                sttc_data[i] = sttc_index
-            elif sttc_version == "elephant":
-                sttc_index = sttc_ele(indexes1, indexes2, dt=dt, start=start, stop=end)
-                sttc_data[i] = sttc_index
-            else:
-                sttc_index = sttc_python(
-                    indexes1,
-                    indexes2,
-                    indexes1.size,
-                    indexes2.size,
-                    dt=dt,
-                    start=start,
-                    stop=end,
-                )
-                sttc_data[i] = sttc_index
-        return
+            sttc_data[i] = sttc_index
+    return
 
 def _shuffle_bootstrap_sttc(
-        iei_1: np.ndarray,
-        iei_2: np.ndarray,
-        dt: float,
-        start: float,
-        end: float,
-        reps: int,
-        sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
-    ):
+    iei_1: np.ndarray,
+    iei_2: np.ndarray,
+    dt: float,
+    start: float,
+    end: float,
+    reps: int,
+    sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+):
 
-        rng = default_rng(seed=42)
+    rng = default_rng(seed=42)
 
-        sttc_data = np.zeros(reps)
-        for i in range(reps):
-            temp_1 = rng.permutation(iei_1)
-            temp_2 = rng.permutation(iei_2)
+    sttc_data = np.zeros(reps)
+    for i in range(reps):
+        temp_1 = rng.permutation(iei_1)
+        temp_2 = rng.permutation(iei_2)
 
-            shuffle_times_1 = np.cumsum(temp_1)
-            shuffle_times_2 = np.cumsum(temp_2)
+        shuffle_times_1 = np.cumsum(temp_1)
+        shuffle_times_2 = np.cumsum(temp_2)
 
-            if sttc_version == "ivs":
-                sttc_index, _, _, _, _ = sttc(
-                    shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
-                )
-                sttc_data[i] = sttc_index
-            elif sttc_version == "elephant":
-                sttc_index = sttc_ele(
-                    shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
-                )
-                sttc_data[i] = sttc_index
-            else:
-                sttc_index = sttc_python(
-                    shuffle_times_1,
-                    shuffle_times_2,
-                    shuffle_times_1.size,
-                    shuffle_times_2.size,
-                    dt=dt,
-                    start=start,
-                    stop=end,
-                )
-                sttc_data[i] = sttc_index
-        return sttc_data
+        if sttc_version == "ivs":
+            sttc_index, _, _, _, _ = sttc(
+                shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
+            )
+            sttc_data[i] = sttc_index
+        elif sttc_version == "elephant":
+            sttc_index = sttc_ele(
+                shuffle_times_1, shuffle_times_2, dt=dt, start=start, stop=end
+            )
+            sttc_data[i] = sttc_index
+        else:
+            sttc_index = sttc_python(
+                shuffle_times_1,
+                shuffle_times_2,
+                shuffle_times_1.size,
+                shuffle_times_2.size,
+                dt=dt,
+                start=start,
+                stop=end,
+            )
+            sttc_data[i] = sttc_index
+    return sttc_data
 
 
 @njit()
@@ -361,5 +413,3 @@ def sttc_python(spiketrain_1,spiketrain_2,N1,N2,dt,start=0,stop=3e5):
     PB = PB / float(N2)
     index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
     return index
-
- 

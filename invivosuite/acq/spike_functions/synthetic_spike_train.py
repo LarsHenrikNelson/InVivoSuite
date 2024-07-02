@@ -4,14 +4,14 @@ import numpy as np
 from scipy import stats
 
 
-__all__ = ["fit_iei", "gen_spike_train"]
+__all__ = ["_fit_iei", "gen_spike_train"]
 
 
-def fit_iei(
-    spk_train: np.ndarray,
+def _fit_iei(
+    iei: np.ndarray,
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
 ):
-    iei = np.diff(spk_train)
+    # iei = np.diff(spk_train)
     if gen_type == "poisson":
         output = stats.expon.fit(iei)
     elif gen_type == "gamma":
@@ -28,6 +28,7 @@ def gen_spike_train(
     rate: float,
     shape: Optional[float] = None,
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+    output_type: Literal["sec", "ms"] = "ms",
 ):
     num_spks = int(np.ceil(length) * rate)
     if num_spks <= 0:
@@ -65,5 +66,8 @@ def gen_spike_train(
 
     stop = spikes.searchsorted(length)
     spikes = spikes[:stop]
+
+    if output_type == "ms":
+        spikes *= 1000.0
 
     return spikes

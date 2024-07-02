@@ -14,8 +14,6 @@ from .spike_functions import (
     bin_spikes,
     create_binary_spikes,
     create_continuous_spikes,
-    fit_iei,
-    _gen_bootstrap_sttc,
     get_burst_data,
     get_template_channels,
     isi_violations,
@@ -25,7 +23,6 @@ from .spike_functions import (
     sfa_divisor,
     sfa_local_var,
     sfa_rlocal_var,
-    _shuffle_bootstrap_sttc,
     sttc,
     sttc_ele,
     sttc_python,
@@ -1200,7 +1197,7 @@ class SpkManager:
         sttc_version: Literal["ivs", "elephant"] = "ivs",
         output_type: Literal["sec", "ms", "samples"] = "ms",
         fs: float = 40000.0,
-        test_sig: Optional[Literal["shuffle", "generate"]] = None,
+        test_sig: Optional[Literal["shuffle", "distribution"]] = None,
         callback: Callable = print,
     ):
         output_index = 0
@@ -1262,6 +1259,9 @@ class SpkManager:
                         stop=end,
                     )
                     sttc_data[output_index] = sttc_index
+
+                if test_sig:
+                    pass
 
                 cluster_ids[output_index, 0] = clust_id1
                 cluster_ids[output_index, 1] = clust_id2
