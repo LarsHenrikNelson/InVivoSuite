@@ -19,7 +19,7 @@ def _fit_iei(
     elif gen_type == "inverse_gaussian":
         output = stats.invgauss.fit(iei)
     elif gen_type == "lognormal":
-        output = stats.lognorm(iei)
+        output = stats.lognorm.fit(iei)
     return output
 
 

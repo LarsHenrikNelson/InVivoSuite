@@ -10,9 +10,10 @@ from .synthetic_spike_train import gen_spike_train, _fit_iei
 __all__ = [
     "_gen_bootstrap_sttc",
     "_shuffle_bootstrap_sttc",
-    "sttc",
+    "_sttc_sig",
     "sttc_ele",
     "sttc_python",
+    "sttc",
 ]
 
 
@@ -24,9 +25,11 @@ def _sttc_sig(
     start: float,
     end: float,
     reps: int,
+    input_type: Literal["sec", "ms"] = "ms",
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
     test_version: Literal["distribution", "shuffle"] = "shuffle",
-    **kwargs):
+    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+):
     if test_version == "shuffle":
         dist = _shuffle_bootstrap_sttc(
             iei_1=iei_1,
@@ -38,17 +41,22 @@ def _sttc_sig(
             sttc_version=sttc_version,
         )
     else:
-        fit1 = _fit_iei(iei_1)
-        fit2 = _fit_iei(iei_2)
+        iei_1 = iei_1 / 1000 if input_type == "ms" else iei_1
+        iei_2 = iei_2 / 1000 if input_type == "ms" else iei_2
+        fit1 = _fit_iei(iei_1, gen_type=gen_type)
+        fit2 = _fit_iei(iei_2, gen_type=gen_type)
+        correction_val = 1000 if input_type == "ms" else 1
         dist = _gen_bootstrap_sttc(
-            spk_rate_1=1 / (iei_1.size + 1),
-            spk_rate_2=1 / (iei_1.size + 1),
+            spk_rate_1=1 / (np.mean(iei_1)),
+            spk_rate_2=1 / (np.mean(iei_2)),
             shape_1=fit1[0],
             shape_2=fit2[0],
-            start=start,
-            end=end,
+            dt=dt/correction_val,
+            start=start/correction_val,
+            end=end/correction_val,
+            reps=reps,
             sttc_version=sttc_version,
-            **kwargs,
+            gen_type=gen_type,
         )
 
     emp_diff_pctile_rnk = stats.percentileofscore(
@@ -58,7 +66,7 @@ def _sttc_sig(
     auc_left = 1 - emp_diff_pctile_rnk / 100
     auc_tail = auc_left if auc_left < auc_right else auc_right
     p_value = auc_tail * 2
-    return p_value
+    return p_value, dist
 
 
 def _gen_bootstrap_sttc(
@@ -74,35 +82,42 @@ def _gen_bootstrap_sttc(
     ] = "poisson",
     reps: int = 1000,
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
-    output_type: Literal["sec", "ms", "samples"] = "ms",
 ):
+    """Boostraps the STTC value for two given spike rates, distribution shapes,
+    dt, start, end and distribution type. dt, start and end must be in seconds.
+
+    Args:
+        spk_rate_1 (float): Spike rate of unit 1
+        spk_rate_2 (float): Spike rate of unit 2
+        shape_1 (float): Shape of gen_type distribution for spk_rate_1
+        shape_2 (float): Shape of gen_type distribution for spk_rate_1
+        dt (Union[float, int]): dt for STTC test
+        start (Union[float, int]): Recording start time. Must be in seconds.
+        end (Union[float, int]): Recording end time. Must be in seconds.
+        gen_type (Literal[ &quot;poisson&quot;, &quot;gamma&quot;, &quot;inverse_gaussian&quot;, &quot;lognormal&quot; ], optional): Distrution used to generate synthetic spike trains. Defaults to "poisson".
+        reps (int, optional): Number of boostrap replications to use. Defaults to 1000.
+        sttc_version (Literal[&quot;ivs&quot;, &quot;elephant&quot;, &quot;python&quot;], optional): STTC version to use. ivs (numba), elephant (slow), python (slow). Defaults to "ivs".
+
+    Returns:
+        _type_: _description_
+    """
     sttc_data = np.zeros(reps)
     rec_length = end - start
-    if output_type == "ms":
-        multiplier = 1000
-    else:
-        multiplier = 1
     for i in range(reps):
         indexes1 = (
             gen_spike_train(
-                rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type
+                rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type, output_type="sec"
             )
-            * multiplier
         )
-        indexes2 = (
-            gen_spike_train(
-                rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type
-            )
-            * multiplier
+        indexes2 = gen_spike_train(
+            rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type, output_type="sec"
         )
         if sttc_version == "ivs":
             sttc_index, _, _, _, _ = sttc(
                 indexes1, indexes2, dt=dt, start=start, stop=end
             )
-            sttc_data[i] = sttc_index
         elif sttc_version == "elephant":
             sttc_index = sttc_ele(indexes1, indexes2, dt=dt, start=start, stop=end)
-            sttc_data[i] = sttc_index
         else:
             sttc_index = sttc_python(
                 indexes1,
@@ -113,8 +128,8 @@ def _gen_bootstrap_sttc(
                 start=start,
                 stop=end,
             )
-            sttc_data[i] = sttc_index
-    return
+        sttc_data[i] = sttc_index
+    return sttc_data
 
 def _shuffle_bootstrap_sttc(
     iei_1: np.ndarray,
