@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Literal, Optional, TypedDict, Union
 
 import numpy as np
-from scipy import stats
 from send2trash import send2trash
 
 from ..utils import concatenate_dicts, save_tsv
 from .spike_functions import (
+    _sttc_sig,
     _template_channels,
     amplitude_cutoff,
     bin_spikes,
@@ -93,6 +93,7 @@ class SpkManager:
         self._load_spike_times(load_type=load_type)
         self._load_amplitudes(load_type=load_type)
         self._load_spike_waveforms(load_type=load_type)
+        self._load_accepted_units(load_type=load_type)
 
     def _load_amplitudes(self, load_type: str = "r+"):
         if load_type == "memory":
@@ -171,6 +172,23 @@ class SpkManager:
             self.spike_waveforms = np.zeros((0, 0, 0))
             np.save(temp_path, self.spike_waveforms)
             self._load_spike_waveforms()
+
+    def _load_accepted_units(self, load_type: str = "r+"):
+        temp_path = self.ks_directory / "accepted_units.npy"
+        if temp_path.exists():
+            if load_type == "memory":
+                self.accepted_units = np.array(np.load(temp_path, "r"))
+            else:
+                self.accepted_units = np.load(temp_path, load_type)
+        else:
+            self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
+            self.accepted_units[:] = 1
+            np.save(temp_path, self.accepted_units)
+
+        if self.accepted_units.size != self.cluster_ids.size:
+            self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
+            self.accepted_units[:] = 1
+            np.save(temp_path, self.accepted_units)
 
     def get_cluster_spike_ids(self, cluster_id: int) -> np.ndarray:
         return np.where(self.spike_clusters == cluster_id)[0]
@@ -1198,6 +1216,10 @@ class SpkManager:
         output_type: Literal["sec", "ms", "samples"] = "ms",
         fs: float = 40000.0,
         test_sig: Optional[Literal["shuffle", "distribution"]] = None,
+        reps: int = 1000,
+        gen_type: Literal[
+            "poisson", "gamma", "inverse_gaussian", "lognormal"
+        ] = "poisson",
         callback: Callable = print,
     ):
         output_index = 0
@@ -1219,12 +1241,17 @@ class SpkManager:
             num1_2_array = np.zeros(size, dtype=int)
             num2_1_array = np.zeros(size, dtype=int)
 
+        if test_sig is not None:
+            sig_vals = np.zeros(size)
+
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
             indexes1 = self.get_cluster_spike_times(
                 clust_id1, output_type=output_type, fs=fs
             )
-            iei_1 = np.diff(indexes1)
+
+            if indexes1.size > 3:
+                iei_1 = np.diff(indexes1)
 
             for index2 in range(index1 + 1, self.cluster_ids.size):
                 clust_id2 = self.cluster_ids[index2]
@@ -1232,13 +1259,14 @@ class SpkManager:
                 indexes2 = self.get_cluster_spike_times(
                     clust_id2, output_type=output_type, fs=fs
                 )
-                iei_2 = np.diff(indexes2)
+
+                if indexes2.size > 3:
+                    iei_2 = np.diff(indexes2)
 
                 if sttc_version == "ivs":
                     sttc_index, num1dt, num1_2, num2dt, num2_1 = sttc(
                         indexes1, indexes2, dt=dt, start=start, stop=end
                     )
-                    sttc_data[output_index] = sttc_index
                     num1dt_array[output_index] = num1dt
                     num2dt_array[output_index] = num2dt
                     num1_2_array[output_index] = num1_2
@@ -1247,7 +1275,6 @@ class SpkManager:
                     sttc_index = sttc_ele(
                         indexes1, indexes2, dt=dt, start=start, stop=end
                     )
-                    sttc_data[output_index] = sttc_index
                 else:
                     sttc_index = sttc_python(
                         indexes1,
@@ -1258,11 +1285,27 @@ class SpkManager:
                         start=start,
                         stop=end,
                     )
-                    sttc_data[output_index] = sttc_index
 
-                if test_sig:
-                    pass
+                if test_sig is not None:
+                    if indexes1.size > 3 and indexes2.size > 3:
+                        sig, _ = _sttc_sig(
+                            sttc_value=sttc_index,
+                            iei_1=iei_1,
+                            iei_2=iei_2,
+                            dt=5,
+                            start=start,
+                            end=end,
+                            reps=reps,
+                            sttc_version="ivs",
+                            test_version=test_sig,
+                            gen_type=gen_type,
+                            input_type=output_type,
+                        )
+                        sig_vals[output_index] = sig
+                    else:
+                        sig_vals[output_index] = 0.9999
 
+                sttc_data[output_index] = sttc_index
                 cluster_ids[output_index, 0] = clust_id1
                 cluster_ids[output_index, 1] = clust_id2
                 cluster_ids[output_index, 2] = indexes1.size
@@ -1280,6 +1323,8 @@ class SpkManager:
             data["2_before_1"] = num2_1_array
             data["1_dt_2"] = num1dt_array
             data["2_dt_1"] = num2dt_array
+        if test_sig is not None:
+            data["sttc_sig"] = sig_vals
         return data
 
     def compute_correlation(

@@ -270,15 +270,14 @@ def sttc(
         pA = pA_a / float(spk_times_1.size)
         pB_b, kB = run_P(spk_times_2, spk_times_1, dt)
         pB = pB_b / float(spk_times_2.size)
-        # if (pA * tB) == 1 and (pB * tA) == 1:
-        #     index = 1.0
-        # elif (pA * tB) == 1:
-        #     index = 0.5 + 0.5 * (pB - tA) / (1 - pB * tA)
-        # elif (pB * tA) == 1:
-        #     index = 0.5 + 0.5 * (pA - tB) / (1 - pA * tB)
-        # else:
-        #     index = 0.5 * (pA - tB) / (1 - tB * pA) + 0.5 * (pB - tA) / (1 - tA * pB)
-        index = 0.5 * (pA - tB) / (1 - tB * pA) + 0.5 * (pB - tA) / (1 - tA * pB)
+        if (pA * tB) == 1 and (pB * tA) == 1:
+            index = 1.0
+        elif (pA * tB) == 1:
+            index = 0.5 + 0.5 * (pB - tA) / (1 - pB * tA)
+        elif (pB * tA) == 1:
+            index = 0.5 + 0.5 * (pA - tB) / (1 - pA * tB)
+        else:
+            index = 0.5 * (pA - tB) / (1 - tB * pA) + 0.5 * (pB - tA) / (1 - tA * pB)
         return index, pA_a, kA, pB_b, kB
 
 

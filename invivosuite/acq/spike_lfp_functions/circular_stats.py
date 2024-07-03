@@ -45,7 +45,7 @@ def ppc_numba(spike_phases):
             temp_sum[index2 - index1] = dp
         outer_sums[index1] = temp_sum.sum()
     dp_sum = np.sum(outer_sums)
-    ppc_output = dp_sum / int(len(spike_phases) * (len(spike_phases) - 1) / 2)
+    ppc_output = dp_sum / (len(spike_phases) * (len(spike_phases) - 1) // 2)
     return ppc_output
 
 
