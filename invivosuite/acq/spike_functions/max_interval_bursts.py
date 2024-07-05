@@ -196,7 +196,7 @@ def max_int_bursts(
     if max_int is None:
         max_int = max_end
     i = 0
-    while i < spike_temp.size - min_count:
+    while i < (spike_temp.size - min_count):
         if (spike_temp[i + 1] - spike_temp[i]) < max_start:
             bur = []
             bur.extend((spike_temp[i], spike_temp[i + 1]))

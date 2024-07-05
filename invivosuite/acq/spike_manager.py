@@ -426,7 +426,7 @@ class SpkManager:
         props_list = []
         mean_list = []
         for clust_id in self.cluster_ids:
-            spk_times = self.get_cluster_spike_times(clust_id)
+            spk_times = self.get_cluster_spike_times(clust_id, output_type="sec")
             b_data = max_int_bursts(
                 spk_times,
                 fs,
@@ -499,6 +499,7 @@ class SpkManager:
         max_int: float = 0.3,
         max_end: float = 0.34,
         nperseg: int = 1,
+        dt: int = 0,
     ):
         b_data = self.get_cluster_bursts(
             cluster_id=cluster_id,
@@ -512,8 +513,8 @@ class SpkManager:
         length = self.end - self.start
         output_data = np.zeros(length // nperseg, dtype=int)
         for i in b_data:
-            start = i[0] // nperseg
-            end = i[1] // nperseg
+            start = max(0, i[0] // nperseg - dt)
+            end = min(i[1] // nperseg + dt, output_data.size)
             output_data[start:end] = 1
         return output_data
 
