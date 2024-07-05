@@ -98,7 +98,7 @@ def inter_burst_iei(bursts: list[np.ndarray]):
 
 def spikes_per_burst(bursts: list[np.ndarray]) -> np.ndarray[float]:
     if len(bursts) == 0:
-        return 0
+        return np.array([])
     output = np.zeros(len(bursts))
     for index, b in enumerate(bursts):
         output[index] = len(b)
@@ -176,7 +176,7 @@ def get_burst_data(
     abi_sfa = _sfa_abi(iei_bursts)
     b_len = bursts_len(bursts)
     props_dict = BurstProps(
-        ave_burst_len=b_len,
+        burst_len=b_len,
         intra_burst_iei=intra_iei,
         spikes_per_burst=spk_per_burst,
         inter_burst_iei=inter_iei,

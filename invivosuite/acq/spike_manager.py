@@ -1,7 +1,7 @@
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, Optional, TypedDict, Union
+from typing import Literal, Optional, Union
 
 import numpy as np
 from send2trash import send2trash
@@ -30,59 +30,6 @@ from .spike_functions import (
 )
 
 Callback = Callable[[str], None]
-
-
-class SpikeProperties(TypedDict):
-    presence_ratio: np.ndarray[float]
-    iei: np.ndarray[float]
-    n_spikes: np.ndarray[int]
-    cluster_id: np.ndarray[int]
-    contampct: np.ndarray[float]
-    fp_rate: np.ndarray[float]
-    num_violations: np.ndarray[float]
-    fr: np.ndarray[float]
-    fr_iei: np.ndarray[float]
-    amplitude_cutoff: np.ndarray[float]
-    fano_factor: np.ndarray[float]
-    divisor_sfa: np.ndarray[float]
-    abi_sfa: np.ndarray[float]
-    local_sfa: np.ndarray[float]
-    rlocal_sfa: np.ndarray[float]
-
-
-class TemplateProperties(TypedDict):
-    hwL: np.ndarray[float]
-    hwL_len: np.ndarray[float]
-    hwR: np.ndarray[float]
-    hwR_len: np.ndarray[float]
-    full_width: np.ndarray[float]
-    start: np.ndarray[float]
-    end: np.ndarray[float]
-    center: np.ndarray[float]
-    min_x: np.ndarray[float]
-    center_y: np.ndarray[float]
-    start_y: np.ndarray[float]
-    end_y: np.ndarray[float]
-    min_y: np.ndarray[float]
-    stdev: np.ndarray[float]
-    channel: np.ndarray[int]
-
-
-class BurstProperties(TypedDict):
-    num_bursts: np.ndarray[int]
-    ave_burst_len: np.ndarray[float]
-    intra_burst_iei: np.ndarray[float]
-    inter_burst_iei: np.ndarray[float]
-    ave_spikes_burst: np.ndarray[float]
-    divisor_sfa_b: np.ndarray[float]
-    abi_sfa_b: np.ndarray[float]
-    local_sfa_b: np.ndarray[float]
-    rlocal_sfa_b: np.ndarray[float]
-    peak_divisor_sfa_b: np.ndarray[float]
-    peak_abi_sfa_b: np.ndarray[float]
-    peak_local_sfa_b: np.ndarray[float]
-    peak_rlocal_sfa_b: np.ndarray[float]
-    total_time: np.ndarray[float]
 
 
 class SpkManager:
@@ -336,6 +283,63 @@ class SpkManager:
                 index += 1
         return output
 
+    def get_cluster_spike_properties(
+        self,
+        cluster_id: int,
+        fs: int = 40000,
+        start: int = -1,
+        end: int = -1,
+        isi_threshold: float = 0.0015,
+        R: Optional[float] = 0.005,
+        min_isi: float = 0.0,
+        nperseg: int = 40,
+        output_type: Literal["sec", "ms"] = "sec",
+    ):
+        output_dict = {}
+        times = self.get_cluster_spike_times(cluster_id, fs=fs, output_type="sec")
+        amps = self.get_cluster_spike_amplitudes(cluster_id)
+        binned = self.get_binned_spike_cluster(cluster_id=cluster_id, nperseg=nperseg)
+        output_dict["fano_factor"] = binned.var() / binned.mean()
+        if times.size > 2:
+            isi = np.diff(times)
+            mean_isi = np.mean(isi)
+            output_dict["iei"] = mean_isi
+            if output_type == "sec":
+                output_dict["fr_iei"] = 1 / mean_isi
+            else:
+                output_dict["fr_iei"] = 1000 / mean_isi
+            output_dict["fr"] = times.size / (end - start)
+            output_dict["abi_sfa"] = sfa_abi(isi)
+            output_dict["local_sfa"] = sfa_local_var(isi)
+            output_dict["rlocal_sfa"] = sfa_rlocal_var(isi, R)
+            output_dict["divisor_sfa"] = sfa_divisor(isi)
+            fpRate, nv = isi_violations(
+                spike_train=times,
+                min_time=start,
+                max_time=end,
+                isi_threshold=isi_threshold,
+                min_isi=min_isi,
+            )
+            output_dict["fp_rate"] = fpRate
+            output_dict["num_violations"] = nv
+        else:
+            output_dict["iei"] = 0
+            output_dict["fr"] = 0
+            output_dict["abi_sfa"] = np.nan
+            output_dict["local_sfa"] = np.nan
+            output_dict["rlocal_sfa"] = np.nan
+            output_dict["divisor_sfa"] = np.nan
+        output_dict["n_spikes"] = times.size
+        if output_type == "sec":
+            divisor = fs
+        else:
+            divisor = fs / 1000
+        pr = presence(times, self.start / divisor, self.end / divisor)
+        output_dict["presence_ratio"] = pr["presence_ratio"]
+        cutoff = amplitude_cutoff(amps)
+        output_dict["amp_cutoff"] = cutoff
+        return output_dict
+
     def get_spikes_properties(
         self,
         fs: int = 40000,
@@ -346,89 +350,30 @@ class SpkManager:
         min_isi: float = 0.0,
         nperseg: int = 40,
         output_type: Literal["sec", "ms"] = "sec",
-    ) -> SpikeProperties:
+    ):
         if start == -1:
             start = self.start / fs
         if end == -1:
             end = self.end / fs
 
-        size = len(self.cluster_ids)
+        output_list = []
 
-        presence_ratios = np.zeros(size)
-        iei = np.zeros(size)
-        n_spikes = np.zeros(size, dtype=int)
-        fr_iei = np.zeros(size)
-        fr = np.zeros(size)
-        frate = np.zeros(size)
-        abi_sfa = np.zeros(size)
-        local_sfa = np.zeros(size)
-        rlocal_sfa = np.zeros(size)
-        div_sfa = np.zeros(size)
-        num_violations = np.zeros(size, dtype=int)
-        amp_cutoff = np.zeros(size)
-        ff = np.zeros(size)
+        for clust_id in self.cluster_ids:
+            data = self.get_cluster_spike_properties(
+                cluster_id=clust_id,
+                fs=fs,
+                start=start,
+                end=end,
+                isi_threshold=isi_threshold,
+                min_isi=min_isi,
+                nperseg=nperseg,
+                output_type=output_type,
+            )
+            data["cluster_id"] = clust_id
+            output_list.append(data)
 
-        for i in range(size):
-            clust_id = self.cluster_ids[i]
-            times = self.get_cluster_spike_times(clust_id, fs=fs, output_type="sec")
-            amps = self.get_cluster_spike_amplitudes(clust_id)
-            binned = self.get_binned_spike_cluster(cluster_id=clust_id, nperseg=nperseg)
-            ff[i] = binned.var() / binned.mean()
-            if times.size > 2:
-                isi = np.diff(times)
-                mean_isi = np.mean(isi)
-                iei[i] = mean_isi
-                if output_type == "sec":
-                    fr_iei[i] = 1 / mean_isi
-                else:
-                    fr_iei[i] = 1000 / mean_isi
-                fr[i] = times.size / (end - start)
-                abi_sfa[i] = sfa_abi(isi)
-                local_sfa[i] = sfa_local_var(isi)
-                rlocal_sfa[i] = sfa_rlocal_var(isi, R)
-                div_sfa[i] = sfa_divisor(isi)
-                fpRate, nv = isi_violations(
-                    spike_train=times,
-                    min_time=start,
-                    max_time=end,
-                    isi_threshold=isi_threshold,
-                    min_isi=min_isi,
-                )
-                frate[i] = fpRate
-                num_violations[i] = nv
-            else:
-                iei[i] = 0
-                fr[i] = 0
-                abi_sfa[i] = np.nan
-                local_sfa[i] = np.nan
-                rlocal_sfa[i] = np.nan
-                div_sfa[i] = np.nan
-            n_spikes[i] = times.size
-            if output_type == "sec":
-                divisor = fs
-            else:
-                divisor = fs / 1000
-            pr = presence(times, self.start / divisor, self.end / divisor)
-            presence_ratios[i] = pr["presence_ratio"]
-            cutoff = amplitude_cutoff(amps)
-            amp_cutoff[i] = cutoff
-        data = SpikeProperties(
-            presence_ratio=presence_ratios,
-            iei=iei,
-            fr_iei=fr_iei,
-            n_spikes=n_spikes,
-            cluster_id=self.cluster_ids,
-            fr=fr,
-            fp_rate=frate,
-            num_violations=num_violations,
-            amplitude_cutoff=amp_cutoff,
-            fano_factor=ff,
-            divisor_sfa=div_sfa,
-            abi_sfa=abi_sfa,
-            local_sfa=local_sfa,
-            rlocal_sfa=rlocal_sfa,
-        )
-        return data
+        output_list = concatenate_dicts(output_list)
+        return output_list
 
     def get_templates_properties(
         self,
@@ -438,24 +383,10 @@ class SpkManager:
         total_chans: int = 64,
         upsample_factor: int = 2,
         negative: bool = True,
-    ) -> TemplateProperties:
-        hwL = np.zeros(self.cluster_ids.size)
-        hwL_len = np.zeros(self.cluster_ids.size)
-        hwR = np.zeros(self.cluster_ids.size)
-        hwR_len = np.zeros(self.cluster_ids.size)
-        full_width = np.zeros(self.cluster_ids.size)
-        start_x = np.zeros(self.cluster_ids.size)
-        end_x = np.zeros(self.cluster_ids.size)
-        center_x = np.zeros(self.cluster_ids.size)
-        min_x = np.zeros(self.cluster_ids.size)
-        start_y = np.zeros(self.cluster_ids.size)
-        end_y = np.zeros(self.cluster_ids.size)
-        center_y = np.zeros(self.cluster_ids.size)
-        min_y = np.zeros(self.cluster_ids.size)
-        stdevs = np.zeros(self.cluster_ids.size)
-        channel = np.zeros(self.cluster_ids.size, dtype=int)
+    ):
+        t_props_list = []
         for temp_index in range(self.cluster_ids.size):
-            i = self.cluster_ids[temp_index]
+            cluster_id = self.cluster_ids[temp_index]
             chan, start_chan, _ = _template_channels(
                 templates[temp_index, :, :], nchans=nchans, total_chans=total_chans
             )
@@ -465,44 +396,17 @@ class SpkManager:
                 upsample_factor=upsample_factor,
                 negative=negative,
             )
-            hwL[temp_index] = t_props["hwL"]
-            hwL_len[temp_index] = t_props["hwL_len"]
-            hwR[temp_index] = t_props["hwR"]
-            hwR_len[temp_index] = t_props["hwR_len"]
-            full_width[temp_index] = t_props["full_width"]
-            start_x[temp_index] = t_props["start"]
-            end_x[temp_index] = t_props["end"]
-            center_x[temp_index] = t_props["center"]
-            min_x[temp_index] = t_props["min_x"]
-            center_y[temp_index] = t_props["center_y"]
-            start_y[temp_index] = t_props["start_y"]
-            end_y[temp_index] = t_props["end_y"]
-            min_y[temp_index] = t_props["min_y"]
-            indexes = np.where(self.spike_clusters == i)[0]
+            indexes = np.where(self.spike_clusters == cluster_id)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
             template_stdev = np.mean(
                 np.std(temp_spikes_waveforms, axis=0)[:, int(chan - start_chan)]
             )
-            stdevs[temp_index] = template_stdev
-            channel[temp_index] = chan
-        temp = TemplateProperties(
-            hwL=hwL,
-            hwR=hwR,
-            hwL_len=hwL_len,
-            hwR_len=hwR_len,
-            full_width=full_width,
-            start=start_x,
-            end=end_x,
-            center=center_x,
-            min_x=min_x,
-            start_y=start_y,
-            end_y=end_y,
-            center_y=center_y,
-            min_y=min_y,
-            stdev=stdevs,
-            channel=channel,
-        )
-        return temp
+            t_props["cluster_id"] = cluster_id
+            t_props["channel"] = chan
+            t_props["stdev"] = template_stdev
+            t_props_list.append(t_props)
+        t_props = concatenate_dicts(t_props_list)
+        return t_props
 
     def get_burst_properties(
         self,
@@ -514,23 +418,10 @@ class SpkManager:
         R: float = 0.005,
         output_type: Literal["sec", "ms", "sample"] = "sec",
         fs: Union[float, int] = 40000,
-    ) -> BurstProperties:
-        other_props = []
-        num_bursts = np.ndarray(self.cluster_ids.size, dtype=int)
-        ave_burst_len = np.ndarray(self.cluster_ids.size, dtype=float)
-        intra_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
-        inter_burst_iei = np.ndarray(self.cluster_ids.size, dtype=float)
-        ave_spikes_burst = np.ndarray(self.cluster_ids.size, dtype=float)
-        ave_divisor = np.ndarray(self.cluster_ids.size, dtype=float)
-        ave_abi = np.ndarray(self.cluster_ids.size, dtype=float)
-        ave_local = np.ndarray(self.cluster_ids.size, dtype=float)
-        ave_rlocal = np.ndarray(self.cluster_ids.size, dtype=float)
-        peak_divisor = np.ndarray(self.cluster_ids.size, dtype=float)
-        peak_abi = np.ndarray(self.cluster_ids.size, dtype=float)
-        peak_local = np.ndarray(self.cluster_ids.size, dtype=float)
-        peak_rlocal = np.ndarray(self.cluster_ids.size, dtype=float)
-        total_time = np.ndarray(self.cluster_ids.size, dtype=float)
-        for cluster_index, clust_id in enumerate(self.cluster_ids):
+    ):
+        props_list = []
+        mean_list = []
+        for clust_id in self.cluster_ids:
             spk_times = self.get_cluster_spike_times(clust_id)
             b_data = max_int_bursts(
                 spk_times,
@@ -543,41 +434,13 @@ class SpkManager:
                 output_type=output_type,
             )
             props_dict, burst_dict = get_burst_data(b_data, R)
-            num_bursts[cluster_index] = burst_dict["num_bursts"]
-            ave_burst_len[cluster_index] = burst_dict["ave_burst_len"]
-            intra_burst_iei[cluster_index] = burst_dict["intra_burst_iei"]
-            inter_burst_iei[cluster_index] = burst_dict["inter_burst_iei"]
-            ave_spikes_burst[cluster_index] = burst_dict["ave_spikes_per_burst"]
-            ave_divisor[cluster_index] = burst_dict["ave_divisor_sfa"]
-            ave_abi[cluster_index] = burst_dict["ave_abi_sfa"]
-            ave_local[cluster_index] = burst_dict["ave_local_sfa"]
-            ave_rlocal[cluster_index] = burst_dict["ave_rlocal_sfa"]
-            peak_divisor[cluster_index] = burst_dict["peak_divisor_sfa"]
-            peak_abi[cluster_index] = burst_dict["peak_abi_sfa"]
-            peak_local[cluster_index] = burst_dict["peak_local_sfa"]
-            peak_rlocal[cluster_index] = burst_dict["peak_rlocal_sfa"]
-            total_time[cluster_index] = burst_dict["total_burst_time"]
-            props_dict["cluster_id"] = [clust_id] * len(b_data)
-            other_props.append(props_dict)
-        burst_props = BurstProperties(
-            ave_burst_len=ave_burst_len,
-            num_bursts=num_bursts,
-            intra_burst_iei=intra_burst_iei,
-            inter_burst_iei=inter_burst_iei,
-            ave_spikes_burst=ave_spikes_burst,
-            divisor_sfa_b=ave_divisor,
-            abi_sfa_b=ave_abi,
-            local_sfa_b=ave_local,
-            rlocal_sfa_b=ave_rlocal,
-            total_time=total_time,
-            peak_divisor_sfa_b=peak_divisor,
-            peak_abi_sfa_b=peak_abi,
-            peak_local_sfa_b=peak_local,
-            peak_rlocal_sfa_b=peak_rlocal,
-        )
-        other_props = [i for i in other_props if i["cluster_id"]]
-        other_props = concatenate_dicts(other_props)
-        return burst_props, other_props
+            burst_dict["cluster_id"] = clust_id
+            mean_list.append(burst_dict)
+            props_dict["cluster_id"] = np.array([clust_id] * len(b_data))
+            props_list.append(props_dict)
+        mean_list = concatenate_dicts(mean_list)
+        props_list = concatenate_dicts(props_list)
+        return props_list, mean_list
 
     def get_properties(
         self,
@@ -610,7 +473,7 @@ class SpkManager:
         spk_props = self.get_spikes_properties(
             fs=fs, isi_threshold=isi_threshold, min_isi=min_isi, nperseg=nperseg
         )
-        burst_props, other_burst_props = self.get_burst_properties(
+        other_burst_props, burst_props = self.get_burst_properties(
             min_count=min_count,
             min_dur=min_dur,
             max_start=max_start,
@@ -618,7 +481,6 @@ class SpkManager:
             max_end=max_end,
             output_type=output_type,
         )
-        output_dict["cluster_id"] = self.cluster_ids
         output_dict.update(temp_props)
         output_dict.update(spk_props)
         output_dict.update(burst_props)
