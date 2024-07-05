@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict, Union
+from typing import Literal, Union
 
 import numpy as np
 
@@ -119,7 +119,7 @@ def intra_burst_iei(bursts: list[np.ndarray]) -> np.ndarray[float]:
         The average iei of all the bursts
     """
     if len(bursts) == 0:
-        return np.array([0.0])
+        return np.array([])
     output = np.zeros(len(bursts))
     for index, b in enumerate(bursts):
         output[index] = np.mean(np.diff(b))
@@ -128,79 +128,32 @@ def intra_burst_iei(bursts: list[np.ndarray]) -> np.ndarray[float]:
 
 def bursts_len(bursts: list[np.ndarray]) -> np.ndarray[float]:
     if len(bursts) == 0:
-        return np.array([0.0])
+        return np.array([])
     output = np.zeros(len(bursts))
     for index, b in enumerate(bursts):
         output[index] = b[-1] - b[0]
     return output
 
 
-class BurstProps(TypedDict):
-    burst_len: np.ndarray[float]
-    intra_burst_iei: np.ndarray[float]
-    inter_burst_iei: np.ndarray[float]
-    spikes_per_burst: np.ndarray[float]
-    local_sfa: np.ndarray[float]
-    rlocal_sfa: np.ndarray[float]
-    divisor_sfa: np.ndarray[float]
-    abi_sfa: np.ndarray[float]
-
-
-class BurstPropsMeans(TypedDict):
-    num_bursts: int
-    ave_burst_len: float
-    intra_burst_iei: float
-    inter_burst_iei: float
-    ave_spikes_per_burst: float
-    ave_local_sfa: float
-    peak_local_sfa: float
-    ave_divisor_sfa: float
-    peak_divisor_sfa: float
-    ave_abi_sfa: float
-    peak_abi_sfa: float
-    ave_rlocal_sfa: float
-    peak_rlocal_sfa: float
-    total_burst_time: float
-
-
-def get_burst_data(
-    bursts: list[np.ndarray], R: float
-) -> tuple[BurstProps, BurstPropsMeans]:
+def get_burst_data(bursts: list[np.ndarray], R: float) -> tuple[dict, dict]:
     iei_bursts = [np.diff(i) for i in bursts]
-    intra_iei = intra_burst_iei(bursts)
-    spk_per_burst = spikes_per_burst(bursts)
-    inter_iei = inter_burst_iei(bursts)
-    local_sfa = _sfa_local_var(iei_bursts)
-    revised_local = _sfa_revised_local(iei_bursts, R)
-    divisor_sfa = _sfa_divisor(iei_bursts)
-    abi_sfa = _sfa_abi(iei_bursts)
-    b_len = bursts_len(bursts)
-    props_dict = BurstProps(
-        burst_len=b_len,
-        intra_burst_iei=intra_iei,
-        spikes_per_burst=spk_per_burst,
-        inter_burst_iei=inter_iei,
-        local_sfa=local_sfa,
-        rlocal_sfa=revised_local,
-        divisor_sfa=divisor_sfa,
-        abi_sfa=abi_sfa,
-    )
-    mean_dict = BurstPropsMeans(
-        num_bursts=len(bursts),
-        total_burst_time=np.nansum(b_len),
-        ave_burst_len=np.nanmean(b_len),
-        intra_burst_iei=np.nanmean(intra_iei),
-        ave_spikes_per_burst=np.nanmean(spk_per_burst),
-        inter_burst_iei=np.nanmean(inter_iei),
-        ave_local_sfa=np.nanmean(local_sfa),
-        ave_divisor_sfa=np.nanmean(divisor_sfa),
-        ave_abi_sfa=np.nanmean(abi_sfa),
-        ave_rlocal_sfa=np.nanmean(revised_local),
-        peak_local_sfa=sfa_peak(local_sfa),
-        peak_divisor_sfa=sfa_peak(divisor_sfa),
-        peak_abi_sfa=sfa_peak(abi_sfa),
-        peak_rlocal_sfa=sfa_peak(revised_local),
-    )
+    props_dict = {}
+    props_dict["intra_burst_iei"] = intra_burst_iei(bursts)
+    props_dict["spikes_per_burst"] = spikes_per_burst(bursts)
+    props_dict["local_sfa"] = _sfa_local_var(iei_bursts)
+    props_dict["rlocal_sfa"] = _sfa_revised_local(iei_bursts, R)
+    props_dict["divisor_sfa"] = _sfa_divisor(iei_bursts)
+    props_dict["abi_sfa"] = _sfa_abi(iei_bursts)
+    props_dict["burst_len"] = bursts_len(bursts)
+
+    mean_dict = {}
+    mean_dict["num_bursts"] = len(bursts)
+    mean_dict["total_burst_time"] = np.nansum(props_dict["burst_len"])
+    mean_dict["inter_burst_iei"] = inter_burst_iei(bursts)
+    for key, value in props_dict.items():
+        mean_dict[key] = np.nanmean(value)
+        if "sfa" in key:
+            mean_dict[f"peak_{key}"] = sfa_peak(value)
     return props_dict, mean_dict
 
 

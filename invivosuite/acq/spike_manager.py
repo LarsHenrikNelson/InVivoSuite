@@ -450,7 +450,7 @@ class SpkManager:
         nchans: int = 4,
         total_chans: int = 64,
         upsample_factor: int = 2,
-        isi_threshold: float = 1.5,
+        isi_threshold: float = 0.0015,
         nperseg: int = 40,
         min_isi: float = 0.0,
         min_count: int = 5,
