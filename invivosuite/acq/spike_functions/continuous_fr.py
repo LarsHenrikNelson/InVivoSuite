@@ -5,9 +5,34 @@ from scipy import signal
 from scipy.signal import windows
 
 from .binarize_spikes import bin_spikes
+from ...utils import gauss_kernel
 
 
-__all__ = ["create_continuous_spikes"]
+__all__ = ["create_continuous_spikes", "Methods", "Windows"]
+
+Windows = Literal["gaussian", "exponential", "boxcar"]
+Methods = Literal["convolve", "add"]
+
+
+def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
+    if method == "convolve":
+        sdf = signal.oaconvolve(array, window)
+        sdf = sdf[window.size // 2 : array.size + window.size // 2]
+    else:
+        sdf = np.zeros(array.size)
+        indexes = np.where(array > 0)[0]
+        window = window if (window.size // 2) != 0 else np.r_[window, [0.0]]
+        dt = window.size // 2
+        for i in indexes:
+            start = max(i - dt, 0)
+            end = min(array.size, i + dt)
+            if start < 0:
+                wstart = end - window.size
+            else:
+                wstart = 0
+            wend = min(end - start, window.size)
+            sdf[start:end] += window[wstart:wend]
+    return sdf
 
 
 def create_continuous_spikes(
@@ -15,17 +40,18 @@ def create_continuous_spikes(
     binary_size: int,
     nperseg: int = 0,
     fs: float = 40000.0,
-    filt: Literal["gaussian", "exponential"] = "gaussian",
+    window: Windows = "boxcar",
     sigma: float = 0.02,
+    method: Methods = "convolve",
 ) -> np.ndarray:
-    """Generates a continuous spike rate function. Data has to be binned.
+    """Generates a continuous spike rate function. Data does not have to be binned.
 
     Args:
         spikes (np.ndarray): Array of spike times in samples
         binary_size (int): length of the recording in samples
         nperseg (int): Number of samples per bin. Use 0 for no binning
         fs (float, optional): Sample rate. Defaults to 40000.0.
-        filt (Literal[&quot;gaussian&quot;, &quot;exponential&quot;], optional): Convolution filter. Defaults to "gaussian".
+        window (Literal[&quot;gaussian&quot;, &quot;exponential&quot;], optional): Convolution filter. Defaults to "gaussian".
         sigma (float, optional): Sigma for the filter. Defaults to 0.02.
 
     Returns:
@@ -37,19 +63,19 @@ def create_continuous_spikes(
     else:
         temp = np.zeros(binary_size)
         temp[spikes] = 1
-        sampInt = sigma
-    if filt == "exponential":
+        sampInt = 1
+    if window == "exponential_abi":
         filtPts = int(5 * sigma / sampInt)
         w = np.zeros(filtPts * 2)
         w[-filtPts:] = windows.exponential(
             filtPts, center=0, tau=sigma / sampInt, sym=False
         )
-        wlen = w.size
-        w /= w.sum()
+    elif window == "exponential":
+        filtPts = int(5 * sigma / sampInt) * 2
+        w = windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
+    elif window == "gaussian":
+        w = gauss_kernel(sigma)
     else:
-        wlen = int(4.0 * sampInt + 0.5) + 1
-        w = windows.gaussian(wlen, sampInt)
-        w /= w.sum()
-    sdf = signal.convolve(temp, w)
-    sdf = sdf[wlen // 2 : temp.size + wlen // 2]
-    return sdf
+        wlen = int(sigma) * 2 + 1
+        w = np.ones(wlen)
+    return _create_array(temp, w, method=method)

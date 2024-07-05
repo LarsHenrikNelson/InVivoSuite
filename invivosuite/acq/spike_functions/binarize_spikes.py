@@ -11,12 +11,6 @@ def create_binary_spikes(spikes: np.ndarray, size: int, dt: int = 0):
         u = np.unique(spikes)
         binary_spikes = np.zeros(shape=(size,), dtype=np.int16)
         binary_spikes[u] = 1
-
-        if dt > 0:
-            for i in u:
-                start = int(max(0, i - dt))
-                end = int(min(size, i + dt))
-                binary_spikes[start:end] = 1
         return binary_spikes
     else:
         return np.zeros(shape=(size,), dtype=np.int16)

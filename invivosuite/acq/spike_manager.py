@@ -18,6 +18,7 @@ from .spike_functions import (
     get_template_channels,
     isi_violations,
     max_int_bursts,
+    Methods,
     presence,
     sfa_abi,
     sfa_divisor,
@@ -27,6 +28,7 @@ from .spike_functions import (
     sttc_ele,
     sttc_python,
     template_properties,
+    Windows,
 )
 
 Callback = Callable[[str], None]
@@ -182,19 +184,19 @@ class SpkManager:
     def get_binary_spike_cluster(
         self,
         cluster_id: int,
-        dt: int = 0,
     ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
-        return create_binary_spikes(spike_indexes, self.end - self.start, dt=dt)
+        return create_binary_spikes(spike_indexes, self.end - self.start)
 
     def get_continuous_spike_cluster(
         self,
         cluster_id: int,
         fs: float = 40000.0,
         nperseg: int = 0,
-        window: Literal["exponential", "gaussian"] = "gaussian",
+        window: Windows = "boxcar",
         sigma: float = 200,
+        method: Methods = "convolve",
     ):
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
@@ -205,6 +207,7 @@ class SpkManager:
             fs=fs,
             window=window,
             sigma=sigma,
+            method=method,
         )
 
     def get_reconstucted_cluster(self, cluster_id: int) -> np.ndarray:
@@ -364,6 +367,7 @@ class SpkManager:
                 fs=fs,
                 start=start,
                 end=end,
+                R=R,
                 isi_threshold=isi_threshold,
                 min_isi=min_isi,
                 nperseg=nperseg,
