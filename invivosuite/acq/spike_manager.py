@@ -167,7 +167,7 @@ class SpkManager:
         self,
         cluster_id: int,
         fs: Optional[int] = None,
-        output_type: Literal["sec", "ms", "samples"] = "sec",
+        output_type: Literal["sec", "ms", "samples"] = "samples",
     ) -> np.ndarray:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         if fs is None or output_type == "samples":
@@ -328,6 +328,9 @@ class SpkManager:
         else:
             output_dict["iei"] = 0
             output_dict["fr"] = 0
+            output_dict["fr_iei"] = 0
+            output_dict["fp_rate"] = np.nan
+            output_dict["num_violations"] = np.nan
             output_dict["abi_sfa"] = np.nan
             output_dict["local_sfa"] = np.nan
             output_dict["rlocal_sfa"] = np.nan
@@ -426,7 +429,7 @@ class SpkManager:
         props_list = []
         mean_list = []
         for clust_id in self.cluster_ids:
-            spk_times = self.get_cluster_spike_times(clust_id, output_type="sec")
+            spk_times = self.get_cluster_spike_times(clust_id, output_type="sec", fs=fs)
             b_data = max_int_bursts(
                 spk_times,
                 fs,
@@ -493,6 +496,7 @@ class SpkManager:
     def get_cluster_binary_burst(
         self,
         cluster_id: int,
+        fs: float,
         min_count: int = 3,
         min_dur: float = 0.01,
         max_start: float = 0.170,
@@ -508,6 +512,7 @@ class SpkManager:
             max_start=max_start,
             max_int=max_int,
             max_end=max_end,
+            fs=fs,
             output_type="sample",
         )
         length = self.end - self.start
@@ -569,7 +574,9 @@ class SpkManager:
         output_type: Literal["sec", "ms", "sample"] = "sec",
         fs: Union[float, int] = 40000,
     ) -> list[np.ndarray]:
-        indexes = self.get_cluster_spike_times(cluster_id)
+        indexes = self.get_cluster_spike_times(
+            cluster_id, output_type=output_type, fs=fs
+        )
         b_data = max_int_bursts(
             indexes,
             fs,

@@ -157,8 +157,10 @@ def get_burst_data(bursts: list[np.ndarray], R: float) -> tuple[dict, dict]:
     return props_dict, mean_dict
 
 
-def clean_max_int_bursts(bursts: list[np.ndarray], max_int: float):
-    cleaned_bursts = []
+def clean_max_int_bursts(
+    bursts: list[np.ndarray], max_int: float, min_dur: float, min_count: int
+):
+    temp_bursts = []
     i = 1
     if len(bursts) > 1:
         while i < len(bursts):
@@ -167,10 +169,14 @@ def clean_max_int_bursts(bursts: list[np.ndarray], max_int: float):
             while i < len(bursts) and (bursts[i][0] - bursts[i - 1][-1]) < max_int:
                 temp.extend(bursts[i])
                 i += 1
-            cleaned_bursts.append(np.array(temp))
+            temp_bursts.append(np.array(temp))
             i += 1
     else:
-        cleaned_bursts = bursts
+        temp_bursts = bursts
+    cleaned_bursts = []
+    for i in temp_bursts:
+        if (i[-1] - i[0]) >= min_dur and len(i) >= min_count:
+            cleaned_bursts.append(i)
     return cleaned_bursts
 
 
@@ -187,7 +193,7 @@ def max_int_bursts(
     if len(spikes) < min_count:
         return []
     bursts = []
-    spike_temp = spikes / fs
+    spike_temp = spikes
     freq = 1 / np.mean(np.diff(spike_temp))
     if max_start is None:
         max_start = 1 / freq / 2
@@ -196,23 +202,22 @@ def max_int_bursts(
     if max_int is None:
         max_int = max_end
     i = 0
-    while i < (spike_temp.size - min_count):
-        if (spike_temp[i + 1] - spike_temp[i]) < max_start:
-            bur = []
-            bur.extend((spike_temp[i], spike_temp[i + 1]))
+    cutoff = spike_temp.size - min_count
+    while i < (cutoff):
+        if (spike_temp[i + 1] - spike_temp[i]) <= max_start:
+            bur = [spike_temp[i], spike_temp[i + 1]]
             i += 1
-            add_spikes = True
-            while add_spikes and i < (spike_temp.size - 2):
-                if (spike_temp[i + 1] - spike_temp[i]) <= max_end:
-                    bur.append(spike_temp[i + 1])
-                    i += 1
-                else:
-                    add_spikes = False
-                    if (len(bur) >= min_count) and ((bur[-1] - bur[0]) > min_dur):
-                        bursts.append(np.array(bur))
+            while (i + 1) < spike_temp.size and (
+                spike_temp[i + 1] - spike_temp[i]
+            ) <= max_end:
+                bur.append(spike_temp[i + 1])
+                i += 1
+            bursts.append(bur)
         else:
             i += 1
-    bursts = clean_max_int_bursts(bursts, max_int)
+    bursts = clean_max_int_bursts(
+        bursts, max_int=max_int, min_dur=min_dur, min_count=min_count
+    )
     if output_type == "ms":
         bursts = [(i / fs) * 1000 for i in bursts]
     elif output_type == "sample":

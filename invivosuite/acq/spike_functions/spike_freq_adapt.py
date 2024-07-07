@@ -42,10 +42,17 @@ def sfa_rlocal_var(isi: np.ndarray, R: Union[float, int]) -> float:
     None.
 
     """
-    if len(isi) < 2 or isi is np.nan:
+    if len(isi) <= 3 or isi is np.nan:
         return np.nan
     isi_plus = isi[1:] + isi[:1]
     isi_mult = isi[1:] * isi[:1]
+
+    if np.isnan(isi_plus).any():
+        return np.nan
+
+    if np.count_nonzero(isi_plus) > 0:
+        return np.nan
+
     intermediate = (1 - 4 * isi_mult / (isi_plus**2)) * (1 + (4 * R) / isi_plus)
     multiplier = 3 / (isi.size - 1)
     return multiplier * np.sum(intermediate)
