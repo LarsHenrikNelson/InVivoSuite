@@ -149,7 +149,7 @@ def get_burst_data(bursts: list[np.ndarray], R: float) -> tuple[dict, dict]:
     mean_dict = {}
     mean_dict["num_bursts"] = len(bursts)
     mean_dict["total_burst_time"] = np.nansum(props_dict["burst_len"])
-    mean_dict["inter_burst_iei"] = inter_burst_iei(bursts)
+    mean_dict["inter_burst_iei"] = np.nanmean(inter_burst_iei(bursts))
     for key, value in props_dict.items():
         mean_dict[key] = np.nanmean(value)
         if "sfa" in key:
