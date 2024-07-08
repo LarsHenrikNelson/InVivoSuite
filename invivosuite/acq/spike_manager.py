@@ -298,11 +298,17 @@ class SpkManager:
         nperseg: int = 40,
         output_type: Literal["sec", "ms"] = "sec",
     ):
+        if start == -1:
+            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+        if end == -1:
+            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+
         output_dict = {}
-        times = self.get_cluster_spike_times(cluster_id, fs=fs, output_type="sec")
+        times = self.get_cluster_spike_times(cluster_id, fs=fs, output_type=output_type)
         amps = self.get_cluster_spike_amplitudes(cluster_id)
         binned = self.get_binned_spike_cluster(cluster_id=cluster_id, nperseg=nperseg)
         output_dict["fano_factor"] = binned.var() / binned.mean()
+
         if times.size > 2:
             isi = np.diff(times)
             mean_isi = np.mean(isi)
@@ -358,9 +364,9 @@ class SpkManager:
         output_type: Literal["sec", "ms"] = "sec",
     ):
         if start == -1:
-            start = self.start / fs
+            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
         if end == -1:
-            end = self.end / fs
+            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
 
         output_list = []
 
