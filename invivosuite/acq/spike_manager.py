@@ -20,6 +20,7 @@ from .spike_functions import (
     max_int_bursts,
     Methods,
     presence,
+    rb_violations,
     sfa_abi,
     sfa_divisor,
     sfa_local_var,
@@ -331,6 +332,15 @@ class SpkManager:
             )
             output_dict["fp_rate"] = fpRate
             output_dict["num_violations"] = nv
+            rp_contam, _ = rb_violations(
+                spike_train=times,
+                min_time=start,
+                max_time=end,
+                isi_threshold=isi_threshold,
+                min_isi=min_isi,
+            )
+            output_dict["rp_contam"] = rp_contam
+
         else:
             output_dict["iei"] = 0
             output_dict["fr"] = 0
@@ -341,6 +351,7 @@ class SpkManager:
             output_dict["local_sfa"] = np.nan
             output_dict["rlocal_sfa"] = np.nan
             output_dict["divisor_sfa"] = np.nan
+            output_dict["rp_contam"] = 1.0
         output_dict["n_spikes"] = times.size
         if output_type == "sec":
             divisor = fs

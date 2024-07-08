@@ -2,7 +2,8 @@ import math
 from typing import TypedDict, Union
 
 import numpy as np
-from scipy import stats, ndimage
+from numba import njit
+from scipy import ndimage, stats
 
 from ... import utils
 
@@ -16,6 +17,7 @@ __all__ = [
     "firing_rate",
     "isi_violations",
     "presence",
+    "rb_violations",
 ]
 
 
@@ -166,11 +168,32 @@ def isi_violations(spike_train, min_time, max_time, isi_threshold=1.5, min_isi=0
     spike_train = np.delete(spike_train, duplicate_spikes + 1)
     isis = np.diff(spike_train)
 
-    num_spikes = len(spike_train)
     num_violations = sum(isis < isi_threshold)
-    violation_time = 2 * num_spikes * (isi_threshold - min_isi)
+    violation_time = 2 * spike_train.size * (isi_threshold - min_isi)
     total_rate = firing_rate(spike_train, min_time, max_time)
     violation_rate = num_violations / violation_time
     fpRate = violation_rate / total_rate
 
     return fpRate, num_violations
+
+
+@njit(cache=True)
+def rb_violations(spike_train, min_time, max_time, isi_threshold, min_isi):
+
+    T = max_time - min_time
+    rp_nv = 0
+    N = len(spike_train)
+
+    for i in range(N):
+        for j in range(i + 1, N):
+            diff = spike_train[j] - spike_train[i]
+
+            if diff > isi_threshold:
+                break
+
+            rp_nv += 1
+
+    D = 1 - rp_nv * (T - 2 * N * min_isi) / (N**2 * (isi_threshold - min_isi))
+    rp_contamination = 1 - math.sqrt(D) if D >= 0 else 1.0
+
+    return rp_contamination, rp_nv
