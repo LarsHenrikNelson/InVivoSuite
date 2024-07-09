@@ -51,6 +51,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])
         self.set_probe("all", [0, acqs.shape[0]])
+        self.compute_means()
         if ai is not None:
             self.set_grp_dataset("ai", "acq", ai[0])
             self.set_grp_dataset("ai", "fs", ai[1])
@@ -186,6 +187,17 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.close()
         return input_dict
 
+    def compute_means(self):
+        chans = self.get_grp_dataset("probes", "all")
+        nchans = int(chans[1] - chans[0])
+        means = np.zeros(nchans)
+        for i in range(nchans):
+            array = self.get_file_dataset("acqs", rows=i) * self.get_file_dataset(
+                "coeffs", rows=i
+            )
+            means[i] = np.mean(array)
+        self.set_file_dataset("means", means)
+
     def compute_virtual_ref(
         self,
         ref_type: Literal["cmr", "car"] = "cmr",
@@ -209,12 +221,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if bin_size != 0:
             cmr = np.zeros(end - start)
             means = np.zeros((chans[1] - chans[0], 1))
-            for i in range(chans[0], chans[1]):
-                array = self.get_file_dataset(
-                    "acqs", rows=i, columns=(start, end)
-                ) * self.get_file_dataset("coeffs", rows=i)
-                index = i - chans[0]
-                means[index] = array.mean()
             for i in range((end - start) // bin_size):
                 begin = int(start + i * bin_size)
                 stop = begin + bin_size
@@ -222,6 +228,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                     (chans[1] - chans[0], 1)
+                ) - self.get_file_dataset(
+                    "means", rows=chans
+                ).reshape(
+                    chans[1] - chans[0], 1
                 )
                 array -= means
                 cmr[begin:stop] = ref(array, axis=0)
@@ -241,9 +251,11 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 "acqs", rows=chans, columns=(start, end)
             ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                 (chans[1] - chans[0], 1)
+            ) - self.get_file_dataset(
+                "means", rows=chans
+            ).reshape(
+                chans[1] - chans[0], 1
             )
-            means = array.mean(axis=1).reshape((array.shape[0], 1))
-            array -= means
             cmr = ref(array, axis=0)
             self.set_grp_dataset(ref_type, probe, cmr)
 
@@ -320,8 +332,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=int(channel), columns=(start, end)
-        ) * self.get_file_dataset("coeffs", rows=int(channel))
-        array -= array.mean()
+        ) * self.get_file_dataset("coeffs", rows=int(channel)) - self.get_file_dataset(
+            "means", rows=int(channel)
+        )
         if ref:
             median = self.get_grp_dataset(ref_type, ref_probe)
             array -= median[start:end]
