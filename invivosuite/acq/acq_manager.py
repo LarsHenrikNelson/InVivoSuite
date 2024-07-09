@@ -217,7 +217,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 means[index] = array.mean()
             for i in range((end - start) // bin_size):
                 begin = int(start + i * bin_size)
-                stop = int(start + i * bin_size) + bin_size
+                stop = begin + bin_size
                 array = self.get_file_dataset(
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs", rows=chans).reshape(
