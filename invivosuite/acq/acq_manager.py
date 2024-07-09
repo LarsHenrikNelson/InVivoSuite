@@ -192,8 +192,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         probe: str = "all",
         bin_size: int = 0,
     ):
-        start = self.get_file_attr("start")
-        end = self.get_file_attr("end")
+        start = 0
+        self.open()
+        end = self.file["acqs"].shape[1]
+        self.close()
         if ref_type == "cmr":
             ref = np.median
         elif ref_type == "car":

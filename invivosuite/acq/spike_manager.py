@@ -764,8 +764,9 @@ class SpkManager:
             start = self.get_file_attr("start")
         if end is None:
             end = self.get_file_attr("end")
+        self.spike_times = np.array(self.spike_times) + start
         n_chunks = (end - start) // (chunk_size)
-        chunk_starts = np.arange(n_chunks) * chunk_size
+        chunk_starts = (np.arange(n_chunks) * chunk_size) + start
         output = np.zeros((len(self.spike_times), waveform_length, (nchans * 2)))
 
         # Get the best range of channels for each template
@@ -795,7 +796,6 @@ class SpkManager:
                 start=chunk_start,
                 end=i + chunk_size,
             ).T
-
             self.extract_waveforms_chunk(
                 output=output,
                 recording_chunk=recording_chunk,
