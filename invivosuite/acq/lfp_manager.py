@@ -155,7 +155,7 @@ class LFPManager:
         elif pxx_type == "cwt":
             cpuc = os.cpu_count()
             if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
-                pxx_attrs["nthreads"] = cpuc
+                pxx_attrs["nthreads"] = (cpuc // 2) - 1
             freqs, sxx = fcwt.cwt(
                 array,
                 int(fs),
@@ -197,9 +197,9 @@ class LFPManager:
             map_channel=map_channel,
         )
         if sxx_type == "cwt":
-            cpuc = os.cpu_count() // 2
+            cpuc = os.cpu_count()
             if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > cpuc:
-                sxx_attrs["nthreads"] = cpuc
+                sxx_attrs["nthreads"] = (cpuc // 2) - 1
             freqs, sxx = fcwt.cwt(
                 array,
                 int(fs),

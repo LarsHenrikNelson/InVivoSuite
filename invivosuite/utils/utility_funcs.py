@@ -2,6 +2,7 @@ import math
 from typing import Union
 
 import numpy as np
+from numba import njit
 
 __all__ = [
     "expand_data",
@@ -12,29 +13,16 @@ __all__ = [
 ]
 
 
-def expand_data(
-    data: dict[str, np.ndarray],
-    column: str,
-    current_size: int,
-    new_size: int,
-):
-    start = new_size - current_size
-    for key, value in data.items():
-        if len(value.shape) > 1:
-            shape = (new_size, value.shape[1])
-        else:
-            shape = new_size
-        temp = np.zeros(shape, value.dtype)
-        temp[start:] = value
-        data[key] = temp
-    index = 0
-    for i in range(current_size):
-        temp_i = i + start
-        for j in range(data[column][i]):
-            for k in data.keys():
-                data[k][index] = data[k][temp_i]
-            index += 1
-    return data
+@njit(cache=True)
+def expand_data(data: np.ndarray, counts: np.ndarray):
+    total = np.sum(counts)
+    output = np.zeros(total)
+    j = 0
+    for k in range(data.size):
+        for i in range(counts[k]):
+            output[j] = data[k]
+            j += 1
+    return output
 
 
 def concatenate_dicts(data_list):

@@ -137,15 +137,16 @@ class SpkLFPManager:
         output_stats = {}
         spk_indexes = np.where(b_spks > 0)[0]
         output_dict["cluster_id"] = [cluster_id] * spk_indexes.size
-        output_dict["count"] = b_spks[spk_indexes]
         for b_name, phase in phase_dict.items():
             b_phases = phase[spk_indexes]
+            b_phases = expand_data(b_phases, b_spks[spk_indexes])
             output_dict[b_name] = b_phases
             stats = self.analyze_spike_phase(b_phases)
             output_stats.update(
                 {f"{b_name}_{key}": value for key, value in stats.items()}
             )
         output_stats["cluster_id"] = cluster_id
+        output_dict["cluster_id"] = np.full(output_dict[b_name].size, cluster_id)
         return (output_stats, output_dict)
 
     def spike_phase(
@@ -179,19 +180,13 @@ class SpkLFPManager:
             for cid in chan_dict[chan]:
                 callback(f"Extracting spike phase for cluster {cid}.")
                 stats, phases = self.extract_spike_phase_data(band_dict, cid, nperseg)
-                phases["channel"] = [chan] * phases["count"].size
-                phases["cluster_id"] = [chan] * phases["count"].size
+                phases["channel"] = np.full(phases["cluster_id"].size, chan)
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
                 analyzed_spk_phase.append(stats)
                 output_data.append(phases)
         output_data = concatenate_dicts(output_data)
         analyzed_spk_phase = concatenate_dicts(analyzed_spk_phase)
-        c_size = output_data["count"].size
-        n_size = output_data["count"].sum()
-        output_data = expand_data(
-            data=output_data, column="count", current_size=c_size, new_size=n_size
-        )
         return output_data, analyzed_spk_phase
 
     def extract_spike_power_data(
@@ -205,9 +200,11 @@ class SpkLFPManager:
         output_dict = {}
         spk_indexes = np.where(b_spks > 0)[0]
         output_dict["cluster_id"] = [cluster_id] * spk_indexes.size
-        output_dict["count"] = b_spks[spk_indexes]
         for b_name, power in power_dict.items():
-            output_dict[b_name] = spike_triggered_lfp(spk_indexes, power, window)
+            temp = spike_triggered_lfp(spk_indexes, power, window)
+            temp = expand_data(temp, b_spks[spk_indexes])
+            output_dict[b_name] = temp
+        output_dict["cluster_id"] = np.full(output_dict[b_name].size, cluster_id)
         return output_dict
 
     def spike_lfp(
@@ -249,11 +246,6 @@ class SpkLFPManager:
                 output["cluster_id"] = [cid] * output["count"].size
                 output_data.append(output)
         output_data = concatenate_dicts(output_data)
-        c_size = output_data["count"].size
-        n_size = output_data["count"].sum()
-        output_data = expand_data(
-            data=output_data, column="count", current_size=c_size, new_size=n_size
-        )
         mean_data = self.lfp_mean_per_cluster(output_data, list(freq_bands.keys()))
         return output_data, mean_data
 
