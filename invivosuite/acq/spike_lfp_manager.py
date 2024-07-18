@@ -4,8 +4,12 @@ from typing import Literal, TypedDict
 import numpy as np
 
 from ..utils import concatenate_dicts, expand_data
-from .spike_lfp_functions.circular_stats import h_test, periodic_mean_std, rayleightest
-from .spike_lfp_functions.spike_power import spike_triggered_lfp
+from ..functions.spike_lfp_functions.circular_stats import (
+    h_test,
+    periodic_mean_std,
+    rayleightest,
+)
+from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
 
 # TODO:  Break down spike-phase and spike-power into smaller components.
 

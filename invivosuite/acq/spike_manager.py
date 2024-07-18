@@ -7,7 +7,7 @@ import numpy as np
 from send2trash import send2trash
 
 from ..utils import concatenate_dicts, save_tsv
-from .spike_functions import (
+from ..functions.spike_functions import (
     _sttc_sig,
     _template_channels,
     amplitude_cutoff,
