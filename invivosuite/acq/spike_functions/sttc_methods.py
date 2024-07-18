@@ -1,11 +1,12 @@
 from typing import Literal, Union
 
+import networkx as nx
 import numpy as np
 from numba import njit
 from numpy.random import default_rng
 from scipy import stats
 
-from .synthetic_spike_train import gen_spike_train, _fit_iei
+from .synthetic_spike_train import _fit_iei, gen_spike_train
 
 __all__ = [
     "_gen_bootstrap_sttc",
@@ -14,7 +15,25 @@ __all__ = [
     "sttc_ele",
     "sttc_python",
     "sttc",
+    "create_sttc_graph"
 ]
+
+
+def create_sttc_graph(
+    cluster1_ids: np.ndarray,
+    cluster2_ids: np.ndarray,
+    sttc_values: np.ndarray,
+    connections: np.ndarray,
+):
+    sttc_graph = nx.Graph(n_units=cluster1_ids.size)
+    for i in range(cluster1_ids.size):
+        if connections[i]:
+            sttc_graph.add_edge(
+                cluster1_ids[i],
+                cluster2_ids[i],
+                weight=sttc_values[i],
+            )
+    return sttc_graph
 
 
 def _sttc_sig(
