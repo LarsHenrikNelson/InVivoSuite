@@ -12,10 +12,10 @@ __all__ = [
     "_gen_bootstrap_sttc",
     "_shuffle_bootstrap_sttc",
     "_sttc_sig",
+    "create_sttc_graph",
     "sttc_ele",
     "sttc_python",
     "sttc",
-    "create_sttc_graph"
 ]
 
 
