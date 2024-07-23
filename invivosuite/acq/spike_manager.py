@@ -230,27 +230,42 @@ class SpkManager:
         sample_indexes = self.spike_times[spike_ids]
         return bin_spikes(sample_indexes, self.end - self.start, nperseg)
 
-    def get_channel_clusters(self) -> dict[str, list[int]]:
+    def get_channel_clusters(
+        self, center: Optional[int] = None
+    ) -> dict[str, list[int]]:
         channel_dict = defaultdict(list)
         for temp_index in range(self.cluster_ids.size):
             cid = self.cluster_ids[temp_index]
             template = self.sparse_templates[temp_index, :, :]
-            best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            if center is None:
+                best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            else:
+                best_chan = np.argmin(
+                    np.min(template[center - 2 : center + 2, :], axis=0)
+                )
             channel_dict[best_chan].append(cid)
         return channel_dict
 
-    def get_cluster_channels(self) -> np.ndarray:
+    def get_cluster_channels(self, center: Optional[int] = None) -> np.ndarray:
         channels = np.zeros(self.cluster_ids.size, dtype=int)
         for temp_index in range(self.cluster_ids.size):
             template = self.sparse_templates[temp_index, :, :]
-            best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            if center is None:
+                best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+            else:
+                best_chan = np.argmin(
+                    np.min(template[center - 2 : center + 2, :], axis=0)
+                )
             channels[temp_index] = best_chan
         return channels
 
-    def get_cluster_channel(self, cluster_id: int) -> int:
+    def get_cluster_channel(self, cluster_id: int, center: Optional[int] = None) -> int:
         temp_index = np.where(self.cluster_ids == cluster_id)[0][0]
         template = self.sparse_templates[temp_index, :, :]
-        return np.argmax(np.sum(np.abs(template), axis=0))
+        if center is None:
+            return np.argmax(np.sum(np.abs(template), axis=0))
+        else:
+            return np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
 
     def get_all_binary_spikes(
         self, channel: Optional[int] = None, dt: int = 0

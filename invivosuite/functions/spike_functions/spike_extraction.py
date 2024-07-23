@@ -1,4 +1,4 @@
-from typing import TypedDict, Union
+from typing import TypedDict, Union, Optional
 
 import numpy as np
 from numba import njit, prange
@@ -20,13 +20,13 @@ __all__ = [
 
 
 def get_template_channels(
-    templates, nchans: int, total_chans: int
+    templates, nchans: int, total_chans: int, center: Optional[int] = None
 ) -> tuple[np.ndarray, np.ndarray]:
     channel_output = np.zeros((templates.shape[0], 3), dtype=int)
     peak_output = np.zeros((templates.shape[0], 1))
     for i in range(templates.shape[0]):
         chan, start_chan, end_chan = _template_channels(
-            templates[i], nchans, total_chans
+            templates[i], nchans, total_chans, center=center
         )
         channel_output[i, 1] = start_chan
         channel_output[i, 2] = end_chan
@@ -36,10 +36,16 @@ def get_template_channels(
 
 
 def _template_channels(
-    template: np.ndarray, nchans: int, total_chans: int
+    template: np.ndarray,
+    nchans: int,
+    total_chans: int,
+    center: Optional[int] = None,
 ) -> tuple[int, int, int]:
     # best_chan = np.argmin(np.min(template, axis=0))
-    best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+    if center is None:
+        best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+    else:
+        best_chan = np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
     start_chan = best_chan - nchans
     end_chan = best_chan + nchans
     if start_chan < 0:
