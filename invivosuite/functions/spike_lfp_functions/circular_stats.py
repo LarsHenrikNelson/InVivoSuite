@@ -29,7 +29,7 @@ def mean_vector_length(spike_phases):
     return uv_radius, p_value
 
 
-@njit(cache=True)
+@njit()
 def ppc_numba(spike_phases):
     outer_sums = np.zeros(spike_phases.size - 1)
     array1 = np.zeros(2)
@@ -71,7 +71,7 @@ def ppc_sampled(spike_phases, size, iterations, seed=42):
     return output_array.mean()
 
 
-@njit(cache=True)
+@njit()
 def periodic_mean_std(angles: np.ndarray) -> tuple[float, float]:
     sines = np.sin(angles)
     cosines = np.cos(angles)
@@ -82,7 +82,7 @@ def periodic_mean_std(angles: np.ndarray) -> tuple[float, float]:
     return mean, std
 
 
-@njit(cache=True)
+@njit()
 def rayleightest(data: np.ndarray) -> float:
     n = data.size
     S = np.sum(np.sin(data)) / n

@@ -234,8 +234,8 @@ class LFPManager:
     ):
         start = self.get_file_attr("start")
         end = self.get_file_attr("end")
-        sample_rate = self.get_file_dataset("sample_rate", rows=channel)
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
+        sample_rate = self.get_file_dataset("sample_rate", rows=channel)
         array = self.get_file_dataset(
             "acqs", rows=channel, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=channel)
