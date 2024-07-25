@@ -7,7 +7,7 @@ name = "invivosuite"
 description = "In vivo electrophysiology analysis package for analyzing LFPs and spikes from Kilosort."
 readme = "README.md"
 authors = [{ name = "Lars Henrik Nelson", email = "larshnelson@protonmail.com" }]
-version = "2023.10.06"
+version = "2024.07.25"
 keywords = ["electrophysiology", "analysis"]
 dependencies = [
     "fcwt",
@@ -15,16 +15,15 @@ dependencies = [
     "joblib",
     "KDEpy",
     "matplotlib",
+    "networkx",
     "numba",
     "numpy",
     "pyFFTW",
-    # "pyqtgraph",
-    # "PySide6",
     "PyWavelets",
-    "qdarkstyle",
     "scikit-learn",
     "scipy",
     "send2trash",
+    "spectrum",
     "statsmodels"
 
 ]
