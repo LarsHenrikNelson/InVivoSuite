@@ -42,7 +42,7 @@ file_paths = list(Path(r"C:\windows\path\to\data").rglob("*.hdf5"))
 acqs = []
 for file_path in file_paths:
     acq_manager = AcqManager()
-    acq_manager.set_hdf5_file(file_path)
+    acq_manager.load_hdf5(file_path)
     acqs.append(acq_manager)
 
 # %%
@@ -103,15 +103,17 @@ for i in acqs:
 Compute virtual reference (CMR or CAR)
 """
 for i in acqs:
-    i.compute_virtual_ref(ref_type="cmr", probe="acc", bin_size=0)
-    # i.compute_virtual_ref(ref_type="car", probe="dms", bin_size=0)
+    i.compute_virtual_ref(
+        ref_type="cmr", probe="acc", bin_size=0
+    )  # Common median reference
+    # i.compute_virtual_ref(ref_type="car", probe="dms", bin_size=0) # Common average reference
 
 # %%
 """
 Load channel map
 """
 chan_map = pd.read_csv(
-    r"C:\Users\lhn6\OneDrive - University of Pittsburgh\exp_data\channel_maps\corr_map_correct.csv",
+    r"path/to/channel-map.csv",
     header=None,
 )
 # Set the channel map
@@ -129,7 +131,8 @@ for i in acqs:
 """
 Compute the whitening matrix.
 This requires that a channel map is set.
-Neighbors is the
+Neighbors is the number of channels on on side
+of the channel of interest.
 """
 for i in acqs:
     i.compute_whitening_matrix(
@@ -167,28 +170,6 @@ for i in acqs:
 
 # %%
 """
-Find lfp bursts.
-"""
-for index, i in enumerate(acqs[18:]):
-    print(index + 18)
-    i.find_lfp_bursts(
-        window="hamming",
-        min_len=0.2,
-        max_len=20.0,
-        min_burst_int=0.2,
-        wlen=0.2,
-        threshold=2.0,
-        pre=3.0,
-        post=3.0,
-        order=0.1,
-        method="spline",
-        tol=0.001,
-        deg=30,
-        cmr=True,
-    )
-
-# %%
-"""
 Set continuous wavelet properties
 """
 for i in acqs:
@@ -209,34 +190,9 @@ for i in acqs:
     i.set_welch(nperseg=2048, noverlap=1000, window=("tukey", 0.25), scaling="density")
 
 # %%
-# I recommend the max_int method.
-for index, i in enumerate(acqs):
-    i.analyze_bursts(
-        method="max_int",
-        min_count=5,
-        min_dur=0,
-        max_start=0.170,
-        max_end=0.300,
-        max_int=0.200,
-    )
-
-# %%
 """
-Calculate the Phase discountinuity index
-"""
-bands = {
-    "theta": (4, 10),
-    "low_gamma": (30, 50),
-    "high_gamma": (70, 80),
-    "beta": (12, 28),
-}
-for index, i in enumerate(acqs):
-    print(i.file_path, index)
-    i.calc_all_pdi(bands, cmr=False, map_channel=False, size=1000)
-
-# %%
-"""
-Save data for kilosort
+Save binary data file for kilosort. Binary files must analyzed on the same
+OS that they are exported on!
 """
 for i in acqs:
     i.save_kilosort_bin(probe="acc")
@@ -255,7 +211,9 @@ acq_manager.load_kilosort(ks_path)
 """
 Output data to use phy. Don't use the f64 dtype, it makes Phy slow.
 Chunk size and waveform length are in samples. Note that drift correction
-is not used.
+is not used. You can subtract waveforms from the acquisitions which can help
+with cleaning small amplitude spikes. However, I would export your templates
+2x because the kilosort templates are not very good.
 """
 acq_manager.export_to_phy(
     waveform_length=82,

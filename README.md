@@ -3,4 +3,4 @@ InVivoSuite is intended for analysis LFPs and spike data recorded using multisit
 
 If you want to use the package you will need to install the [Microsoft Visual Studio Compiler and C++ tools](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#visual-studio-2015-2017-2019-and-2022) if you are using Windows. For Mac install XCode and the associated commandline tools. For linux g++ should already be installed otherwise install g++/gcc.
 
-For examples on how to use the package see the usage.py file.
+For examples on how to use the package see the file-setup.py, spike-analysis.py and spike-lfp.py.
