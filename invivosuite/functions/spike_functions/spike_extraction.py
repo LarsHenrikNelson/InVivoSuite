@@ -2,21 +2,55 @@ from typing import TypedDict, Union, Optional
 
 import numpy as np
 from numba import njit, prange
-from scipy import signal
-from scipy import interpolate
+from scipy import interpolate, signal, stats
 
 
 __all__ = [
+    "_template_channels",
     "center_spikes",
+    "center_templates",
     "duplicate_spikes",
     "extract_multi_channel_spikes",
     "extract_single_channel_spikes",
     "find_minmax_exponent_3",
     "get_template_channels",
     "get_template_parts",
+    "rescale_templates",
     "template_properties",
-    "_template_channels",
 ]
+
+
+@njit(cache=True)
+def center_templates(templates, center=41):
+    tmin_x = templates.argmin(axis=1)
+    rows, cols = templates.shape
+    min_x = tmin_x.min()
+    max_x = tmin_x.max()
+    n_cols = cols - (center - min_x) - (max_x - center)
+    ctemplates = np.zeros((rows, n_cols))
+    mxc = max_x - center
+    for i in range(rows):
+        if tmin_x[i] == center:
+            start = mxc
+            end = start + n_cols
+        elif tmin_x[i] < center:
+            start = mxc - (center - tmin_x[i])
+            end = start + n_cols
+        else:
+            start = mxc + (tmin_x[i] - center)
+            end = start + n_cols
+        ctemplates[i, :] = templates[i, start:end]
+    return ctemplates
+
+
+def rescale_templates(templates, multiplier=1e6):
+    rescaled_templates = templates * multiplier
+    min_values = rescaled_templates.min(axis=1, keepdims=True)
+    max_values = rescaled_templates.max(axis=1, keepdims=True)
+    rescaled_templates = (
+        2 * (rescaled_templates - min_values) / (max_values - min_values)
+    ) - 1
+    return rescaled_templates
 
 
 def get_template_channels(
@@ -72,6 +106,8 @@ class TemplateProperties(TypedDict):
     center_diff: float
     min_x: int
     min_y: float
+    rslope: float
+    hslope: float
 
 
 @njit(cache=True)
@@ -96,6 +132,11 @@ def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
     return start_index, peak_index, end_index
 
 
+def polarization_slope(template: np.ndarray, start: int, end: int):
+    data = stats.linregress(np.arange(0, end - start), template[start:end])
+    return data.slope
+
+
 def simple_interpolation(template: np.ndarray, value: float, index: int):
     y1 = template[index]
     y0 = template[index - 1]
@@ -106,13 +147,16 @@ def simple_interpolation(template: np.ndarray, value: float, index: int):
     return out + index - 1
 
 
+def _find_point(template, center, upsample_factor):
+    i = signal.argrelmax(template[:center], order=1)[0]
+    i = np.array([j for j in i if j < (center - (5 * upsample_factor))])
+    i = i[-1] if i.size > 0 else 0
+    return i
+
+
 def template_properties(
-    template: np.ndarray, center: int, upsample_factor: int = 2, negative: bool = True
+    template: np.ndarray, center: int, upsample_factor: int = 2, polarization_time=20
 ):
-    # if negative:
-    #     multiplier = -1
-    # else:
-    #     multiplier = 1
     spl = interpolate.CubicSpline(
         np.linspace(0, template.size, num=template.size), template
     )
@@ -125,12 +169,15 @@ def template_properties(
     min_x = np.argmin(yinterp)
 
     # Find the start and end
-    i = signal.argrelmax(yinterp_diff[:center], order=1)[0]
-    i = np.array([j for j in i if j < (center - (5 * upsample_factor))])
-    i = i[-1] if i.size > 0 else 0
-    j = signal.argrelmax(yinterp[:center], order=1)[0]
-    j = np.array([m for m in j if m < (center - (5 * upsample_factor))])
-    j = j[-1] if j.size > 0 else 0
+    # i = signal.argrelmax(yinterp_diff[:center], order=1)[0]
+    # i = np.array([j for j in i if j < (center - (5 * upsample_factor))])
+    # i = i[-1] if i.size > 0 else 0
+    # j = signal.argrelmax(yinterp[:center], order=1)[0]
+    # j = np.array([m for m in j if m < (center - (5 * upsample_factor))])
+    # j = j[-1] if j.size > 0 else 0
+
+    i = _find_point(template, center, upsample_factor)
+    j = _find_point(template, center, upsample_factor)
     Lb = i if i > j else j
     k = np.argmax(yinterp[center:]) + center
     Rb = k if k > (center + (5 * upsample_factor)) else (yinterp.size - 1)
@@ -154,6 +201,13 @@ def template_properties(
         Rw1 = np.nan
         Rw2 = np.nan
 
+    repolarization_slope = polarization_slope(
+        yinterp, min_x, min_x + polarization_time * upsample_factor
+    )
+    hyperpolarization_slope = polarization_slope(
+        yinterp, Rb, Rb + polarization_time * upsample_factor
+    )
+
     t_props = TemplateProperties(
         hwL_len=(Lw2 - Lw1) / upsample_factor,
         hwL=hwidth_L,
@@ -169,6 +223,8 @@ def template_properties(
         center_diff=min_diff - min_st,
         min_x=(min_x / upsample_factor),
         min_y=yinterp[min_x],
+        rslope=repolarization_slope,
+        hslope=hyperpolarization_slope,
     )
     return t_props
 
