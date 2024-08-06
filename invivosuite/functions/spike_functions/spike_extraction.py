@@ -133,6 +133,7 @@ def get_template_parts(template: np.ndarray) -> tuple[int, int, int]:
 
 
 def polarization_slope(template: np.ndarray, start: int, end: int):
+    end = min(end, template.size)
     data = stats.linregress(np.arange(0, end - start), template[start:end])
     return data.slope
 
