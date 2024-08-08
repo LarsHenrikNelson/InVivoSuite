@@ -29,7 +29,7 @@ def mean_vector_length(spike_phases):
     return uv_radius, p_value
 
 
-@njit()
+@njit(cache=True)
 def ppc_numba(spike_phases):
     outer_sums = np.zeros(spike_phases.size - 1)
     array1 = np.zeros(2)
@@ -68,7 +68,7 @@ def ppc_sampled(spike_phases, size, iterations, seed=42):
             rng.choice(spike_phases, size=size, replace=False)
         )
         output_array[i] = ppc_numba(spk_sampled)
-    return output_array.mean()
+    return output_array
 
 
 @njit()

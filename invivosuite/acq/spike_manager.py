@@ -251,7 +251,7 @@ class SpkManager:
         for temp_index in range(self.cluster_ids.size):
             template = self.sparse_templates[temp_index, :, :]
             if center is None:
-                best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+                best_chan = np.argmin(np.min(template), axis=0)
             else:
                 best_chan = np.argmin(
                     np.min(template[center - 2 : center + 2, :], axis=0)
@@ -263,7 +263,7 @@ class SpkManager:
         temp_index = np.where(self.cluster_ids == cluster_id)[0][0]
         template = self.sparse_templates[temp_index, :, :]
         if center is None:
-            return np.argmax(np.sum(np.abs(template), axis=0))
+            return np.argmin(np.min(template), axis=0)
         else:
             return np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
 

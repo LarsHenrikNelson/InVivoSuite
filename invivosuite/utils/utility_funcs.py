@@ -14,18 +14,18 @@ __all__ = [
 
 
 @njit(cache=True)
-def expand_data(data: np.ndarray, counts: np.ndarray):
+def expand_data(data: np.ndarray, counts: np.ndarray) -> np.ndarray:
     total = np.sum(counts)
     output = np.zeros(total)
     j = 0
     for k in range(data.size):
-        for i in range(counts[k]):
+        for _ in range(counts[k]):
             output[j] = data[k]
             j += 1
     return output
 
 
-def concatenate_dicts(data_list):
+def concatenate_dicts(data_list: dict) -> dict:
     if len(data_list) > 1:
         output = {k: [] for k in data_list[0].keys()}
         for data in data_list:
@@ -44,7 +44,7 @@ def concatenate_dicts(data_list):
     return output
 
 
-def round_sig(x, sig=4):
+def round_sig(x: float, sig=4):
     if np.isnan(x):
         return np.nan
     elif x == 0:
