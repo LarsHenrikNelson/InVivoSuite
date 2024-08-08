@@ -4,7 +4,6 @@ import numpy as np
 from numba import njit
 from numpy.random import default_rng
 
-
 """
 See: https://github.com/aarchiba/kuiper
 See: https://docs.astropy.org/en/stable/index.html
@@ -12,6 +11,7 @@ See: https://docs.astropy.org/en/stable/index.html
 
 __all__ = [
     "h_test",
+    "mean_vector_length",
     "periodic_mean_std",
     "ppc_numba",
     "ppc_sampled",

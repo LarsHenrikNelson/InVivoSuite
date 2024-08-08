@@ -3,13 +3,14 @@ from typing import Literal, TypedDict
 
 import numpy as np
 
-from ..utils import concatenate_dicts, expand_data
 from ..functions.spike_lfp_functions.circular_stats import (
     h_test,
+    mean_vector_length,
     periodic_mean_std,
     rayleightest,
 )
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
+from ..utils import concatenate_dicts, expand_data
 
 # TODO:  Break down spike-phase and spike-power into smaller components.
 
@@ -127,6 +128,7 @@ class SpkLFPManager:
         cm, stdev = periodic_mean_std(data)
         h, m, fpp = h_test(data)
         p = rayleightest(data)
+        vlen, vp = mean_vector_length(data)
 
         stats = CircStats(
             rayleigh_pval=p, circ_mean=cm, circ_std=stdev, h=h, m=m, fpp=fpp

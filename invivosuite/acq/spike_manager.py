@@ -6,8 +6,9 @@ from typing import Literal, Optional, Union
 import numpy as np
 from send2trash import send2trash
 
-from ..utils import concatenate_dicts, save_tsv
 from ..functions.spike_functions import (
+    Methods,
+    Windows,
     _sttc_sig,
     _template_channels,
     amplitude_cutoff,
@@ -18,7 +19,6 @@ from ..functions.spike_functions import (
     get_template_channels,
     isi_violations,
     max_int_bursts,
-    Methods,
     presence,
     rb_violations,
     sfa_abi,
@@ -29,8 +29,8 @@ from ..functions.spike_functions import (
     sttc_ele,
     sttc_python,
     template_properties,
-    Windows,
 )
+from ..utils import concatenate_dicts, save_tsv
 
 Callback = Callable[[str], None]
 

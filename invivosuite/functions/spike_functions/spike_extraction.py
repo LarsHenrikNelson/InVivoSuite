@@ -1,9 +1,8 @@
-from typing import TypedDict, Union, Optional
+from typing import Optional, TypedDict, Union
 
 import numpy as np
 from numba import njit, prange
 from scipy import interpolate, signal, stats
-
 
 __all__ = [
     "_template_channels",
