@@ -9,7 +9,6 @@ After initial cleaning data is
 # %%
 from datetime import datetime
 from pathlib import Path
-from collections import defaultdict
 import functools as ft
 
 import numpy as np
@@ -170,6 +169,46 @@ This section is use to clean the sttc data and average it per unit.
 
 
 # %%
+def get_cleaned_sttc(sttc_df, output_df, column):
+    sttc_df["pairs"] = sttc_df["uid1"] + "_" + sttc_df["uid2"]
+    if isinstance(column, str):
+        column = [column]
+    first_merge = column + ["pairs", "id"]
+    sttc_total = pd.merge(
+        output_df[["cluster_id", "id"]],
+        sttc_df[first_merge].assign(cluster_id=sttc_df["cluster1_id"]),
+        how="inner",
+        on=["cluster_id", "id"],
+    ).rename(columns={"cluster_id": "cluster1_id"})
+    sttc_total1 = pd.merge(
+        output_df[["cluster_id", "id"]],
+        sttc_df[first_merge].assign(cluster_id=sttc_df["cluster2_id"]),
+        how="inner",
+        on=["cluster_id", "id"],
+    ).rename(columns={"cluster_id": "cluster2_id"})
+    return pd.merge(sttc_total, sttc_total1, on=first_merge, how="inner")
+
+
+def get_mean_per_cell(sttc_df, output_df, column):
+    if isinstance(column, str):
+        column = [column]
+    df_list = []
+    for i in column:
+        temp1 = sttc_df[[i, "id", "cluster1_id"]].copy()
+        temp2 = sttc_df[[i, "id", "cluster2_id"]].copy()
+        temp1.rename(columns={"cluster1_id": "cluster_id"}, inplace=True)
+        temp2.rename(columns={"cluster2_id": "cluster_id"}, inplace=True)
+        sttc_vals = pd.concat([temp1, temp2])
+        good_units = output_df[["cluster_id", "id"]]
+        sttc_new = pd.merge(sttc_vals, good_units, how="inner", on=["cluster_id", "id"])
+        df_list.append(sttc_new.groupby(["id", "cluster_id"]).mean().reset_index())
+    sttc_per_cell_df = ft.reduce(
+        lambda left, right: pd.merge(left, right, how="outer", on=["cluster_id", "id"]),
+        df_list,
+    )
+    return sttc_per_cell_df
+
+
 def assign_sttc_cell_types(sttc_df, df2):
     rep_dict = dict(
         zip(
@@ -179,47 +218,6 @@ def assign_sttc_cell_types(sttc_df, df2):
     )
     sttc_df["cell_type1"] = sttc_df["uid1"].map(rep_dict)
     sttc_df["cell_type2"] = sttc_df["uid2"].map(rep_dict)
-
-
-def get_mean_per_cell(sttc_df, column):
-    sttc_per_cell_df = defaultdict(list)
-    for i in range(sttc_df.shape[0]):
-        cell1 = sttc_df["uid1"].iloc[i]
-        cell2 = sttc_df["uid2"].iloc[i]
-        sttc_per_cell_df[cell1].append(sttc_df[column].iloc[i])
-        sttc_per_cell_df[cell2].append(sttc_df[column].iloc[i])
-
-    for key, value in sttc_per_cell_df.items():
-        sttc_per_cell_df[key] = np.mean(value)
-
-    return sttc_per_cell_df
-
-
-def sttc_per_cell(sttc_df, df2, columns):
-    indexes = []
-    values = set(df2["id"] + "_" + df2["cluster_id"].astype(str))
-    for i in range(sttc_df.shape[0]):
-        if (sttc_df["uid1"].iloc[i] in values) and (sttc_df["uid2"].iloc[i] in values):
-            indexes.append(i)
-    sttc_cleaned = sttc_df.iloc[indexes].copy()
-
-    df_list = []
-    for i in columns:
-        sttc_per_cell_df = get_mean_per_cell(sttc_cleaned, column=i)
-
-        sttc_per_cell_df = pd.DataFrame(
-            {"uid": list(sttc_per_cell_df.keys()), i: list(sttc_per_cell_df.values())}
-        )
-        df_list.append(sttc_per_cell_df)
-    sttc_per_cell_df = ft.reduce(
-        lambda left, right: pd.merge(left, right, how="outer", on="uid"), df_list
-    )
-    sttc_per_cell_df[["id", "cluster_id"]] = sttc_per_cell_df["uid"].str.rsplit(
-        "_", n=1, expand=True
-    )
-    sttc_per_cell_df.drop(labels="uid", inplace=True, axis=1)
-    sttc_per_cell_df["cluster_id"] = sttc_per_cell_df["cluster_id"].astype(int)
-    return sttc_cleaned, sttc_per_cell_df
 
 
 # %%
@@ -262,7 +260,7 @@ print(f"Removed {n_start-n_end} of {n_start} units, left with {n_end}")
 # %%
 # It is important to calculate the STTC data after cleaning the bad spikes out.
 # Save the data, always include the current date
-cleaned, sttc_cell_ave = sttc_per_cell(
+cleaned, sttc_cell_ave = get_mean_per_cell(
     sttc_df, df_cleaned, columns=["sttc_25ms", "sttc_5ms"]
 )
 df_output = pd.merge(

@@ -27,7 +27,7 @@ spk_acq_pair = sorted(spk_acq_pair)
 # This exports the average main waveform and template properties
 save_path = Path(r"path/for/saving/data")
 current_date = str(datetime.today().date())
-for pair0, pair1 in spk_acq_pair[-4:-3]:
+for pair0, pair1 in spk_acq_pair:
     print(pair0.stem)
 
     acq_manager = AcqManager()
@@ -162,7 +162,7 @@ for pair0, pair1 in spk_acq_pair:
 save_path = Path(r"path/for/saving/data")
 current_date = str(datetime.today().date())
 dt = 5
-for pair0, pair1 in spk_acq_pair[-4:]:
+for pair0, pair1 in spk_acq_pair:
     print(pair0.stem)
 
     acq_manager = AcqManager()
