@@ -7,7 +7,7 @@ import pandas as pd
 from invivosuite.acq import (
     AcqManager,
 )
-from invivosuite.acq.spike_functions import get_template_channels
+from invivosuite.functions.spike_functions import get_template_channels
 
 
 # %%

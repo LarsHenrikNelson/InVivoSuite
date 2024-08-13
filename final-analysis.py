@@ -260,8 +260,13 @@ print(f"Removed {n_start-n_end} of {n_start} units, left with {n_end}")
 # %%
 # It is important to calculate the STTC data after cleaning the bad spikes out.
 # Save the data, always include the current date
-cleaned, sttc_cell_ave = get_mean_per_cell(
-    sttc_df, df_cleaned, columns=["sttc_25ms", "sttc_5ms"]
+sttc_cell_ave = get_mean_per_cell(sttc_df, df_cleaned, column=["sttc_25ms", "sttc_5ms"])
+cleaned = get_cleaned_sttc(sttc_df, df_cleaned, column=["sttc_5ms", "sttc_25ms"])
+final_df = pd.merge(
+    df_cleaned,
+    sttc_cell_ave[["sttc_25ms", "sttc_5ms", "cluster_id", "id"]],
+    on=["cluster_id", "id"],
+    how="outer",
 )
 df_output = pd.merge(
     df_cleaned,

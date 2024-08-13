@@ -213,18 +213,18 @@ Output data to use phy. Don't use the f64 dtype, it makes Phy slow.
 Chunk size and waveform length are in samples. Note that drift correction
 is not used. You can subtract waveforms from the acquisitions which can help
 with cleaning small amplitude spikes. However, I would export your templates
-2x because the kilosort templates are not very good.
+2x when subtracting spikes because the kilosort templates are not very good.
 """
 acq_manager.export_to_phy(
+    nchans=4,
     waveform_length=82,
     ref=True,
     ref_type="cmr",
     ref_probe="acc",
     map_channel=True,
     probe="acc",
-    chunk_size=480000,
+    chunk_size=3000000,
     dtype="f32",
-    output_chans=8,
 )
 
 """
@@ -235,7 +235,7 @@ acq_manager.recompute_templates(
     ref_probe="acc",
     map_channel=True,
     probe="acc",
-    chunk_size=480000,
+    chunk_size=3000000,
     dtype="f32",
-    output_chans=8,
+    nchans=8,
 )
