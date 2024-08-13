@@ -421,7 +421,6 @@ class SpkManager:
         nchans: int = 4,
         total_chans: int = 64,
         upsample_factor: int = 2,
-        negative: bool = True,
     ):
         t_props_list = []
         for temp_index in range(self.cluster_ids.size):
@@ -433,7 +432,6 @@ class SpkManager:
                 templates[temp_index, :, chan],
                 center=center,
                 upsample_factor=upsample_factor,
-                negative=negative,
             )
             indexes = np.where(self.spike_clusters == cluster_id)[0]
             temp_spikes_waveforms = self.spike_waveforms[indexes]
