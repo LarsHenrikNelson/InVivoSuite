@@ -6,30 +6,7 @@ from typing import Literal, Optional, Union
 import numpy as np
 from send2trash import send2trash
 
-from ..functions.spike_functions import (
-    Methods,
-    Windows,
-    _sttc_sig,
-    _template_channels,
-    amplitude_cutoff,
-    bin_spikes,
-    create_binary_spikes,
-    create_continuous_spikes,
-    get_burst_data,
-    get_template_channels,
-    isi_violations,
-    max_int_bursts,
-    presence,
-    rb_violations,
-    sfa_abi,
-    sfa_divisor,
-    sfa_local_var,
-    sfa_rlocal_var,
-    sttc,
-    sttc_ele,
-    sttc_python,
-    template_properties,
-)
+from ..functions import spike_functions as spkf
 from ..utils import concatenate_dicts, save_tsv
 
 Callback = Callable[[str], None]
@@ -159,7 +136,7 @@ class SpkManager:
     ) -> np.ndarray:
         template_index = np.where(self.cluster_ids == cluster_id)[0]
         if len(template_index) == 1:
-            chan, _, _ = _template_channels(
+            chan, _, _ = spkf._template_channels(
                 self.sparse_templates[template_index[0]],
                 nchans=nchans,
                 total_chans=self.sparse_templates.shape[2],
@@ -203,20 +180,20 @@ class SpkManager:
             end = self.end
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
-        return create_binary_spikes(spike_indexes, end - start)
+        return spkf.create_binary_spikes(spike_indexes, end - start)
 
     def get_continuous_spike_cluster(
         self,
         cluster_id: int,
         fs: float = 40000.0,
         nperseg: int = 0,
-        window: Windows = "boxcar",
+        window: spkf.Windows = "boxcar",
         sigma: float = 200,
-        method: Methods = "convolve",
+        method: spkf.Methods = "convolve",
     ):
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
-        return create_continuous_spikes(
+        return spkf.create_continuous_spikes(
             spike_indexes,
             self.end - self.start,
             nperseg=nperseg,
@@ -255,7 +232,7 @@ class SpkManager:
             end = self.end
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         sample_indexes = self.spike_times[spike_ids]
-        return bin_spikes(sample_indexes, end - start, nperseg)
+        return spkf.bin_spikes(sample_indexes, end - start, nperseg)
 
     def get_channel_clusters(
         self, center: Optional[int] = None
@@ -356,9 +333,9 @@ class SpkManager:
         output_type: Literal["sec", "ms"] = "sec",
     ):
         if start == -1:
-            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+            start = self.start
         if end == -1:
-            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+            end = self.end
 
         output_dict = {}
         times = self.get_cluster_spike_times(
@@ -370,6 +347,9 @@ class SpkManager:
         )
         output_dict["fano_factor"] = binned.var() / binned.mean()
 
+        time_start = self.index_to_time(start, fs=fs, output_type="sec")
+        time_end = self.index_to_time(end, fs=fs, output_type="sec")
+
         if times.size > 2:
             isi = np.diff(times)
             mean_isi = np.mean(isi)
@@ -378,12 +358,12 @@ class SpkManager:
                 output_dict["fr_iei"] = 1 / mean_isi
             else:
                 output_dict["fr_iei"] = 1000 / mean_isi
-            output_dict["fr"] = times.size / (end - start)
-            output_dict["abi_sfa"] = sfa_abi(isi)
-            output_dict["local_sfa"] = sfa_local_var(isi)
-            output_dict["rlocal_sfa"] = sfa_rlocal_var(isi, R)
-            output_dict["divisor_sfa"] = sfa_divisor(isi)
-            fpRate, nv = isi_violations(
+            output_dict["fr"] = times.size / (time_end - time_start)
+            output_dict["abi_sfa"] = spkf.sfa_abi(isi)
+            output_dict["local_sfa"] = spkf.sfa_local_var(isi)
+            output_dict["rlocal_sfa"] = spkf.sfa_rlocal_var(isi, R)
+            output_dict["divisor_sfa"] = spkf.sfa_divisor(isi)
+            fpRate, nv = spkf.isi_violations(
                 spike_train=times,
                 min_time=start,
                 max_time=end,
@@ -392,7 +372,7 @@ class SpkManager:
             )
             output_dict["fp_rate"] = fpRate
             output_dict["num_violations"] = nv
-            rp_contam, _ = rb_violations(
+            rp_contam, _ = spkf.rb_violations(
                 spike_train=times,
                 min_time=start,
                 max_time=end,
@@ -417,13 +397,13 @@ class SpkManager:
             divisor = fs
         else:
             divisor = fs / 1000
-        pr = presence(times, start / divisor, end / divisor)
+        pr = spkf.presence(times, start / divisor, end / divisor)
         output_dict["presence_ratio"] = pr["presence_ratio"]
-        cutoff = amplitude_cutoff(amps)
+        cutoff = spkf.amplitude_cutoff(amps)
         output_dict["amp_cutoff"] = cutoff
         return output_dict
 
-    def get_spikes_properties(
+    def get_spike_properties(
         self,
         fs: int = 40000,
         start: int = -1,
@@ -435,9 +415,9 @@ class SpkManager:
         output_type: Literal["sec", "ms"] = "sec",
     ):
         if start == -1:
-            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+            start = start
         if end == -1:
-            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+            end = end
 
         output_list = []
 
@@ -459,7 +439,7 @@ class SpkManager:
         output_list = concatenate_dicts(output_list)
         return output_list
 
-    def get_templates_properties(
+    def get_template_properties(
         self,
         templates: np.ndarray,
         center: int = 41,
@@ -470,10 +450,10 @@ class SpkManager:
         t_props_list = []
         for temp_index in range(self.cluster_ids.size):
             cluster_id = self.cluster_ids[temp_index]
-            chan, start_chan, _ = _template_channels(
+            chan, start_chan, _ = spkf._template_channels(
                 templates[temp_index, :, :], nchans=nchans, total_chans=total_chans
             )
-            t_props = template_properties(
+            t_props = spkf.template_properties(
                 templates[temp_index, :, chan],
                 center=center,
                 upsample_factor=upsample_factor,
@@ -513,7 +493,7 @@ class SpkManager:
             spk_times = self.get_cluster_spike_times(
                 clust_id, output_type="sec", fs=fs, start=start, end=end
             )
-            b_data = max_int_bursts(
+            b_data = spkf.max_int_bursts(
                 spk_times,
                 fs,
                 min_count=min_count,
@@ -523,7 +503,7 @@ class SpkManager:
                 max_end=max_end,
                 output_type=output_type,
             )
-            props_dict, burst_dict = get_burst_data(b_data, R)
+            props_dict, burst_dict = spkf.get_burst_data(b_data, R)
             burst_dict["cluster_id"] = clust_id
             mean_list.append(burst_dict)
             props_dict["cluster_id"] = np.array([clust_id] * len(b_data))
@@ -548,20 +528,33 @@ class SpkManager:
         max_start: float = 0.170,
         max_int: float = 0.3,
         max_end: float = 0.34,
+        start: int = -1,
+        end: int = -1,
         output_type: Literal["sec", "ms", "sample"] = "sec",
     ) -> dict:
         if templates is None:
             templates = self.sparse_templates
         output_dict = {}
-        temp_props = self.get_templates_properties(
+        temp_props = self.get_template_properties(
             templates=templates,
             center=center,
             nchans=nchans,
             total_chans=total_chans,
             upsample_factor=upsample_factor,
         )
-        spk_props = self.get_spikes_properties(
-            fs=fs, isi_threshold=isi_threshold, min_isi=min_isi, nperseg=nperseg
+
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+
+        spk_props = self.get_spike_properties(
+            fs=fs,
+            isi_threshold=isi_threshold,
+            min_isi=min_isi,
+            nperseg=nperseg,
+            start=start,
+            end=end,
         )
         other_burst_props, burst_props = self.get_burst_properties(
             min_count=min_count,
@@ -680,7 +673,7 @@ class SpkManager:
         indexes = self.get_cluster_spike_times(
             cluster_id, output_type=output_type, fs=fs, start=start, end=end
         )
-        b_data = max_int_bursts(
+        b_data = spkf.max_int_bursts(
             indexes,
             fs,
             min_count=min_count,
@@ -712,7 +705,7 @@ class SpkManager:
         if end == -1:
             end = self.end
         indexes = self.get_cluster_spike_times(cluster_id, start=start, end=end)
-        bursts = max_int_bursts(
+        bursts = spkf.max_int_bursts(
             indexes,
             fs,
             min_count=min_count,
@@ -722,7 +715,7 @@ class SpkManager:
             max_end=max_end,
             output_type=output_type,
         )
-        props_dict, burst_dict = get_burst_data(bursts)
+        props_dict, burst_dict = spkf.get_burst_data(bursts)
         return props_dict, burst_dict, bursts
 
     def save_properties_phy(
@@ -731,11 +724,23 @@ class SpkManager:
         center: int = 41,
         nchans: int = 4,
         total_chans: int = 64,
+        start: int = -1,
+        end: int = -1,
         callback: Callback = print,
     ):
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+
         callback("Calculating spike template properties.")
         out_data, _ = self.get_properties(
-            fs=fs, center=center, nchans=nchans, total_chans=total_chans
+            fs=fs,
+            center=center,
+            nchans=nchans,
+            total_chans=total_chans,
+            start=start,
+            end=end,
         )
         out_data["ch"] = out_data["channel"]
         out_data["Amplitude"] = out_data["center_y"] - out_data["start_y"]
@@ -774,7 +779,7 @@ class SpkManager:
         )
         callback("Finished exporting Phy data.")
 
-    def extract_waveforms_chunk(
+    def _extract_waveforms_chunk(
         self,
         spike_times: np.ndarray,
         output: np.ndarray,
@@ -874,7 +879,7 @@ class SpkManager:
 
         # Get the best range of channels for each template
         channel_map = self.get_grp_dataset("channel_maps", probe)
-        peaks, channels = get_template_channels(
+        peaks, channels = spkf.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
 
@@ -899,7 +904,7 @@ class SpkManager:
                 start=chunk_start,
                 end=i + chunk_size,
             ).T
-            self.extract_waveforms_chunk(
+            self._extract_waveforms_chunk(
                 spike_times=spike_times,
                 output=output,
                 recording_chunk=recording_chunk,
@@ -927,7 +932,7 @@ class SpkManager:
                 start=i,
                 end=end,
             ).T
-            self.extract_waveforms_chunk(
+            self._extract_waveforms_chunk(
                 spike_times=spike_times,
                 output=output,
                 recording_chunk=recording_chunk,
@@ -967,6 +972,7 @@ class SpkManager:
         probe: str = "all",
         start: int = -1,
         end: int = -1,
+        rec_start: int = -1,
         chunk_size: int = 240000,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f64",
         subtract: bool = False,
@@ -985,6 +991,8 @@ class SpkManager:
             start = self.start
         if end == -1:
             end = self.end
+        if rec_start == -1:
+            rec_start = self.start
 
         self.spike_waveforms = self.extract_waveforms(
             nchans=nchans,
@@ -997,6 +1005,7 @@ class SpkManager:
             probe=probe,
             start=start,
             end=end,
+            rec_start=rec_start,
             chunk_size=chunk_size,
             subtract=subtract,
             callback=callback,
@@ -1049,7 +1058,7 @@ class SpkManager:
     ):
         nchans = spike_waveforms.shape[2] // 2
 
-        _, channels = get_template_channels(
+        _, channels = spkf.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
         waveform_length = spike_waveforms.shape[1]
@@ -1094,6 +1103,11 @@ class SpkManager:
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         callback: Callback = print,
     ):
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+
         if self.spike_waveforms.size == 0:
             self.export_to_phy(
                 nchans=nchans,
@@ -1119,7 +1133,7 @@ class SpkManager:
             total_chans=channel_map.size,
             callback=callback,
         )
-        _, channels = get_template_channels(
+        _, channels = spkf.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
         full_spike_channels = self._extract_spikes_channels(channels[:, 1:])
@@ -1154,7 +1168,11 @@ class SpkManager:
 
         self._load_sparse_templates()
         self.save_properties_phy(
-            center=center, nchans=nchans, total_chans=channel_map.size
+            center=center,
+            nchans=nchans,
+            total_chans=channel_map.size,
+            start=start,
+            end=end,
         )
         callback("Finished saving templates.")
 
@@ -1175,6 +1193,10 @@ class SpkManager:
         subtract: bool = False,
         callback: callable = print,
     ):
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
         self.export_phy_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,
@@ -1224,9 +1246,9 @@ class SpkManager:
     ):
         output_index = 0
         if start == -1:
-            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+            start = self.start
         if end == -1:
-            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+            end = self.end
 
         # Correct for recordings that don't start at zero b/c Kilosort
         # starts all indexes as zero.
@@ -1244,10 +1266,13 @@ class SpkManager:
         if test_sig is not None:
             sig_vals = np.zeros(size)
 
+        sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
+        sttc_end = self.index_to_time(end, fs=fs, output_type=output_type)
+
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
             indexes1 = self.get_cluster_spike_times(
-                clust_id1, output_type=output_type, fs=fs
+                clust_id1, output_type=output_type, fs=fs, start=start, end=end
             )
 
             if indexes1.size > 3:
@@ -1257,38 +1282,38 @@ class SpkManager:
                 clust_id2 = self.cluster_ids[index2]
                 callback(f"Analyzing sttc for cluster {clust_id1} and {clust_id2}.")
                 indexes2 = self.get_cluster_spike_times(
-                    clust_id2, output_type=output_type, fs=fs
+                    clust_id2, output_type=output_type, fs=fs, start=start, end=end
                 )
 
                 if indexes2.size > 3:
                     iei_2 = np.diff(indexes2)
 
                 if sttc_version == "ivs":
-                    sttc_index, num1dt, num1_2, num2dt, num2_1 = sttc(
-                        indexes1, indexes2, dt=dt, start=start, stop=end
+                    sttc_index, num1dt, num1_2, num2dt, num2_1 = spkf.sttc(
+                        indexes1, indexes2, dt=dt, start=sttc_start, stop=sttc_end
                     )
                     num1dt_array[output_index] = num1dt
                     num2dt_array[output_index] = num2dt
                     num1_2_array[output_index] = num1_2
                     num2_1_array[output_index] = num2_1
                 elif sttc_version == "elephant":
-                    sttc_index = sttc_ele(
-                        indexes1, indexes2, dt=dt, start=start, stop=end
+                    sttc_index = spkf.sttc_ele(
+                        indexes1, indexes2, dt=dt, start=sttc_start, stop=sttc_end
                     )
                 else:
-                    sttc_index = sttc_python(
+                    sttc_index = spkf.sttc_python(
                         indexes1,
                         indexes2,
                         indexes1.size,
                         indexes2.size,
                         dt=dt,
-                        start=start,
-                        stop=end,
+                        start=sttc_start,
+                        stop=sttc_end,
                     )
 
                 if test_sig is not None:
                     if indexes1.size > 3 and indexes2.size > 3:
-                        sig, _ = _sttc_sig(
+                        sig, _ = spkf._sttc_sig(
                             sttc_value=sttc_index,
                             iei_1=iei_1,
                             iei_2=iei_2,
@@ -1338,32 +1363,35 @@ class SpkManager:
     ):
         output_index = 0
         if start == -1:
-            start = self.index_to_time(self.start, fs=fs, output_type=output_type)
+            start = self.start
         if end == -1:
-            end = self.index_to_time(self.end, fs=fs, output_type=output_type)
+            end = self.end
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         correlation_data = np.zeros(size)
         cluster_ids = np.zeros((size, 4), dtype=int)
 
+        corr_start = self.index_to_time(start, fs=fs, output_type=output_type)
+        corr_end = self.index_to_time(end, fs=fs, output_type=output_type)
+
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
             indexes1 = self.get_cluster_spike_times(
-                clust_id1, output_type=output_type, fs=fs
+                clust_id1, output_type=output_type, fs=fs, start=start, end=end
             )
 
             for index2 in range(index1 + 1, self.cluster_ids.size):
                 clust_id2 = self.cluster_ids[index2]
                 callback(f"Analyzing sttc for cluster {clust_id1} and {clust_id2}.")
                 indexes2 = self.get_cluster_spike_times(
-                    clust_id2, output_type=output_type, fs=fs
+                    clust_id2, output_type=output_type, fs=fs, start=start, end=end
                 )
 
                 cluster_ids[output_index, 0] = clust_id1
                 cluster_ids[output_index, 1] = clust_id2
                 cluster_ids[output_index, 2] = indexes1.size
                 cluster_ids[output_index, 3] = indexes2.size
-                correlation_data[output_index] = sttc(
-                    indexes1, indexes2, dt=dt, start=start, stop=end
+                correlation_data[output_index] = spkf.correlation_index(
+                    indexes1, indexes2, dt=dt, start=corr_start, stop=corr_end
                 )
                 output_index += 1
 
