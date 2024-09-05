@@ -328,38 +328,39 @@ class LFPManager:
         probe: str = "all",
         start: Union[None, int] = None,
         end: Union[None, int] = None,
+        callback=print,
     ):
-        output = []
+        output = {}
         if start is None:
             start = self.get_file_attr("start")
         if end is None:
             end = self.get_file_attr("end")
-        if isinstance(probe, str):
-            probe = [probe]
-        for p in probe:
-            chans = self.get_grp_dataset("probes", probe)
-            start_chan = chans[0] - chans[0]
-            end_chan = chans[1] - chans[0]
-            temp_dict = {key: np.zeros(end_chan) for key in freq_dict.keys()}
-            for index, channel in enumerate(np.arange(start_chan, end_chan)):
-                freqs, cwt = self.sxx(
-                    channel,
-                    "cwt",
-                    ref=ref,
-                    ref_type=ref_type,
-                    ref_probe=ref_probe,
-                    map_channel=map_channel,
-                    probe=p,
-                )
-                pdi_temp = lfp_functions.phase_discontinuity_index(
-                    cwt,
-                    freqs,
-                    freq_dict,
-                    size,
-                )
-                for key, value in pdi_temp.items():
-                    temp_dict[key][index] = value
-            output.append(temp_dict)
+        chans = self.get_grp_dataset("probes", probe)
+        start_chan = chans[0] - chans[0]
+        end_chan = chans[1] - chans[0]
+        output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
+        output["channels"] = np.arange(start_chan, end_chan)
+        for index, channel in enumerate(output["channels"]):
+            callback(
+                f"Extracting phase data for channel {channel} on probe {probe}."
+            )
+            freqs, cwt = self.sxx(
+                channel,
+                "cwt",
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+            pdi_temp = lfp_functions.phase_discontinuity_index(
+                cwt,
+                freqs,
+                freq_dict,
+                size,
+            )
+            for key, value in pdi_temp.items():
+                output[key][index] = value
         return output
 
     def get_short_time_energy(
