@@ -5,7 +5,7 @@ import numpy as np
 from numba import njit
 from scipy import ndimage, stats
 
-from ... import utils
+from .. import signal_functions
 
 """These are from 
 https://github.com/AllenInstitute/ecephys_spike_sorting/blob/master/ecephys_spike_sorting/modules/quality_metrics/metrics.py
@@ -50,9 +50,9 @@ def presence(data: np.ndarray, start: int = -1, end: int = -1, tol=1e-9) -> Pres
     nbins = math.ceil(data.size * 0.05)
     if nbins > 2:
         bins = np.linspace(start, end, num=nbins)
-        binned = utils.bin_data_sorted(data, bins)
+        binned = signal_functions.bin_data_sorted(data, bins)
         reg_out = stats.linregress(np.arange(binned.size), binned)
-        # _, y = utils.kde(data, tol=tol)z
+        # _, y = signal_functions.kde(data, tol=tol)z
         fit_out = stats.fit(stats.uniform, binned)
         output = Presence(
             presence_ratio=np.sum(binned > 0) / nbins,

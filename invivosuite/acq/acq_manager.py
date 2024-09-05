@@ -10,7 +10,7 @@ from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
 from .spike_lfp_manager import SpkLFPManager
-from ..utils import envelopes_idx, whitening_matrix
+from ..functions.signal_functions import envelopes_idx, whitening_matrix
 
 
 class AcqManager(SpkManager, LFPManager, SpkLFPManager):

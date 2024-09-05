@@ -5,7 +5,7 @@ from scipy import signal
 from scipy.signal import windows
 
 from .binarize_spikes import bin_spikes
-from ...utils import gauss_kernel
+from ...functions.signal_functions import gauss_kernel
 
 
 __all__ = ["create_continuous_spikes", "Methods", "Windows"]

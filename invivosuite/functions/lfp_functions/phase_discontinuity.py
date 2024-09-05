@@ -2,7 +2,7 @@ from typing import Literal, Union
 
 import numpy as np
 
-from ..signal_funcs import kde
+from ..signal_functions import kde
 
 
 def stepped_cwt_cohy(cwt: np.ndarray, size: int):
