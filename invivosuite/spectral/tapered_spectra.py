@@ -607,9 +607,9 @@ def tapered_spectra(s, tapers, NFFT=None, low_bias=True):
     if NFFT is None or NFFT < N:
         NFFT = N
     rest_of_dims = s.shape[:-1]
-    # M = int(np.product(rest_of_dims))
+    # M = int(np.prod(rest_of_dims))
 
-    s = s.reshape(int(np.product(rest_of_dims)), N)
+    s = s.reshape(int(np.prod(rest_of_dims)), N)
     # de-mean this sucker
     s = remove_bias(s, axis=-1)
     # s = s - s.mean(axis=-1)
@@ -798,7 +798,7 @@ def multitaper(
     """
     # have last axis be time series for now
     N = s.shape[-1]
-    M = int(np.product(s.shape[:-1]))
+    M = int(np.prod(s.shape[:-1]))
 
     if BW is not None:
         # BW wins in a contest (since it was the original implementation)

@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import KDEpy
 import numpy as np
@@ -17,9 +17,11 @@ __all__ = [
     "envelopes_idx",
     "fit_sine",
     "gauss_kernel",
+    "instantaneous_frequency",
     "kde",
     "mad",
     "ndconvolve",
+    "short_time_energy",
     "sinefunc",
     "where_count",
     "whitening_matrix",
@@ -27,6 +29,43 @@ __all__ = [
     "xcorr_fft",
     "xcorr_lag",
 ]
+
+
+Windows = Literal[
+    "hamming",
+    "hann",
+    "blackmanharris",
+    "boxcar",
+    "triangle",
+    "flattop",
+    "parzen",
+    "bohman",
+    "nuttall",
+    "barthann",
+    "cosine",
+    "exponential",
+    "tukey",
+    "taylor",
+    "lanczos",
+    "bartlett",
+]
+
+
+def instantaneous_frequency(analytic_signal, fs):
+    factor = fs / (2 * np.pi)
+    output = factor * np.gradient(np.unwrap(np.angle(analytic_signal)))
+    return output
+
+
+def short_time_energy(
+    array, window: Windows = "hamming", wlen: int = 0.2, fs: Union[float, int] = 1000.0
+):
+    wlen = int(wlen * fs)
+    win_array = signal.get_window(window, wlen)
+    win_array /= win_array.sum()
+    se_array = signal.convolve(array**2, win_array)
+    se_array = se_array[wlen // 2 : array.size + wlen // 2]
+    return se_array
 
 
 @njit()
@@ -358,7 +397,7 @@ def bin_data_unsorted(data: np.ndarray, bins: np.ndarray, func: callable):
 def kde(
     array: np.ndarray,
     kernel: str = "biweight",
-    bw_method: str = "ISJ",
+    bw_method: Literal["ISJ", "silverman", "scott"] = "ISJ",
     tol: float = 0.001,
 ):
     if array.ndim > 1:

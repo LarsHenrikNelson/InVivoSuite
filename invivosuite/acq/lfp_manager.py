@@ -5,9 +5,9 @@ import fcwt
 import numpy as np
 from scipy import signal
 
-from . import lfp
 from .filtering_functions import Filters, Windows, filter_array
-from ..spectral import multitaper
+from ..spectral import multitaper, get_freq_window
+from ..functions import lfp_functions, signal_functions
 
 
 class LFPManager:
@@ -104,9 +104,11 @@ class LFPManager:
         **kwargs,
     ):
         for key, value in kwargs.items():
-            if type(value) is tuple:
+            if isinstance(value, tuple):
                 for index, i in enumerate(value):
                     self.set_grp_attr(pxx_type, f"{key}_{index}", i)
+            elif value is None:
+                self.set_grp_attr(pxx_type, key, "none")
             else:
                 self.set_grp_attr(pxx_type, key, value)
 
@@ -121,6 +123,9 @@ class LFPManager:
             )
             for i in window_keys:
                 del pxx_dict["window_" + i]
+        for key, value in pxx_dict.items():
+            if value == "none":
+                pxx_dict[key] = None
         return pxx_dict
 
     def pxx(
@@ -147,7 +152,8 @@ class LFPManager:
             map_channel=map_channel,
         )
         if pxx_type == "multitaper":
-            freqs, pxx = multitaper(array, fs=fs, **pxx_attrs)
+            print(pxx_attrs)
+            freqs, pxx, _ = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":
             freqs, pxx = signal.periodogram(array, fs=fs, **pxx_attrs)
         elif pxx_type == "welch":
@@ -261,6 +267,56 @@ class LFPManager:
         hil_acq = signal.hilbert(acq)
         return hil_acq
 
+    def all_pxx(
+        self,
+        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
+        log_transform=True,
+        window_type: Literal["sum", "mean"] = "sum",
+        callback=print,
+    ):
+        output = {}
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
+        chans = self.get_grp_dataset("probes", probe)
+        start_chan = chans[0] - chans[0]
+        end_chan = chans[1] - chans[0]
+        output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
+        output["channels"] = np.arange(start_chan, end_chan)
+        for index, channel in enumerate(output["channels"]):
+            callback(
+                f"Extracting frequency data for channel {channel} on probe {probe}."
+            )
+            f, p = self.pxx(
+                channel=channel,
+                pxx_type=pxx_type,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+            for fr, val in freq_dict.items():
+                output[fr][index] = get_freq_window(
+                    pxx=p,
+                    freqs=f,
+                    lower_limit=val[0],
+                    upper_limit=val[1],
+                    log_transform=log_transform,
+                    window_type=window_type,
+                )
+        output["channels"] = np.arange(start_chan, end_chan)
+        return output
+
     def calc_all_pdi(
         self,
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
@@ -269,30 +325,42 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel: bool = False,
         size: int = 2000,
+        probe: str = "all",
+        start: Union[None, int] = None,
+        end: Union[None, int] = None,
     ):
-        pdi_dict = {key: np.zeros(self.n_chans) for key in freq_dict.keys()}
-        probes = self.probes
-        for region in probes:
-            start = self.get_grp_dataset("probes", region)[0]
-            for i in range(0, 64):
+        output = []
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
+        if isinstance(probe, str):
+            probe = [probe]
+        for p in probe:
+            chans = self.get_grp_dataset("probes", probe)
+            start_chan = chans[0] - chans[0]
+            end_chan = chans[1] - chans[0]
+            temp_dict = {key: np.zeros(end_chan) for key in freq_dict.keys()}
+            for index, channel in enumerate(np.arange(start_chan, end_chan)):
                 freqs, cwt = self.sxx(
-                    i,
+                    channel,
                     "cwt",
                     ref=ref,
                     ref_type=ref_type,
                     ref_probe=ref_probe,
                     map_channel=map_channel,
-                    probe=region,
+                    probe=p,
                 )
-                pdi_temp = lfp.phase_discontinuity_index(
+                pdi_temp = lfp_functions.phase_discontinuity_index(
                     cwt,
                     freqs,
                     freq_dict,
                     size,
                 )
                 for key, value in pdi_temp.items():
-                    pdi_dict[key][start + i] = value
-        return pdi_dict
+                    temp_dict[key][index] = value
+            output.append(temp_dict)
+        return output
 
     def get_short_time_energy(
         self,
@@ -335,7 +403,9 @@ class LFPManager:
             map_channel=map_channel,
         )
         fs = self.get_grp_attr("lfp", "sample_rate")
-        se_array = lfp.short_time_energy(acq, window=window, wlen=wlen, fs=fs)
+        se_array = signal_functions.short_time_energy(
+            acq, window=window, wlen=wlen, fs=fs
+        )
         return se_array
 
     def get_ste_baseline(
@@ -354,14 +424,14 @@ class LFPManager:
             deg = self.get_grp_attr("lfp_bursts", "deg")
         if threshold is None:
             threshold = self.get_grp_attr("lfp_bursts", "threshold")
-        baseline = lfp.kde_baseline(
+        baseline = signal_functions.kde_baseline(
             ste, method=method, tol=tol, deg=deg, threshold=threshold
         )
         return baseline
 
     def find_lfp_bursts(
         self,
-        window: lfp.Windows = "hamming",
+        window: signal_functions.Windows = "hamming",
         min_len: float = 0.2,
         max_len: float = 20.0,
         min_burst_int: float = 0.2,
@@ -405,7 +475,7 @@ class LFPManager:
                 acq_i = self.acq(
                     i, "lfp", cmr=cmr, cmr_probe=region, map_channel=False, probe=region
                 )
-                bursts = lfp.find_bursts(
+                bursts = lfp_functions.find_bursts(
                     acq_i,
                     window=window,
                     min_len=min_len,
@@ -444,7 +514,7 @@ class LFPManager:
         fs_lfp = self.get_grp_attr("lfp", "sample_rate")
         fs_raw = self.get_file_dataset("sample_rate", rows=channel)
         size = int(size / (fs_raw / fs_lfp))
-        burst_baseline = lfp.burst_baseline_periods(bursts, size)
+        burst_baseline = lfp_functions.burst_baseline_periods(bursts, size)
         self.close()
         return burst_baseline
 
@@ -466,7 +536,7 @@ class LFPManager:
         baseline = self.get_burst_baseline(
             channel, map_channel=map_channel, probe=probe
         )
-        temp = lfp.burst_stats(acq, bursts, baseline, bands, fs)
+        temp = lfp_functions.burst_stats(acq, bursts, baseline, bands, fs)
         if calc_average:
             mean_data = {
                 f"{key}_mean": value.mean()

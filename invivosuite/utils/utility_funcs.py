@@ -9,8 +9,23 @@ __all__ = [
     "concatenate_dicts",
     "round_sig",
     "save_tsv",
+    "split_at_zeros",
     "tsv_row",
 ]
+
+
+@njit()
+def split_at_zeros(array):
+    array_list = []
+    temp_list = []
+    for index, i in enumerate(array):
+        if i > 0:
+            temp_list.append(index)
+        else:
+            if temp_list:
+                array_list.append(temp_list)
+            temp_list = []
+    return array_list
 
 
 @njit(cache=True)
