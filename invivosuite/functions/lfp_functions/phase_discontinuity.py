@@ -44,7 +44,7 @@ def phase_discontinuity_index(
         f_lim = np.where((freqs <= value[1]) & (freqs >= value[0]))[0]
         g = coh[f_lim]
         g = g.flatten()
-        x, y = kde(g, tol=tol, bw_metho=bw_method)
+        x, y = kde(g, tol=tol, bw_method=bw_method)
         # power2 = int(np.ceil(np.log2(g.size)))
         # width = np.cov(g)
         # min_g = g.min() - width * tol

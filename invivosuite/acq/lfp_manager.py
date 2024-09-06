@@ -15,8 +15,9 @@ class LFPManager:
         self,
         f0: int = 1,
         f1: int = 110,
-        fn: int = 400,
+        fn: int = 200,
         scaling: Literal["log", "lin"] = "log",
+        sigma: float = 2.0,
         norm: bool = True,
         nthreads: int = -1,
     ):
@@ -28,6 +29,7 @@ class LFPManager:
             scaling=scaling,
             nthreads=nthreads,
             norm=norm,
+            sigma=sigma,
         )
 
     def set_spectrogram(
@@ -179,6 +181,28 @@ class LFPManager:
             return None
         return freqs, pxx
 
+    def _create_cwt_object(self, attrs, size):
+        morl = fcwt.Morlet(attrs["sigma"])
+
+        _scales = (
+            fcwt.FCWT_LINFREQS if attrs["scaling"] == "lin" else fcwt.FCWT_LOGSCALES
+        )
+
+        self.cwt_scales = fcwt.Scales(
+            morl,
+            _scales,
+            int(attrs["fs"]),
+            float(attrs["f0"]),
+            float(attrs["f1"]),
+            int(attrs["fn"]),
+        )
+        self.cwt_obj = fcwt.FCWT(
+            morl, int(attrs["nthreads"]), False, bool(attrs["norm"])
+        )
+        self.cwt_output = np.zeros((attrs["fn"], size), dtype=np.complex64)
+        self.cwt_frequencies = np.zeros((attrs["fn"]), dtype=np.float32)
+        self.cwt_scales.getFrequencies(self.cwt_frequencies)
+
     def sxx(
         self,
         channel: int,
@@ -192,7 +216,7 @@ class LFPManager:
         sxx_attrs = self.get_grp_attrs(sxx_type)
         if channel > self.n_chans:
             raise ValueError(f"{channel} does not exist.")
-        fs = self.get_grp_attr("lfp", "sample_rate")
+        sxx_attrs["fs"] = self.get_grp_attr("lfp", "sample_rate")
         array = self.acq(
             channel,
             "lfp",
@@ -202,21 +226,20 @@ class LFPManager:
             probe=probe,
             map_channel=map_channel,
         )
+        array = array.astype(np.float32)
         if sxx_type == "cwt":
             cpuc = os.cpu_count()
             if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > cpuc:
                 sxx_attrs["nthreads"] = (cpuc // 2) - 1
-            freqs, sxx = fcwt.cwt(
+            if self.cwt_obj is None:
+                self._create_cwt_object(sxx_attrs, array.size)
+            self.cwt_obj.cwt(
                 array,
-                int(fs),
-                int(sxx_attrs["f0"]),
-                int(sxx_attrs["f1"]),
-                int(sxx_attrs["fn"]),
-                sxx_attrs["nthreads"],
-                str(sxx_attrs["scaling"]),
-                False,
-                bool(sxx_attrs["norm"]),
+                self.cwt_scales,
+                self.cwt_output,
             )
+            freqs = self.cwt_frequencies
+            sxx = self.cwt_output
         return freqs, sxx
 
     def hilbert(
@@ -340,10 +363,8 @@ class LFPManager:
         end_chan = chans[1] - chans[0]
         output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
         output["channels"] = np.arange(start_chan, end_chan)
-        for index, channel in enumerate(output["channels"]):
-            callback(
-                f"Extracting phase data for channel {channel} on probe {probe}."
-            )
+        for index, channel in enumerate(output["channels"][:4]):
+            callback(f"Extracting phase data for channel {channel} on probe {probe}.")
             freqs, cwt = self.sxx(
                 channel,
                 "cwt",
