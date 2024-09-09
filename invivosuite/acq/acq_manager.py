@@ -20,10 +20,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def __init__(self):
         self.file = None
         self.file_open = False
-        self.cwt_obj = None
-        self.cwt_scales = None
-        self.cwt_output = None
-        self.cwt_frequencies = None
+        self._set_cwt = False
 
     def create_hdf5_file(
         self,

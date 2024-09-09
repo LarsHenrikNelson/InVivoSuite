@@ -182,14 +182,14 @@ class LFPManager:
         return freqs, pxx
 
     def _create_cwt_object(self, attrs, size):
-        morl = fcwt.Morlet(attrs["sigma"])
+        self.cwt_morl = fcwt.Morlet(attrs["sigma"])
 
         _scales = (
             fcwt.FCWT_LINFREQS if attrs["scaling"] == "lin" else fcwt.FCWT_LOGSCALES
         )
 
         self.cwt_scales = fcwt.Scales(
-            morl,
+            self.cwt_morl,
             _scales,
             int(attrs["fs"]),
             float(attrs["f0"]),
@@ -197,7 +197,7 @@ class LFPManager:
             int(attrs["fn"]),
         )
         self.cwt_obj = fcwt.FCWT(
-            morl, int(attrs["nthreads"]), False, bool(attrs["norm"])
+            self.cwt_morl, int(attrs["nthreads"]), False, bool(attrs["norm"])
         )
         self.cwt_output = np.zeros((attrs["fn"], size), dtype=np.complex64)
         self.cwt_frequencies = np.zeros((attrs["fn"]), dtype=np.float32)
@@ -231,7 +231,7 @@ class LFPManager:
             cpuc = os.cpu_count()
             if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > cpuc:
                 sxx_attrs["nthreads"] = (cpuc // 2) - 1
-            if self.cwt_obj is None:
+            if not self._set_cwt:
                 self._create_cwt_object(sxx_attrs, array.size)
             self.cwt_obj.cwt(
                 array,
