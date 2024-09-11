@@ -229,7 +229,7 @@ class LFPManager:
         array = array.astype(np.float32)
         if sxx_type == "cwt":
             cpuc = os.cpu_count()
-            if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > cpuc:
+            if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > (cpuc // 2):
                 sxx_attrs["nthreads"] = (cpuc // 2) - 1
             if not self._set_cwt:
                 self._create_cwt_object(sxx_attrs, array.size)
@@ -363,7 +363,7 @@ class LFPManager:
         end_chan = chans[1] - chans[0]
         output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
         output["channels"] = np.arange(start_chan, end_chan)
-        for index, channel in enumerate(output["channels"][:4]):
+        for index, channel in enumerate(output["channels"]):
             callback(f"Extracting phase data for channel {channel} on probe {probe}.")
             freqs, cwt = self.sxx(
                 channel,
