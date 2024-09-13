@@ -1,5 +1,5 @@
 import os
-from typing import Literal, Union
+from typing import Literal, Union, Iterable
 
 import fcwt
 import numpy as np
@@ -598,3 +598,146 @@ class LFPManager:
     def set_freq_bands(self, freq_dict):
         for key, value in freq_dict.items():
             self.set_grp_dataset("freq_bands", key, np.array(value))
+
+    def get_cwt_freq_bands(
+        self,
+        freq_bands: dict[str, Iterable],
+        channel: int,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+    ) -> dict[str, np.ndarray]:
+        freqs, cwt = self.sxx(
+            channel=channel,
+            sxx_type="cwt",
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            map_channel=map_channel,
+            probe=probe,
+        )
+
+        band_dict = {}
+        for b_name, fr in freq_bands.items():
+            band_ind = np.where((freqs > fr[0]) & (freqs < fr[1]))[0]
+            cwt_band = cwt[band_ind]
+            band_dict[b_name] = cwt_band.mean(axis=0)
+        return band_dict
+
+    def get_hilbert_freq_bands(
+        self,
+        freq_bands: dict[str, Iterable],
+        channel: int,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+    ) -> dict[str, np.ndarray]:
+        band_dict = {}
+        for b_name, fr in freq_bands.items():
+            band_dict[b_name] = self.hilbert(
+                channel=channel,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+                highpass=fr[0],
+                lowpass=fr[1],
+                filter_type="butterworth_zero",
+                order=4,
+            )
+        return band_dict
+
+    def get_sxx_freq_bands(
+        self,
+        output_type: Literal["phase", "power", "frequency"],
+        freq_bands: dict[str, Iterable],
+        sxx_type: Literal["cwt", "hilbert"],
+        channel: int,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+    ) -> dict[str, np.ndarray]:
+        if sxx_type == "cwt":
+            band_dict = self.get_cwt_freq_bands(
+                freq_bands=freq_bands,
+                channel=channel,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+        else:
+            band_dict = self.get_hilbert_freq_bands(
+                freq_bands=freq_bands,
+                channel=channel,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+        for key, value in band_dict.items():
+            if output_type == "phase":
+                band_dict[key] = np.angle(value)
+            elif output_type == "power":
+                band_dict[key] = np.abs(value)
+            elif output_type == "frequency":
+                band_dict[key] = value.real
+            else:
+                raise AttributeError(
+                    "output_type not recognized. Must be phase or power."
+                )
+        return band_dict
+
+    def phase_changes(
+        self,
+        freq_bands: dict[str, Iterable],
+        sxx_type: Literal["cwt", "hilbert"],
+        channel: int,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+        start=None,
+        end=None,
+        callback: callable = print,
+    ):
+        output = {}
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
+        chans = self.get_grp_dataset("probes", probe)
+        start_chan = chans[0] - chans[0]
+        end_chan = chans[1] - chans[0]
+        output = {key: np.zeros(end_chan) for key in freq_bands.keys()}
+        output["channels"] = np.arange(start_chan, end_chan)
+        for index, channel in enumerate(output["channels"]):
+            callback(f"Extracting phase data for channel {channel} on probe {probe}.")
+
+            phase_dict = self.get_sxx_freq_bands(
+                output_type="phase",
+                freq_bands=freq_bands,
+                sxx_type=sxx_type,
+                channel=channel,
+                ref=ref,
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+            )
+            # for b_name, phase in phase_dict.items():
+            #     output_dict[b_name] = b_phases
+            #     stats = self.analyze_spike_phase(b_phases)
+            #     output_stats.update(
+            #         {f"{b_name}_{key}": value for key, value in stats.items()}
+            #     )
