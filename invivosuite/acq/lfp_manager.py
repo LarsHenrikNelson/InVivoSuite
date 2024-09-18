@@ -1,5 +1,5 @@
 import os
-from typing import Literal, Union, Iterable
+from typing import Literal, Union, Iterable, Optional
 
 import fcwt
 import numpy as np
@@ -741,3 +741,65 @@ class LFPManager:
             #     output_stats.update(
             #         {f"{b_name}_{key}": value for key, value in stats.items()}
             #     )
+
+    def cross_freq_coupling(
+        self,
+        power: list[int, int],
+        phase: list[int, int],
+        steps: int,
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+        start: Optional[int] = None,
+        end: Optional[int] = None,
+        iterations: int = 1000,
+        seed: int = 42,
+        callback: callable = print,
+    ):
+        if start is None:
+            start = self.get_file_attr("start")
+        if end is None:
+            end = self.get_file_attr("end")
+        chans = self.get_grp_dataset("probes", probe)
+        start_chan = chans[0] - chans[0]
+        end_chan = chans[1] - chans[0]
+        output = {
+            "pvalues": np.zeros(end_chan),
+            "channels": np.arange(start_chan, end_chan),
+        }
+        for index, channel in enumerate(output["channels"]):
+            callback(
+                f"Extracting phase and amplitude data for channel {channel} on probe {probe}."
+            )
+            phi = self.hilbert(
+                channel=channel,
+                ref=ref,
+                ref_probe=ref_probe,
+                ref_type=ref_type,
+                map_channel=map_channel,
+                probe=probe,
+                highpass=phase[0],
+                lowpass=phase[1],
+            )
+            amp = self.hilbert(
+                channel=channel,
+                ref=ref,
+                ref_probe=ref_probe,
+                ref_type=ref_type,
+                map_channel=map_channel,
+                probe=probe,
+                highpass=power[0],
+                lowpass=power[1],
+            )
+            phi = np.angle(phi)
+            amp = np.abs(amp)
+            output["pvalues"][index] = lfp_functions.cfc_pvalue(
+                phi=phi,
+                amp=amp,
+                steps=steps,
+                iterations=iterations,
+                seed=seed,
+            )
+        return output

@@ -31,8 +31,8 @@ def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
     return output_bins, binned_data
 
 
-def rand_cfc(phi, amp, steps, num):
-    rng = default_rng(num)
+def rand_cfc(phi: np.ndarray, amp: np.ndarray, steps: int, seed: int = 42):
+    rng = default_rng(seed)
     indexes = rng.integers(0, amp.size, size=amp.size)
     amp_rand = amp[indexes]
     _, temp = cross_frequency_coupling(phi, amp_rand, steps)
@@ -68,7 +68,7 @@ def cfc_pvalue(
         output = joblib.Parallel(n_jobs=threads)(
             joblib.delayed(pfunc)(num=i) for i in range(iterations)
         )
-        output = list(output)
+        output = np.array(output)
 
         # with mp.Pool(threads) as p:
         #     output = [
