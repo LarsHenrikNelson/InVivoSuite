@@ -769,7 +769,7 @@ class LFPManager:
             "pvalues": np.zeros(end_chan),
             "channels": np.arange(start_chan, end_chan),
         }
-        for index, channel in enumerate(output["channels"]):
+        for index, channel in enumerate(output["channels"][:5]):
             callback(
                 f"Extracting phase and amplitude data for channel {channel} on probe {probe}."
             )
@@ -795,11 +795,13 @@ class LFPManager:
             )
             phi = np.angle(phi)
             amp = np.abs(amp)
-            output["pvalues"][index] = lfp_functions.cfc_pvalue(
+            pval = lfp_functions.cfc_pvalue(
                 phi=phi,
                 amp=amp,
                 steps=steps,
                 iterations=iterations,
                 seed=seed,
             )
+            print(pval)
+            output["pvalues"][index] = pval
         return output
