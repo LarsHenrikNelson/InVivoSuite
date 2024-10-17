@@ -185,13 +185,28 @@ def template_properties(
     if ((Rb - Lb) / upsample_factor) > (5 * upsample_factor):
         hwidth_L = yinterp[center] - ((yinterp[center] - yinterp[Lb]) / 2)
         bb = np.where(yinterp[Lb:Rb] < hwidth_L)[0] + Lb
-        Lw1 = simple_interpolation(yinterp, hwidth_L, bb[0])
-        Lw2 = simple_interpolation(yinterp, hwidth_L, bb[-1] + 1)
+        if len(bb) > 0:
+            Lw1 = simple_interpolation(yinterp, hwidth_L, bb[0])
+            Lw2 = simple_interpolation(yinterp, hwidth_L, bb[-1] + 1)
+            hwL_len = (Lw2 - Lw1) / upsample_factor
+
+        else:
+            Lw1 = np.nan
+            Lw2 = np.nan
+            hwL_len = np.nan
+            hwidth_L = np.nan
 
         hwidth_R = yinterp[center] - ((yinterp[center] - yinterp[Rb]) / 2)
         bb = np.where(yinterp[Lb:Rb] < hwidth_R)[0] + Lb
-        Rw1 = simple_interpolation(yinterp, hwidth_R, bb[0])
-        Rw2 = simple_interpolation(yinterp, hwidth_R, bb[-1] + 1)
+        if len(bb) > 0:
+            Rw1 = simple_interpolation(yinterp, hwidth_R, bb[0])
+            Rw2 = simple_interpolation(yinterp, hwidth_R, bb[-1] + 1)
+            hwR_len = (Rw2 - Rw1) / upsample_factor
+        else:
+            Rw1 = np.nan
+            Rw2 = np.nan
+            hwR_len = np.nan
+            hwidth_R = np.nan
 
     else:
         hwidth_L = np.nan
@@ -209,9 +224,9 @@ def template_properties(
     )
 
     t_props = TemplateProperties(
-        hwL_len=(Lw2 - Lw1) / upsample_factor,
+        hwL_len=hwL_len,
         hwL=hwidth_L,
-        hwR_len=(Rw2 - Rw1) / upsample_factor,
+        hwR_len=hwR_len,
         hwR=hwidth_R,
         full_width=(Rb - Lb) / upsample_factor,
         end=Rb / upsample_factor,
