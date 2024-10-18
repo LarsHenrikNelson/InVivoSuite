@@ -38,6 +38,9 @@ def center_templates(templates, center=41):
         else:
             start = mxc + (tmin_x[i] - center)
             end = start + n_cols
+        if start < 0:
+            start = 0
+            end = n_cols
         ctemplates[i, :] = templates[i, start:end]
     return ctemplates
 
