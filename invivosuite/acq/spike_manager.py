@@ -113,12 +113,12 @@ class SpkManager:
                 self.accepted_units = np.load(temp_path, load_type)
         else:
             self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
-            self.accepted_units[:] = 1
+            self.accepted_units[:] = True
             np.save(temp_path, self.accepted_units)
 
         if self.accepted_units.size != self.cluster_ids.size:
             self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
-            self.accepted_units[:] = 1
+            self.accepted_units[:] = True
             np.save(temp_path, self.accepted_units)
 
     def get_cluster_spike_ids(self, cluster_id: int) -> np.ndarray:

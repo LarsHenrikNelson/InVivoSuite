@@ -11,7 +11,7 @@ from ...functions.signal_functions import gauss_kernel
 __all__ = ["create_continuous_spikes", "Methods", "Windows"]
 
 Windows = Literal["gaussian", "exponential", "boxcar"]
-Methods = Literal["convolve", "add"]
+Methods = Literal["convolve", "add", "set"]
 
 
 def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
@@ -31,7 +31,10 @@ def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
             else:
                 wstart = 0
             wend = min(end - start, window.size)
-            sdf[start:end] += window[wstart:wend]
+            if method == "add":
+                sdf[start:end] += window[wstart:wend]
+            else:
+                sdf[start:end] = window[wstart:wend]
     return sdf
 
 
