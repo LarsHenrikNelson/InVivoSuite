@@ -7,6 +7,16 @@ from scipy import stats
 __all__ = ["_fit_iei", "gen_spike_train"]
 
 
+class UniformGenerator:
+    def __init__(self, min, max, seed: Optional[int] = None):
+        self.min = min
+        self.max = max
+        self.generator = np.random.default_rng(seed)
+
+    def rvs(self, size=1):
+        return self.generator.uniform(low=self.min, high=self.max, size=size)
+
+
 def _fit_iei(
     iei: np.ndarray,
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
@@ -27,7 +37,11 @@ def gen_spike_train(
     length: float,
     rate: float,
     shape: Optional[float] = None,
-    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+    min_iei: Optional[float] = None,
+    max_iei: Optional[float] = None,
+    gen_type: Literal[
+        "poisson", "gamma", "inverse_gaussian", "lognormal", "uniform"
+    ] = "poisson",
     output_type: Literal["sec", "ms"] = "ms",
 ):
     num_spks = int(np.ceil(length) * rate)
@@ -49,6 +63,8 @@ def gen_spike_train(
         generator = stats.lognorm(s=shape, scale=np.exp(mu))
     elif gen_type == "lognormal":
         generator = stats.gaussian(mu=shape**2, scale=1 / (rate * shape**2))
+    elif gen_type == "uniform":
+        generator = UniformGenerator(min=min_iei, max=max_iei)
     else:
         raise AttributeError("gen_type is not recognized.")
 

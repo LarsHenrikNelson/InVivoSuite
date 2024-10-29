@@ -28,7 +28,9 @@ def _sttc_sig(
     input_type: Literal["sec", "ms"] = "ms",
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
     test_version: Literal["distribution", "shuffle"] = "shuffle",
-    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+    gen_type: Literal[
+        "poisson", "gamma", "inverse_gaussian", "lognormal", "uniform"
+    ] = "poisson",
 ):
     if test_version == "shuffle":
         dist = _shuffle_bootstrap_sttc(
@@ -51,17 +53,16 @@ def _sttc_sig(
             spk_rate_2=1 / (np.mean(iei_2)),
             shape_1=fit1[0],
             shape_2=fit2[0],
-            dt=dt/correction_val,
-            start=start/correction_val,
-            end=end/correction_val,
+            dt=dt / correction_val,
+            start=start / correction_val,
+            end=end / correction_val,
             reps=reps,
             sttc_version=sttc_version,
             gen_type=gen_type,
+            output_type=input_type,
         )
 
-    emp_diff_pctile_rnk = stats.percentileofscore(
-        dist, sttc_value
-    )
+    emp_diff_pctile_rnk = stats.percentileofscore(dist, sttc_value)
     auc_right = emp_diff_pctile_rnk / 100
     auc_left = 1 - emp_diff_pctile_rnk / 100
     auc_tail = auc_left if auc_left < auc_right else auc_right
@@ -77,11 +78,10 @@ def _gen_bootstrap_sttc(
     dt: Union[float, int],
     start: Union[float, int],
     end: Union[float, int],
-    gen_type: Literal[
-        "poisson", "gamma", "inverse_gaussian", "lognormal"
-    ] = "poisson",
+    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
     reps: int = 1000,
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
+    output_type: Literal["sec", "ms"] = "sec",
 ):
     """Boostraps the STTC value for two given spike rates, distribution shapes,
     dt, start, end and distribution type. dt, start and end must be in seconds.
@@ -104,13 +104,19 @@ def _gen_bootstrap_sttc(
     sttc_data = np.zeros(reps)
     rec_length = end - start
     for i in range(reps):
-        indexes1 = (
-            gen_spike_train(
-                rec_length, spk_rate_1, shape=shape_1, gen_type=gen_type, output_type="sec"
-            )
+        indexes1 = gen_spike_train(
+            rec_length,
+            spk_rate_1,
+            shape=shape_1,
+            gen_type=gen_type,
+            output_type=output_type,
         )
         indexes2 = gen_spike_train(
-            rec_length, spk_rate_2, shape=shape_2, gen_type=gen_type, output_type="sec"
+            rec_length,
+            spk_rate_2,
+            shape=shape_2,
+            gen_type=gen_type,
+            output_type=output_type,
         )
         if sttc_version == "ivs":
             sttc_index, _, _, _, _ = sttc(
@@ -130,6 +136,7 @@ def _gen_bootstrap_sttc(
             )
         sttc_data[i] = sttc_index
     return sttc_data
+
 
 def _shuffle_bootstrap_sttc(
     iei_1: np.ndarray,
@@ -364,6 +371,7 @@ def sttc_ele(spiketrain_i, spiketrain_j, dt, start, stop):
             index = 0.5 * (PA - TB) / (1 - PA * TB) + 0.5 * (PB - TA) / (1 - PB * TA)
     return index
 
+
 @njit()
 def run_T_python(spiketrain, N, dt, start, stop):
     """
@@ -378,11 +386,11 @@ def run_T_python(spiketrain, N, dt, start, stop):
             time_A = time_A - dt - spiketrain[0] + stop
 
     else:  # if more than one spike in train
-        '''
-            This part of code speeds up calculation with respect to the original version
-        '''
+        """
+        This part of code speeds up calculation with respect to the original version
+        """
         diff = np.diff(spiketrain)
-        idx = np.where(diff<(2*dt))[0]
+        idx = np.where(diff < (2 * dt))[0]
         Lidx = len(idx)
         time_A = time_A - 2 * Lidx * dt + diff[idx].sum()
 
@@ -392,8 +400,9 @@ def run_T_python(spiketrain, N, dt, start, stop):
         if (stop - spiketrain[N - 1]) < dt:
             time_A = time_A - spiketrain[-1] - dt + stop
 
-    T = (time_A / (stop - start)) #.item()
+    T = time_A / (stop - start)  # .item()
     return T
+
 
 @njit()
 def run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt):
@@ -404,11 +413,11 @@ def run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt):
     Nab = 0
     j = 0
     for i in range(N1):
-        L=0
+        L = 0
         while j < N2:  # don't need to search all j each iteration
             if np.abs(spiketrain_1[i] - spiketrain_2[j]) <= dt:
                 Nab = Nab + 1
-                L+=1
+                L += 1
                 break
             elif spiketrain_2[j] > spiketrain_1[i]:
                 break
@@ -416,9 +425,9 @@ def run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt):
                 j = j + 1
     return Nab
 
-def sttc_python(spiketrain_1,spiketrain_2,N1,N2,dt,start=0,stop=3e5):
-    '''
-    '''
+
+def sttc_python(spiketrain_1, spiketrain_2, N1, N2, dt, start=0, stop=3e5):
+    """ """
     TA = run_T_python(spiketrain_1, N1, dt, start=start, stop=stop)
     TB = run_T_python(spiketrain_2, N2, dt, start=start, stop=stop)
     PA = run_P_python(spiketrain_1, spiketrain_2, N1, N2, dt)
