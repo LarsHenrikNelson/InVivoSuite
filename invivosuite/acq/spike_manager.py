@@ -817,7 +817,7 @@ class SpkManager:
         for i in extract_indexes:
             # Get the spike info in loop
             curr_spk_index = current_spikes[i]
-            cur_spk_time = self.spike_times[curr_spk_index]
+            cur_spk_time = spike_times[curr_spk_index]
             cur_template_index = self.spike_templates[curr_spk_index]
             cur_template = self.sparse_templates[cur_template_index]
             chans = channels[cur_template_index, 1:3]
