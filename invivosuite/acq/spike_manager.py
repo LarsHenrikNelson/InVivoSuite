@@ -171,6 +171,11 @@ class SpkManager:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         return self.amplitudes[spike_ids]
 
+    def set_accepted_units(self, accepted_units: Union[list[bool], np.array[bool]]):
+        for index, _ in enumerate(self.cluster_ids):
+            self.accepted_units[index] = accepted_units[index]
+            self.accepted_units.flush()
+
     def get_binary_spike_cluster(
         self, cluster_id: int, start: int = -1, end: int = -1
     ) -> np.ndarray:
