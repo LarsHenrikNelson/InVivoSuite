@@ -171,7 +171,7 @@ class SpkManager:
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         return self.amplitudes[spike_ids]
 
-    def set_accepted_units(self, accepted_units: Union[list[bool], np.array[bool]]):
+    def set_accepted_units(self, accepted_units: Union[list[bool], np.ndarray[bool]]):
         for index, _ in enumerate(self.cluster_ids):
             self.accepted_units[index] = accepted_units[index]
             self.accepted_units.flush()
@@ -244,15 +244,16 @@ class SpkManager:
     ) -> dict[str, list[int]]:
         channel_dict = defaultdict(list)
         for temp_index in range(self.cluster_ids.size):
-            cid = self.cluster_ids[temp_index]
-            template = self.sparse_templates[temp_index, :, :]
-            if center is None:
-                best_chan = np.argmax(np.sum(np.abs(template), axis=0))
-            else:
-                best_chan = np.argmin(
-                    np.min(template[center - 2 : center + 2, :], axis=0)
-                )
-            channel_dict[best_chan].append(cid)
+            if self.accepted_units[temp_index]:
+                cid = self.cluster_ids[temp_index]
+                template = self.sparse_templates[temp_index, :, :]
+                if center is None:
+                    best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+                else:
+                    best_chan = np.argmin(
+                        np.min(template[center - 2 : center + 2, :], axis=0)
+                    )
+                channel_dict[best_chan].append(cid)
         return channel_dict
 
     def get_cluster_channels(self, center: Optional[int] = None) -> np.ndarray:
@@ -276,8 +277,11 @@ class SpkManager:
         else:
             return np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
 
-    def get_all_binary_spikes(
-        self, channel: Optional[int] = None, dt: int = 0, start: int = -1, end: int = -1
+    def get_binary_spikes_channel(
+        self,
+        channel: Optional[Union[int, list[int]]] = None,
+        start: int = -1,
+        end: int = -1,
     ) -> np.ndarray:
         if start == -1:
             start = self.start
@@ -285,17 +289,18 @@ class SpkManager:
             end = self.end
         chan_cid_dict = self.get_channel_clusters()
         chans = sorted(list(chan_cid_dict.keys()))
-        output = np.zeros((self.cluster_ids.size, end - start), dtype=np.int16)
+        output = np.zeros((self.accepted_units.sum(), end - start), dtype=np.int16)
         index = 0
+        cids = []
         if channel is not None:
-            chans = [channel]
+            if not isinstance(channel, list):
+                chans = [channel]
         for chan in chans:
             for cid in chan_cid_dict[chan]:
-                output[index] = self.get_binary_spike_cluster(
-                    cid, dt=dt, start=start, end=end
-                )
+                output[index] = self.get_binary_spike_cluster(cid, start=start, end=end)
                 index += 1
-        return output
+                cids.append(cid)
+        return output, cids
 
     def get_binned_spikes_channel(
         self,
@@ -312,18 +317,62 @@ class SpkManager:
         chans = sorted(list(chan_cid_dict.keys()))
         length = (end - start) // nperseg
         index = 0
+        cids = []
         if channel is not None:
             chans = [channel]
             output = np.zeros((len(chan_cid_dict[channel]), length), dtype=np.int16)
         else:
-            output = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
+            output = np.zeros((self.accepted_units.sum(), length), dtype=np.int16)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binned_spike_cluster(
                     cid, nperseg=nperseg, start=start, end=end
                 )
+                cids.append(cid)
                 index += 1
-        return output
+        return output, cid
+
+    def get_continuous_spikes_channel(
+        self,
+        channel: Optional[int] = None,
+        nperseg: int = 0,
+        fs: float = 40000.0,
+        window: spkf.Windows = "boxcar",
+        sigma: float = 200,
+        method: spkf.Methods = "convolve",
+        start: int = -1,
+        end: int = -1,
+    ) -> np.ndarray:
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+        chan_cid_dict = self.get_channel_clusters()
+        chans = sorted(list(chan_cid_dict.keys()))
+        if nperseg != 0:
+            length = (end - start) // nperseg
+        else:
+            length = end - start
+        index = 0
+        cids = []
+        if channel is not None:
+            chans = [channel]
+            output = np.zeros((len(chan_cid_dict[channel]), length), dtype=np.float32)
+        else:
+            output = np.zeros((self.accepted_units.sum(), length), dtype=np.float32)
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                output[index] = self.get_continuous_spike_cluster(
+                    cid,
+                    nperseg=nperseg,
+                    fs=fs,
+                    window=window,
+                    sigma=sigma,
+                    method=method,
+                )
+                cids.append(cid)
+                index += 1
+        return output, cids
 
     def get_cluster_spike_properties(
         self,

@@ -1,6 +1,7 @@
 from typing import Literal
 
 import numpy as np
+from numba import njit
 from scipy import signal
 from scipy.signal import windows
 
@@ -10,7 +11,7 @@ from ...functions.signal_functions import gauss_kernel
 
 __all__ = ["create_continuous_spikes", "Methods", "Windows"]
 
-Windows = Literal["gaussian", "exponential", "boxcar"]
+Windows = Literal["gaussian", "exponential", "exponential_abi", "boxcar"]
 Methods = Literal["convolve", "add", "set"]
 
 
@@ -19,22 +20,28 @@ def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
         sdf = signal.oaconvolve(array, window)
         sdf = sdf[window.size // 2 : array.size + window.size // 2]
     else:
-        sdf = np.zeros(array.size)
-        indexes = np.where(array > 0)[0]
-        window = window if (window.size // 2) != 0 else np.r_[window, [0.0]]
-        dt = window.size // 2
-        for i in indexes:
-            start = max(i - dt, 0)
-            end = min(array.size, i + dt)
-            if start < 0:
-                wstart = end - window.size
-            else:
-                wstart = 0
-            wend = min(end - start, window.size)
-            if method == "add":
-                sdf[start:end] += window[wstart:wend]
-            else:
-                sdf[start:end] = window[wstart:wend]
+        sdf = _set_array(array, window, method)
+    return sdf
+
+
+@njit(cache=True)
+def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
+    sdf = np.zeros(array.size)
+    indexes = np.where(array > 0)[0]
+    window = window if (window.size // 2) != 0 else np.r_[window, [0.0]]
+    dt = window.size // 2
+    for i in indexes:
+        start = max(i - dt, 0)
+        end = min(array.size, i + dt)
+        if start < 0:
+            wstart = end - window.size
+        else:
+            wstart = 0
+        wend = min(end - start, window.size)
+        if method == "add":
+            sdf[start:end] += window[wstart:wend]
+        else:
+            sdf[start:end] = window[wstart:wend]
     return sdf
 
 
