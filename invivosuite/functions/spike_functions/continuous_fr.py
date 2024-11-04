@@ -28,7 +28,10 @@ def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
 def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
     sdf = np.zeros(array.size)
     indexes = np.where(array > 0)[0]
-    window = window if (window.size // 2) != 0 else np.r_[window, [0.0]]
+    if (window.size // 2) == 0:
+        temp = np.zeros(window.size + 1)
+        temp[: window.size] = window
+        window = temp
     dt = window.size // 2
     for i in indexes:
         start = max(i - dt, 0)
