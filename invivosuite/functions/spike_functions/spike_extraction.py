@@ -5,6 +5,7 @@ from numba import njit, prange
 from scipy import interpolate, signal, stats
 
 __all__ = [
+    "_best_channel",
     "_template_channels",
     "center_spikes",
     "center_templates",
@@ -71,17 +72,25 @@ def get_template_channels(
     return peak_output, channel_output
 
 
+def _best_channel(template: np.ndarray, center: int | None):
+    if center is None:
+        best_chan = np.argmax(np.sum(np.abs(template), axis=0))
+
+        # alternate version works
+        # best_chan = np.argmin(np.min(template), axis=0)
+    else:
+        best_chan = np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
+    return best_chan
+
+
 def _template_channels(
     template: np.ndarray,
     nchans: int,
     total_chans: int,
-    center: Optional[int] = None,
+    center: int | None = None,
 ) -> tuple[int, int, int]:
     # best_chan = np.argmin(np.min(template, axis=0))
-    if center is None:
-        best_chan = np.argmax(np.sum(np.abs(template), axis=0))
-    else:
-        best_chan = np.argmin(np.min(template[center - 2 : center + 2, :], axis=0))
+    best_chan = _best_channel(template=template, center=center)
     start_chan = best_chan - nchans
     end_chan = best_chan + nchans
     if start_chan < 0:

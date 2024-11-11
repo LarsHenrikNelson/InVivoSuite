@@ -8,3 +8,4 @@ from .spike_freq_adapt import *  # noqa: F403
 from .spike_metrics import *  # noqa: F403
 from .sttc_methods import *  # noqa: F403
 from .synthetic_spike_train import _fit_iei, gen_spike_train  # noqa: F401
+from .spike_synchrony import synchronous_periods  # noqa: F401
