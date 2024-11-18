@@ -21,6 +21,7 @@ class SpkManager:
         self._load_amplitudes(load_type=load_type)
         self._load_spike_waveforms(load_type=load_type)
         self._load_accepted_units(load_type=load_type)
+        self._load_celltypes()
 
     def _load_amplitudes(self, load_type: str = "r+"):
         if load_type == "memory":
@@ -120,6 +121,13 @@ class SpkManager:
             self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
             self.accepted_units[:] = True
             np.save(temp_path, self.accepted_units)
+
+    def _load_celltypes(self):
+        temp_path = self.ks_directory / "celltype.csv"
+        if temp_path.exists():
+            self.celltypes = np.loadtxt(temp_path, delimiter="\t", dtype=str)
+        else:
+            self.celltypes = None
 
     def get_cluster_spike_ids(self, cluster_id: int) -> np.ndarray:
         return np.where(self.spike_clusters == cluster_id)[0]
@@ -274,23 +282,20 @@ class SpkManager:
 
     def _get_channel_clusters(
         self,
-        length: int,
         channel: Union[int, list[int]] | None = None,
         accepted: bool = False,
     ):
         chan_cid_dict = self.get_channel_clusters(center=None, accepted=accepted)
         chans = sorted(list(chan_cid_dict.keys()))
         if channel is not None:
-            output = np.zeros((len(chan_cid_dict[channel]), length), dtype=np.float32)
             cids = np.zeros(len(chan_cid_dict[channel]), dtype=int)
             cluster_channel = np.zeros(len(chan_cid_dict[channel]), dtype=int)
             chans = [channel]
         else:
             n_units = self.accepted_units.sum() if accepted else self.cluster_ids.size
-            output = np.zeros((n_units, length), dtype=np.float32)
             cids = np.zeros(n_units, dtype=int)
             cluster_channel = np.zeros(n_units, dtype=int)
-        return output, cids, cluster_channel, chans, chan_cid_dict
+        return cids, cluster_channel, chans, chan_cid_dict
 
     def get_binary_spikes_channel(
         self,
@@ -305,11 +310,10 @@ class SpkManager:
             end = self.end
         length = end - start
         index = 0
-        output, cids, cluster_channel, chans, chan_cid_dict = (
-            self._get_channel_clusters(
-                length=length, channel=channel, accepted=accepted
-            )
+        cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
+            channel=channel, accepted=accepted
         )
+        output = np.zeros((cids.size, length), dtype=int)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binary_spike_cluster(cid, start=start, end=end)
@@ -332,11 +336,10 @@ class SpkManager:
             end = self.end
         length = (end - start) // nperseg
         index = 0
-        output, cids, cluster_channel, chans, chan_cid_dict = (
-            self._get_channel_clusters(
-                length=length, channel=channel, accepted=accepted
-            )
+        cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
+            channel=channel, accepted=accepted
         )
+        output = np.zeros((cids.size, length), dtype=int)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binned_spike_cluster(
@@ -358,6 +361,8 @@ class SpkManager:
         start: int = -1,
         end: int = -1,
         accepted: bool = False,
+        aggregrate: bool = False,
+        dtype: np.floating = np.float32,
     ) -> np.ndarray:
         if start == -1:
             start = self.start
@@ -368,21 +373,33 @@ class SpkManager:
         else:
             length = end - start
         index = 0
-        output, cids, cluster_channel, chans, chan_cid_dict = (
-            self._get_channel_clusters(
-                length=length, channel=channel, accepted=accepted
-            )
+        cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
+            channel=channel, accepted=accepted
         )
+        if aggregrate:
+            output = np.zeros(length, dtype=dtype)
+        else:
+            output = np.zeros((cids.size, length), dtype=dtype)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
-                output[index] = self.get_continuous_spike_cluster(
-                    cid,
-                    nperseg=nperseg,
-                    fs=fs,
-                    window=window,
-                    sigma=sigma,
-                    method=method,
-                )
+                if aggregrate:
+                    output += self.get_continuous_spike_cluster(
+                        cid,
+                        nperseg=nperseg,
+                        fs=fs,
+                        window=window,
+                        sigma=sigma,
+                        method=method,
+                    )
+                else:
+                    output[index] = self.get_continuous_spike_cluster(
+                        cid,
+                        nperseg=nperseg,
+                        fs=fs,
+                        window=window,
+                        sigma=sigma,
+                        method=method,
+                    )
                 cids[index] = cid
                 cluster_channel[index] = chan
                 index += 1
@@ -1465,7 +1482,7 @@ class SpkManager:
                 output_index += 1
 
         data = {}
-        data["sttc"] = correlation_data
+        data["correlation"] = correlation_data
         data["cluster1_id"] = cluster_ids[:, 0].flatten()
         data["cluster2_id"] = cluster_ids[:, 1].flatten()
         data["cluster1_size"] = cluster_ids[:, 2].flatten()
@@ -1484,7 +1501,7 @@ class SpkManager:
         end: int = -1,
         accepted: bool = False,
     ):
-        test, cids, chans = self.get_continuous_spikes_channel(
+        cont_spks, cids, chans = self.get_continuous_spikes_channel(
             nperseg=0,
             window=window,
             sigma=sigma,
@@ -1492,12 +1509,13 @@ class SpkManager:
             start=start,
             end=end,
             accepted=accepted,
+            aggregrate=False,
         )
 
         bspikes, _, _ = self.get_binary_spikes_channel(accepted=accepted)
 
-        gd, cd, groups, channels = spkf.synchronous_periods(
-            test,
+        output = spkf.synchronous_periods(
+            cont_spks,
             bspikes,
             cids,
             threshold=threshold,
@@ -1505,4 +1523,4 @@ class SpkManager:
             min_length=min_length,
             channels=chans,
         )
-        return gd, cd, groups, channels
+        return output
