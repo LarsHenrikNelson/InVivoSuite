@@ -51,8 +51,8 @@ def _sttc_sig(
         dist = _gen_bootstrap_sttc(
             spk_rate_1=1 / (np.mean(iei_1)),
             spk_rate_2=1 / (np.mean(iei_2)),
-            shape_1=fit1[0],
-            shape_2=fit2[0],
+            shape_1=fit1,
+            shape_2=fit2,
             dt=dt / correction_val,
             start=start / correction_val,
             end=end / correction_val,
@@ -81,7 +81,7 @@ def _gen_bootstrap_sttc(
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
     reps: int = 1000,
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
-    output_type: Literal["sec", "ms"] = "sec",
+    output_type: Literal["sec", "ms"] = "ms",
 ):
     """Boostraps the STTC value for two given spike rates, distribution shapes,
     dt, start, end and distribution type. dt, start and end must be in seconds.

@@ -70,12 +70,6 @@ def cfc_pvalue(
         )
         output = np.array(output)
 
-        # with mp.Pool(threads) as p:
-        #     output = [
-        #         p.map(
-        #             functools.partial(rand_cfc, phi=phi, amp=amp, steps=steps), indexes
-        #         )
-        #     ]
     _, cfc_data = cross_frequency_coupling(phi, amp, steps)
     cfc_range = cfc_data.max() - cfc_data.min()
     num_above = np.where(output > cfc_range)[0]

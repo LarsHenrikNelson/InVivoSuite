@@ -14,12 +14,17 @@ class UniformGenerator:
         self.generator = np.random.default_rng(seed)
 
     def rvs(self, size=1):
-        return self.generator.uniform(low=self.min, high=self.max, size=size)
+        if size == 1:
+            return self.generator.uniform(low=self.min, high=self.max, size=size)[0]
+        else:
+            return self.generator.uniform(low=self.min, high=self.max, size=size)
 
 
 def _fit_iei(
     iei: np.ndarray,
-    gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
+    gen_type: Literal[
+        "poisson", "gamma", "inverse_gaussian", "lognormal", "uniform"
+    ] = "poisson",
 ):
     # iei = np.diff(spk_train)
     if gen_type == "poisson":
@@ -30,15 +35,15 @@ def _fit_iei(
         output = stats.invgauss.fit(iei)
     elif gen_type == "lognormal":
         output = stats.lognorm.fit(iei)
+    elif gen_type == "uniform":
+        output = (iei.min(), iei.max())
     return output
 
 
 def gen_spike_train(
     length: float,
     rate: float,
-    shape: Optional[float] = None,
-    min_iei: Optional[float] = None,
-    max_iei: Optional[float] = None,
+    shape: float | tuple[float] | None = None,
     gen_type: Literal[
         "poisson", "gamma", "inverse_gaussian", "lognormal", "uniform"
     ] = "poisson",
@@ -49,22 +54,22 @@ def gen_spike_train(
         raise ValueError("Spike rate is low for the total time.")
 
     if gen_type == "poisson":
-        if shape:
-            effective_rate = rate / (1 - rate * shape)
-            generator = stats.expon(scale=1 / effective_rate, loc=shape)
+        if shape[0]:
+            effective_rate = rate / (1 - rate * shape[0])
+            generator = stats.expon(scale=1 / effective_rate, loc=shape[0])
         else:
             generator = stats.expon(
                 scale=1 / rate,
             )
     elif gen_type == "gamma":
-        generator = stats.gamma(a=shape, scale=1 / (shape * rate))
+        generator = stats.gamma(a=shape[0], scale=1 / (shape[0] * rate))
     elif gen_type == "inverse_gaussian":
-        mu = -np.log(rate) - shape / 2
-        generator = stats.lognorm(s=shape, scale=np.exp(mu))
+        mu = -np.log(rate) - shape[0] / 2
+        generator = stats.lognorm(s=shape[0], scale=np.exp(mu))
     elif gen_type == "lognormal":
-        generator = stats.gaussian(mu=shape**2, scale=1 / (rate * shape**2))
+        generator = stats.gaussian(mu=shape[0] ** 2, scale=1 / (rate * shape[0] ** 2))
     elif gen_type == "uniform":
-        generator = UniformGenerator(min=min_iei, max=max_iei)
+        generator = UniformGenerator(min=shape[0], max=shape[1])
     else:
         raise AttributeError("gen_type is not recognized.")
 
