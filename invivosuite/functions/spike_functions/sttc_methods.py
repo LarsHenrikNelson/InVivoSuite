@@ -274,9 +274,9 @@ def sttc(
         tB = run_T(spk_times_2, dt, start, stop)
         tB = float(tB) / float(t)
         pA_a, kA = run_P(spk_times_1, spk_times_2, dt)
-        pA = pA_a / float(spk_times_1.size)
+        pA = float(pA_a) / float(spk_times_1.size)
         pB_b, kB = run_P(spk_times_2, spk_times_1, dt)
-        pB = pB_b / float(spk_times_2.size)
+        pB = float(pB_b) / float(spk_times_2.size)
         if (pA * tB) == 1 and (pB * tA) == 1:
             index = 1.0
         elif (pA * tB) == 1:
