@@ -114,16 +114,16 @@ def _analyze_synchronous_periods(
     group_dict["total_units"] = cluster_ids.size
 
     cluster_dict = {}
-    groups = [cluster_ids[i] for i in groups]
+    grouped_cluster_ids = [cluster_ids[i] for i in groups]
     cluster_ids, cid_counts = np.unique(
-        np.array([item for subset in groups for item in subset]), return_counts=True
+        np.array([item for subset in grouped_cluster_ids for item in subset]), return_counts=True
     )
     cluster_dict["cluster_id"] = cluster_ids
     cluster_dict["counts"] = cid_counts
-    cluster_dict["ngroups"] = len(groups)
+    cluster_dict["ngroups"] = len(grouped_cluster_ids)
 
     cluster_dict["prob"] = np.array(probs).sum(axis=0)
 
     channels = [channels[i] for i in groups]
 
-    return group_dict, cluster_dict, groups, channels
+    return group_dict, cluster_dict, grouped_cluster_ids, channels

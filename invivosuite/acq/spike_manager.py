@@ -303,6 +303,7 @@ class SpkManager:
         start: int = -1,
         end: int = -1,
         accepted: bool = False,
+        dtype: Union[int, bool] = int
     ) -> np.ndarray:
         if start == -1:
             start = self.start
@@ -313,7 +314,7 @@ class SpkManager:
         cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
             channel=channel, accepted=accepted
         )
-        output = np.zeros((cids.size, length), dtype=int)
+        output = np.zeros((cids.size, length), dtype=dtype)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binary_spike_cluster(cid, start=start, end=end)
@@ -1501,7 +1502,7 @@ class SpkManager:
         end: int = -1,
         accepted: bool = False,
     ):
-        cont_spks, cids, chans = self.get_continuous_spikes_channel(
+        raster_continuous, cluster_ids, channels = self.get_continuous_spikes_channel(
             nperseg=0,
             window=window,
             sigma=sigma,
@@ -1512,15 +1513,15 @@ class SpkManager:
             aggregrate=False,
         )
 
-        bspikes, _, _ = self.get_binary_spikes_channel(accepted=accepted)
+        raster_binary, _, _ = self.get_binary_spikes_channel(accepted=accepted, dtype=bool)
 
         output = spkf.synchronous_periods(
-            cont_spks,
-            bspikes,
-            cids,
+            raster_continuous=raster_continuous,
+            raster_binary=raster_binary,
+            cluster_ids=cluster_ids,
             threshold=threshold,
             threshold_type=threshold_type,
             min_length=min_length,
-            channels=chans,
+            channels=channels,
         )
         return output
