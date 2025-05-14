@@ -7,7 +7,7 @@ import numpy as np
 from send2trash import send2trash
 
 from ..functions import spike_functions as spkf
-from ..utils import concatenate_dicts, save_tsv
+from ..utils import concatenate_dicts, save_tsv, TempMemmap
 
 Callback = Callable[[str], None]
 
@@ -203,12 +203,18 @@ class SpkManager:
         window: spkf.Windows = "boxcar",
         sigma: float = 200,
         method: spkf.Methods = "convolve",
+        start: int = -1,
+        end: int = -1
     ):
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
         spike_ids = np.where(self.spike_clusters == cluster_id)[0]
         spike_indexes = self.spike_times[spike_ids]
         return spkf.create_continuous_spikes(
             spike_indexes,
-            self.end - self.start,
+            end-start,
             nperseg=nperseg,
             fs=fs,
             window=window,
@@ -364,6 +370,7 @@ class SpkManager:
         accepted: bool = False,
         aggregrate: bool = False,
         dtype: np.floating = np.float32,
+        memmap: bool = False
     ) -> np.ndarray:
         if start == -1:
             start = self.start
@@ -380,11 +387,14 @@ class SpkManager:
         if aggregrate:
             output = np.zeros(length, dtype=dtype)
         else:
-            output = np.zeros((cids.size, length), dtype=dtype)
+            if memmap:
+                output = TempMemmap((cids.size, length), dtype=dtype)
+            else:
+                output = np.zeros((cids.size, length), dtype=dtype)
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 if aggregrate:
-                    output += self.get_continuous_spike_cluster(
+                    output[:] += self.get_continuous_spike_cluster(
                         cid,
                         nperseg=nperseg,
                         fs=fs,
@@ -392,8 +402,10 @@ class SpkManager:
                         sigma=sigma,
                         method=method,
                     )
+                    if memmap:
+                        output.flush()
                 else:
-                    output[index] = self.get_continuous_spike_cluster(
+                    output[index,:] = self.get_continuous_spike_cluster(
                         cid,
                         nperseg=nperseg,
                         fs=fs,
@@ -401,6 +413,8 @@ class SpkManager:
                         sigma=sigma,
                         method=method,
                     )
+                    if memmap:
+                        output.flush()
                 cids[index] = cid
                 cluster_channel[index] = chan
                 index += 1
@@ -1502,21 +1516,38 @@ class SpkManager:
         end: int = -1,
         accepted: bool = False,
     ):
-        raster_continuous, cluster_ids, channels = self.get_continuous_spikes_channel(
-            nperseg=0,
-            window=window,
-            sigma=sigma,
-            method=method,
-            start=start,
-            end=end,
-            accepted=accepted,
-            aggregrate=False,
+        if start == -1:
+            start = self.start
+        if end == -1:
+            end = self.end
+        length = end - start
+        index = 0
+        cluster_ids, channels, chans, chan_cid_dict = self._get_channel_clusters(
+            channel=None, accepted=accepted
         )
-
+        continuous_sum = np.zeros(length, dtype=np.float32)
         raster_binary, _, _ = self.get_binary_spikes_channel(accepted=accepted, dtype=bool)
+        raster_continuous = np.zeros(raster_binary.shape, dtype=bool)
+
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                temp = self.get_continuous_spike_cluster(
+                cid,
+                nperseg=0,
+                fs=40000.0,
+                window=window,
+                sigma=sigma,
+                method=method,
+                )
+                continuous_sum[:] += temp
+                raster_continuous[index,:] = temp > 0
+                cluster_ids[index] = cid
+                channels[index] = chan
+                index += 1
 
         output = spkf.synchronous_periods(
             raster_continuous=raster_continuous,
+            continuous_sum=continuous_sum,
             raster_binary=raster_binary,
             cluster_ids=cluster_ids,
             threshold=threshold,
@@ -1524,4 +1555,18 @@ class SpkManager:
             min_length=min_length,
             channels=channels,
         )
+
+        prob = []
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                temp = self.get_continuous_spike_cluster(
+                cid,
+                nperseg=0,
+                fs=40000.0,
+                window=window,
+                sigma=sigma,
+                method=method,
+                )
+                prob.append(np.sum([temp[i[0] : i[-1]].sum() for i in output["sdata"]]))
+        output["cluster_data"]["prob"] = prob
         return output

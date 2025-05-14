@@ -1,15 +1,18 @@
 import math
-from typing import Union
+import os
+from tempfile import mkdtemp
+from typing import Any, Tuple, Union
 
 import numpy as np
 from numba import njit
 
 __all__ = [
-    "expand_data",
     "concatenate_dicts",
+    "expand_data",
     "round_sig",
     "save_tsv",
     "split_at_zeros",
+    "TempMemmap",
     "tsv_row",
 ]
 
@@ -97,3 +100,35 @@ def save_tsv(name: str, data: dict, mode: str = "w", encoding: str = "utf-8"):
                     t.append(round_sig(data[j][i]))
             # row = tsv_row(t)
             record_file.write("\t".join(str(x) for x in t) + "\n")
+
+class TempMemmap(np.memmap):
+    def __new__(cls, shape: Tuple[int, ...], dtype: Any = 'float32'):
+        temp_dir = mkdtemp()
+        temp_path = os.path.join(temp_dir, 'temp_array.dat')
+        
+        obj = super(TempMemmap, cls).__new__(
+            cls,
+            temp_path,
+            dtype=dtype,
+            mode='w+',
+            shape=shape
+        )
+        
+        obj.temp_dir = temp_dir
+        obj.temp_path = temp_path
+        return obj
+
+    def __del__(self):
+        try:
+            super().__del__()  # Call parent's __del__ first
+        except Exception:
+            pass
+
+        # Then delete the temporary files
+        try:
+            if hasattr(self, 'temp_path') and os.path.exists(self.temp_path):
+                os.unlink(self.temp_path)
+            if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
+                os.rmdir(self.temp_dir)
+        except Exception:
+            pass

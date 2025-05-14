@@ -37,3 +37,6 @@ plotting = [
 
 [project.urls]
 Homepage = "https://github.com/LarsHenrikNelson/InVivoSuite"
+
+[tool.ruff.lint]
+ignore = ["F401", "F403"]
