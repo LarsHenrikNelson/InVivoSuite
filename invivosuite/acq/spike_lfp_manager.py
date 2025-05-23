@@ -40,7 +40,14 @@ class SpkLFPManager:
         probe: str = "all",
         nperseg: int = 40,
         center: Optional[int] = None,
+        start: int = 0,
+        end: int = 0,
     ) -> tuple[dict]:
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chan = self.get_cluster_channel(cluster_id, center=center)
         band_dict = self.get_sxx_freq_bands(
             sxx_type=sxx_type,
@@ -102,8 +109,14 @@ class SpkLFPManager:
         map_channel=True,
         probe: str = "all",
         nperseg: int = 40,
-        callback: Callable = print,
+        start: int = 0,
+        end: int = 0,
     ) -> dict[str, np.ndarray]:
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []
@@ -119,9 +132,11 @@ class SpkLFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
             for cid in chan_dict[chan]:
-                callback(f"Extracting spike phase for cluster {cid}.")
+                self.callback(f"Extracting spike phase for cluster {cid}.")
                 stats, phases = self.extract_spike_phase_data(band_dict, cid, nperseg)
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
@@ -163,13 +178,19 @@ class SpkLFPManager:
         probe: str = "all",
         nperseg: int = 40,
         window: int = 100,
-        callback: Callable = print,
+        start: int = 0,
+        end: int = 0
     ) -> dict[str, np.ndarray]:
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []
         for chan in chans:
-            callback(f"Starting extraction for channel {chan}.")
+            self.callback(f"Starting extraction for channel {chan}.")
             band_dict = self.get_sxx_freq_bands(
                 sxx_type=sxx_type,
                 output_type=output_type,
@@ -180,9 +201,11 @@ class SpkLFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end
             )
             for cid in chan_dict[chan]:
-                callback(f"Extracting spike power for cluster {cid}.")
+                self.callback(f"Extracting spike power for cluster {cid}.")
                 output = self.extract_spike_power_data(
                     power_dict=band_dict, cluster_id=cid, nperseg=nperseg, window=window
                 )

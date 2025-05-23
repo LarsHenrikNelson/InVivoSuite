@@ -229,9 +229,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                     (chans[1] - chans[0], 1)
-                ) - self.get_file_dataset(
-                    "means", rows=chans
-                ).reshape(
+                ) - self.get_file_dataset("means", rows=chans).reshape(
                     chans[1] - chans[0], 1
                 )
                 array -= means
@@ -252,9 +250,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 "acqs", rows=chans, columns=(start, end)
             ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                 (chans[1] - chans[0], 1)
-            ) - self.get_file_dataset(
-                "means", rows=chans
-            ).reshape(
+            ) - self.get_file_dataset("means", rows=chans).reshape(
                 chans[1] - chans[0], 1
             )
             cmr = ref(array, axis=0)
@@ -323,13 +319,12 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
+        start: int = 0,
+        end: int = 0,
     ):
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=int(channel), columns=(start, end)
@@ -379,15 +374,16 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         map_channel: bool = False,
         probe: str = "all",
         whiten: bool = False,
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
+        start: int = 0,
+        end: int = 0,
     ):
         data = self.get_grp_dataset("probes", probe)
         total_chans = data[1] - data[0]
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
 
         if channel is not None:
             # start_chan = channel - nchans
@@ -572,6 +568,17 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def set_channel_map_from_file(
         self, map_path: Union[str, Path], probe: str = "None"
     ):
+        """Set the probe channel map from a .csv or .txt file. Excel files are not accepted. The channel map must be a single row or column of numbers.
+
+        Args:
+            map_path (Union[str, Path]): File name to read.
+            probe (str, optional): Name of the probe. Defaults to "None".
+
+        Raises:
+            NotImplementedError: .xlsx files are not supported.
+            NotImplementedError: File type not recognized.
+            ValueError: Channel contains more than one column or one row.
+        """
         path = Path(map_path)
         if path.suffix == ".xlsx":
             raise NotImplementedError("xlsx files are not supported")
@@ -597,6 +604,15 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def set_channel_map(
         self, chan_map: Union[str, Path, np.ndarray], probe: str = "None"
     ):
+        """Set the probe channel map from a .csv or .txt file. Excel files are not accepted. The channel map must be a single row or column of numbers.
+
+        Args:
+            chan_map (Union[str, Path, np.ndarray]): Filename, Path or np.ndarray containing channel map.
+            probe (str, optional): Name of the probe. Defaults to "None".
+
+        Raises:
+            ValueError: _description_
+        """
         if isinstance(chan_map, str) or isinstance(chan_map, Path):
             self.set_channel_map_from_file(chan_map, probe)
         elif isinstance(chan_map, np.ndarray):
@@ -629,13 +645,33 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             if rows is None:
                 rows = (0, self.shape[1])
             if columns is None:
-                start = self.get_file_attr("start")
-                end = self.get_file_attr("end")
+                start = self.start
+                end = self.end
+                columns = (start, end)
+            else:
+                if columns[0] > 0:
+                    start = self.start + start
+                else:
+                    start = self.start
+                if columns[1] > 0:
+                    end = self.start + end
+                else:
+                    end = self.end
                 columns = (start, end)
         else:
             if columns is None:
-                start = self.get_file_attr("start")
-                end = self.get_file_attr("end")
+                start = self.start
+                end = self.end
+                columns = (start, end)
+            else:
+                if columns[0] > 0:
+                    start = self.start + start
+                else:
+                    start = self.start
+                if columns[1] > 0:
+                    end = self.start + end
+                else:
+                    end = self.end
                 columns = (start, end)
             if rows is None and probe is None:
                 rows = (0, self.shape[1])
@@ -657,9 +693,22 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.file_open = False
 
     def set_start(self, start: int = 0):
+        """Set the start of the recording in samples.
+
+        Args:
+            start (int, optional): Sample to start the recording. Defaults to 0.
+        """
         self.set_file_attr("start", start)
 
-    def set_end(self, end):
+    def set_end(self, end: int):
+        """Set the end of the recording in samples. Defaults to the length of the recording
+
+        Args:
+            end (int): Sample to end the recording.
+
+        Raises:
+            ValueError: _description_
+        """
         self.open()
         len_of_rec = self.file["acqs"].shape[1]
         if end > len_of_rec:
@@ -672,3 +721,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     def set_probe(self, probe: str, array: np.array):
         self.set_grp_dataset("probes", probe, array)
+
+    def set_callback(self, callback: callable):
+        self.callback = callback

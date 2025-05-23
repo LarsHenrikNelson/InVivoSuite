@@ -139,7 +139,14 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ):
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if channel > self.n_chans:
             raise ValueError(f"{channel} does not exist.")
@@ -152,6 +159,8 @@ class LFPManager:
             ref_probe=ref_probe,
             probe=probe,
             map_channel=map_channel,
+            start=start,
+            end=end,
         )
         if pxx_type == "multitaper":
             print(pxx_attrs)
@@ -212,7 +221,14 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ):
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         sxx_attrs = self.get_grp_attrs(sxx_type)
         if channel > self.n_chans:
             raise ValueError(f"{channel} does not exist.")
@@ -225,6 +241,8 @@ class LFPManager:
             ref_probe=ref_probe,
             probe=probe,
             map_channel=map_channel,
+            start=start,
+            end=end,
         )
         array = array.astype(np.float32)
         if sxx_type == "cwt":
@@ -260,9 +278,14 @@ class LFPManager:
         polyorder: Union[int, None] = 0,
         resample_freq: float = 1000.0,
         up_sample=3,
+        start: int = 0,
+        end: int = 0,
     ):
-        start = self.get_file_attr("start")
-        end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         sample_rate = self.get_file_dataset("sample_rate", rows=channel)
         array = self.get_file_dataset(
@@ -299,24 +322,24 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
+        start: int = 0,
+        end: int = 0,
         log_transform=True,
         window_type: Literal["sum", "mean"] = "sum",
-        callback=print,
     ):
         output = {}
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
         output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
         output["channels"] = np.arange(start_chan, end_chan)
         for index, channel in enumerate(output["channels"]):
-            callback(
+            self.callback(
                 f"Extracting frequency data for channel {channel} on probe {probe}."
             )
             f, p = self.pxx(
@@ -327,6 +350,8 @@ class LFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
             for fr, val in freq_dict.items():
                 output[fr][index] = get_freq_window(
@@ -349,22 +374,24 @@ class LFPManager:
         map_channel: bool = False,
         size: int = 2000,
         probe: str = "all",
-        start: Union[None, int] = None,
-        end: Union[None, int] = None,
-        callback=print,
+        start: int = 0,
+        end: int = 0,
     ):
         output = {}
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
         output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
         output["channels"] = np.arange(start_chan, end_chan)
         for index, channel in enumerate(output["channels"]):
-            callback(f"Extracting phase data for channel {channel} on probe {probe}.")
+            self.callback(
+                f"Extracting phase data for channel {channel} on probe {probe}."
+            )
             freqs, cwt = self.sxx(
                 channel,
                 "cwt",
@@ -394,6 +421,8 @@ class LFPManager:
         probe: str = "all",
         window: str = "hamming",
         wlen: float = 0.2,
+        start: int = 0,
+        end: int = 0,
     ):
         """This is a convience function to test out different short time energy settings
         or get the short time energy of an specific acquisition.
@@ -423,6 +452,8 @@ class LFPManager:
             ref_probe=ref_probe,
             probe=probe,
             map_channel=map_channel,
+            start=start,
+            end=end,
         )
         fs = self.get_grp_attr("lfp", "sample_rate")
         se_array = signal_functions.short_time_energy(
@@ -467,7 +498,14 @@ class LFPManager:
         tol: float = 0.001,
         deg: int = 90,
         cmr: bool = False,
+        start: int = 0,
+        end: int = 0,
     ):
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         input_dict = {
             "window": window,
             "min_len": min_len,
@@ -495,7 +533,14 @@ class LFPManager:
             start = self.get_grp_dataset("probes", region)[0]
             for i in range(0, 64):
                 acq_i = self.acq(
-                    i, "lfp", cmr=cmr, cmr_probe=region, map_channel=False, probe=region
+                    i,
+                    "lfp",
+                    cmr=cmr,
+                    cmr_probe=region,
+                    map_channel=False,
+                    probe=region,
+                    start=start,
+                    end=end,
                 )
                 bursts = lfp_functions.find_bursts(
                     acq_i,
@@ -525,13 +570,21 @@ class LFPManager:
         return indexes
 
     def get_burst_baseline(
-        self, channel: int, map_channel: bool = False, probe: str = "none"
+        self,
+        channel: int,
+        map_channel: bool = False,
+        probe: str = "none",
+        start: int = 0,
+        end: int = 0,
     ):
         if map_channel:
             channel = self.get_mapped_channel(channel, probe)
         bursts = self.get_grp_dataset("lfp_bursts", str(channel))
-        start = self.get_file_attr("start")
-        end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         size = int(end - start)
         fs_lfp = self.get_grp_attr("lfp", "sample_rate")
         fs_raw = self.get_file_dataset("sample_rate", rows=channel)
@@ -545,14 +598,34 @@ class LFPManager:
         channel: int,
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
-        map_channel: bool = False,
-        probe: str = "none",
+        ref: bool = False,
+        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel=True,
+        probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ):
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            self.end = end
         b_stats = {"channel": channel}
         if map_channel:
             channel = self.get_mapped_channel(probe, channel)
         b_stats["mapped_channel"] = channel
-        acq = self.acq(channel, "lfp")
+        acq = self.acq(
+            channel,
+            "lfp",
+            ref=ref,
+            ref_type=ref_type,
+            ref_probe=ref_probe,
+            probe=probe,
+            map_channel=map_channel,
+            start=start,
+            end=end,
+        )
         bursts = self.get_grp_dataset("lfp_bursts", str(channel))
         fs = self.get_grp_attr("lfp", "sample_rate")
         baseline = self.get_burst_baseline(
@@ -663,7 +736,14 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ) -> dict[str, np.ndarray]:
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         if sxx_type == "cwt":
             band_dict = self.get_cwt_freq_bands(
                 freq_bands=freq_bands,
@@ -673,6 +753,8 @@ class LFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
         else:
             band_dict = self.get_hilbert_freq_bands(
@@ -683,6 +765,8 @@ class LFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
         for key, value in band_dict.items():
             if output_type == "phase":
@@ -707,22 +791,24 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
-        start=None,
-        end=None,
-        callback: callable = print,
+        start: int = 0,
+        end: int = 0,
     ):
         output = {}
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
         output = {key: np.zeros(end_chan) for key in freq_bands.keys()}
         output["channels"] = np.arange(start_chan, end_chan)
         for index, channel in enumerate(output["channels"]):
-            callback(f"Extracting phase data for channel {channel} on probe {probe}.")
+            self.callback(
+                f"Extracting phase data for channel {channel} on probe {probe}."
+            )
 
             phase_dict = self.get_sxx_freq_bands(
                 output_type="phase",
@@ -734,6 +820,8 @@ class LFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end,
             )
             # for b_name, phase in phase_dict.items():
             #     output_dict[b_name] = b_phases
@@ -756,12 +844,12 @@ class LFPManager:
         end: Optional[int] = None,
         iterations: int = 1000,
         seed: int = 42,
-        callback: callable = print,
     ):
-        if start is None:
-            start = self.get_file_attr("start")
-        if end is None:
-            end = self.get_file_attr("end")
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
@@ -770,7 +858,7 @@ class LFPManager:
             "channels": np.arange(start_chan, end_chan),
         }
         for index, channel in enumerate(output["channels"][:5]):
-            callback(
+            self.callback(
                 f"Extracting phase and amplitude data for channel {channel} on probe {probe}."
             )
             phi = self.hilbert(
