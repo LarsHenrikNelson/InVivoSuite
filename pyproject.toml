@@ -35,6 +35,9 @@ plotting = [
     "matplotlib",
 ]
 
+[tool.setuptools.package-data]
+my_package = ["acq/bin/*.dll"]
+
 [project.urls]
 Homepage = "https://github.com/LarsHenrikNelson/InVivoSuite"
 
