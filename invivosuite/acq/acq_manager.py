@@ -325,6 +325,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         start = self.start + start
         if end > 0:
             end = self.start + end
+        else:
+            end = self.end
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
         array = self.get_file_dataset(
             "acqs", rows=int(channel), columns=(start, end)

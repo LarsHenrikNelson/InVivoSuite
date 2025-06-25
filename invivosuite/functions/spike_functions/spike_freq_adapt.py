@@ -63,7 +63,7 @@ def sfa_divisor(isi: list[np.ndarray]) -> np.ndarray[float]:
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
     """
-    if len(isi) > 1 or np.isnan(isi):
+    if len(isi) > 1 or not np.isnan(isi):
         if isi[-1] > 0:
             return isi[0] / isi[-1]
         else:
