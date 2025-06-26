@@ -25,6 +25,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def create_hdf5_file(
         self,
         acqs,
+        wb_channels,
         sample_rates,
         coeffs,
         units,
@@ -48,6 +49,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.file.create_dataset("sample_rate", data=sample_rates)
         self.file.create_dataset("units", data=units)
         self.file.create_dataset("enabled", data=enabled)
+        self.file.create_dataset("wb_channels", data=wb_channels)
         self.set_file_attr("id", identifier)
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])

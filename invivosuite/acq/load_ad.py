@@ -42,6 +42,7 @@ def load_pl2_acqs(
     nchannels = file_info.m_TotalNumberOfAnalogChannels
     wb_channels = []
     ai_channels = []
+    plx_channel = []
     for i in range(nchannels):
         ad_info = PL2AnalogChannelInfo()
         ad_res = reader.pl2_get_analog_channel_info(handle, i, ad_info)
@@ -51,6 +52,7 @@ def load_pl2_acqs(
             and ad_info.m_Name.decode("ascii")[:2] == "WB"
         ):
             wb_channels.append(i)
+            plx_channel.append(ad_info.m_Channel)
         if (
             ad_info.m_ChannelEnabled
             and ad_res != 0
@@ -100,7 +102,7 @@ def load_pl2_acqs(
     if save_path == "":
         save_path = Path(pl2_path).parent
     acq_man.create_hdf5_file(
-        acqs, fs, coeffs, np.asarray(units), enabled, name, save_path, ai=ai_data
+        acqs, wb_channels, fs, coeffs, np.asarray(units), enabled, name, save_path, ai=ai_data
     )
     # acq_data = (acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
