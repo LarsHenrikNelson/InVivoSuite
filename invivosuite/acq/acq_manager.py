@@ -21,6 +21,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.file = None
         self.file_open = False
         self._set_cwt = False
+        self.callback = print
 
     def create_hdf5_file(
         self,
