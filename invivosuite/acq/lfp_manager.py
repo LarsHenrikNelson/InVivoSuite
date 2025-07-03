@@ -600,7 +600,7 @@ class LFPManager:
         if end > 0:
             end = self.start + end
         else:
-            self.end = end
+            end = self.end
         b_stats = {"channel": channel}
         if map_channel:
             channel = self.get_mapped_channel(probe, channel)
@@ -709,7 +709,7 @@ class LFPManager:
         if end > 0:
             end = self.start + end
         else:
-            self.end = end
+            end = self.end
         band_dict = {}
         for b_name, fr in freq_bands.items():
             band_dict[b_name] = self.hilbert(
