@@ -43,11 +43,6 @@ class SpkLFPManager:
         start: int = 0,
         end: int = 0,
     ) -> tuple[dict]:
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chan = self.get_cluster_channel(cluster_id, center=center)
         band_dict = self.get_sxx_freq_bands(
             sxx_type=sxx_type,
@@ -59,6 +54,8 @@ class SpkLFPManager:
             ref_probe=ref_probe,
             map_channel=map_channel,
             probe=probe,
+            start=start,
+            end=end,
         )
         stats, phases = self.extract_spike_phase_data(band_dict, cluster_id, nperseg)
         return stats, phases
@@ -112,11 +109,6 @@ class SpkLFPManager:
         start: int = 0,
         end: int = 0,
     ) -> dict[str, np.ndarray]:
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []
@@ -181,11 +173,6 @@ class SpkLFPManager:
         start: int = 0,
         end: int = 0
     ) -> dict[str, np.ndarray]:
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []

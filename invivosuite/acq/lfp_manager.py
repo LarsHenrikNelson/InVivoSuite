@@ -142,11 +142,6 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         pxx_attrs = self.get_spectral_settings(pxx_type)
         if channel > self.n_chans:
             raise ValueError(f"{channel} does not exist.")
@@ -328,11 +323,6 @@ class LFPManager:
         window_type: Literal["sum", "mean"] = "sum",
     ):
         output = {}
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
@@ -681,6 +671,8 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ) -> dict[str, np.ndarray]:
         freqs, cwt = self.sxx(
             channel=channel,
@@ -690,6 +682,8 @@ class LFPManager:
             ref_probe=ref_probe,
             map_channel=map_channel,
             probe=probe,
+            start=start,
+            end=end
         )
 
         band_dict = {}
@@ -708,7 +702,14 @@ class LFPManager:
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
+        start: int = 0,
+        end: int = 0,
     ) -> dict[str, np.ndarray]:
+        start = self.start + start
+        if end > 0:
+            end = self.start + end
+        else:
+            self.end = end
         band_dict = {}
         for b_name, fr in freq_bands.items():
             band_dict[b_name] = self.hilbert(
@@ -722,6 +723,8 @@ class LFPManager:
                 lowpass=fr[1],
                 filter_type="butterworth_zero",
                 order=4,
+                start = start,
+                end=end
             )
         return band_dict
 
@@ -739,11 +742,6 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ) -> dict[str, np.ndarray]:
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         if sxx_type == "cwt":
             band_dict = self.get_cwt_freq_bands(
                 freq_bands=freq_bands,
