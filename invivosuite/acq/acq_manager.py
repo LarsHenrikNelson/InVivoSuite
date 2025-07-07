@@ -232,7 +232,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                     (chans[1] - chans[0], 1)
-                ) - self.get_file_dataset("means", rows=chans).reshape(
+                ) - self.get_file_dataset(
+                    "means", rows=chans
+                ).reshape(
                     chans[1] - chans[0], 1
                 )
                 array -= means
@@ -253,7 +255,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 "acqs", rows=chans, columns=(start, end)
             ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                 (chans[1] - chans[0], 1)
-            ) - self.get_file_dataset("means", rows=chans).reshape(
+            ) - self.get_file_dataset(
+                "means", rows=chans
+            ).reshape(
                 chans[1] - chans[0], 1
             )
             cmr = ref(array, axis=0)
@@ -384,11 +388,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     ):
         data = self.get_grp_dataset("probes", probe)
         total_chans = data[1] - data[0]
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
 
         if channel is not None:
             # start_chan = channel - nchans

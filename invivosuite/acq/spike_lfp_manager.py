@@ -79,9 +79,14 @@ class SpkLFPManager:
         return stats
 
     def extract_spike_phase_data(
-        self, phase_dict: dict[str, np.ndarray], cluster_id: int, nperseg: int
+        self,
+        phase_dict: dict[str, np.ndarray],
+        cluster_id: int,
+        nperseg: int,
+        start: int = 0,
+        end: int = 0,
     ) -> tuple[dict[str, np.ndarray]]:
-        b_spks = self.get_binned_spike_cluster(cluster_id, nperseg=nperseg)
+        b_spks = self.get_binned_spike_cluster(cluster_id, nperseg, start, end)
         output_dict = {}
         output_stats = {}
         spk_indexes = np.where(b_spks > 0)[0]
@@ -129,7 +134,9 @@ class SpkLFPManager:
             )
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike phase for cluster {cid}.")
-                stats, phases = self.extract_spike_phase_data(band_dict, cid, nperseg)
+                stats, phases = self.extract_spike_phase_data(
+                    band_dict, cid, nperseg, start, end
+                )
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
                 phases["cluster_id"] = np.full(next(iter(phases.values())).size, cid)
@@ -171,7 +178,7 @@ class SpkLFPManager:
         nperseg: int = 40,
         window: int = 100,
         start: int = 0,
-        end: int = 0
+        end: int = 0,
     ) -> dict[str, np.ndarray]:
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
@@ -189,7 +196,7 @@ class SpkLFPManager:
                 map_channel=map_channel,
                 probe=probe,
                 start=start,
-                end=end
+                end=end,
             )
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike power for cluster {cid}.")
