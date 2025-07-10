@@ -206,6 +206,8 @@ class SpkManager:
         spike_indexes = self.get_cluster_spike_times(
             cluster_id=cluster_id, start=start, end=end
         )
+        if end == 0:
+            end = self.end - self.start
         return spkf.create_binary_spikes(spike_indexes, end - start)
 
     def get_continuous_spike_cluster(
@@ -255,6 +257,8 @@ class SpkManager:
         spike_indexes = self.get_cluster_spike_times(
             cluster_id=cluster_id, start=start, end=end
         )
+        if end == 0:
+            end = self.end - self.start
         return spkf.bin_spikes(spike_indexes, end - start, nperseg)
 
     def get_channel_clusters(
@@ -434,6 +438,8 @@ class SpkManager:
         binned = self.get_binned_spike_cluster(
             cluster_id=cluster_id, nperseg=nperseg, start=start, end=end
         )
+        if end == 0:
+            end = self.end - self.start
         output_dict["fano_factor"] = binned.var() / binned.mean()
         output_dict["cv"] = binned.std() / binned.mean()
 
@@ -507,6 +513,7 @@ class SpkManager:
         output_list = []
 
         for clust_id in self.cluster_ids:
+            self.callback(f"Calculating spike properties for cluster {clust_id}")
             data = self.get_cluster_spike_properties(
                 cluster_id=clust_id,
                 fs=fs,
@@ -850,17 +857,12 @@ class SpkManager:
         template_amplitudes: np.ndarray,
         subtract: bool = True,
     ):
-
         # Get only the current spikes
         current_spikes = np.where((spike_times < end) & (spike_times > start))[0]
-        print("Current spikes: ", current_spikes[0], current_spikes[-1])
-        print(
-            "Current spike times: ",
-            spike_times[current_spikes[0]],
-            spike_times[current_spikes[-1]],
+        self.callback(f"Current spikes: {current_spikes[0]}-{current_spikes[-1]}")
+        self.callback(
+            f"Current spike times: {spike_times[current_spikes[0]]}-{spike_times[current_spikes[-1]]}"
         )
-        print("Start: ", start, "End: ", end)
-
         # Sort the spikes by amplitude
         extract_indexes = np.argsort(template_amplitudes[current_spikes])
 
@@ -1148,12 +1150,6 @@ class SpkManager:
         chunk_size: int = 240000,
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
-
         if self.spike_waveforms.size == 0:
             self.export_to_phy(
                 nchans=nchans,
@@ -1236,11 +1232,6 @@ class SpkManager:
         dtype: Literal["f64", "f32", "f16", "i32", "i16"] = "f32",
         subtract: bool = False,
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         self.export_phy_waveforms(
             nchans=nchans,
             waveform_length=waveform_length,

@@ -683,7 +683,7 @@ class LFPManager:
             map_channel=map_channel,
             probe=probe,
             start=start,
-            end=end
+            end=end,
         )
 
         band_dict = {}
@@ -705,7 +705,10 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ) -> dict[str, np.ndarray]:
-        start = self.start + start
+        if start > 0:
+            start = self.start + start
+        else:
+            start = self.start
         if end > 0:
             end = self.start + end
         else:
@@ -723,8 +726,8 @@ class LFPManager:
                 lowpass=fr[1],
                 filter_type="butterworth_zero",
                 order=4,
-                start = start,
-                end=end
+                start=start,
+                end=end,
             )
         return band_dict
 

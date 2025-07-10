@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Literal, Union
+from typing import Literal, Union, Iterable
 
 import h5py
 import numpy as np
@@ -329,12 +329,16 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         start: int = 0,
         end: int = 0,
     ):
-        start = self.start + start
+        if start > 0:
+            start = self.start + start
+        else:
+            start = self.start
         if end > 0:
             end = self.start + end
         else:
             end = self.end
         channel = self.get_mapped_channel(channel, probe=probe, map_channel=map_channel)
+        self.callback(f"Acquisition {channel} time: {start}-{end}")
         array = self.get_file_dataset(
             "acqs", rows=int(channel), columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=int(channel)) - self.get_file_dataset(
@@ -357,7 +361,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             lowpass=filter_dict["lowpass"],
             low_width=filter_dict["low_width"],
             window=filter_dict["window"],
-            polyorder=filter_dict["polyorder"],
         )
         if filter_dict["notch_filter"]:
             acq = iirnotch_zero(
@@ -375,8 +378,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def get_multichans(
         self,
         acq_type: Literal["spike", "lfp", "wideband"],
-        channel: Union[int, None] = None,
-        nchans: Union[int, None] = None,
+        channels: Union[Iterable[int], None] = None,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -386,35 +388,55 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         start: int = 0,
         end: int = 0,
     ):
-        data = self.get_grp_dataset("probes", probe)
-        total_chans = data[1] - data[0]
-
-        if channel is not None:
-            # start_chan = channel - nchans
-            end_chan = channel + nchans
-            start_chan = max(0, int(channel - nchans))
-            end_chan = min(total_chans, int(channel + nchans))
-            multi_acq = np.zeros((end_chan - start_chan, int(end - start)))
+        if start > 0:
+            start = self.start + start
         else:
-            start_chan = 0
-            end_chan = data[1] - data[0]
-            multi_acq = np.zeros((end_chan, int(end - start)))
-        for channel in range(start_chan, end_chan):
-            multi_acq[int(channel - start_chan), :] = self.acq(
-                channel=channel,
-                acq_type=acq_type,
-                ref=ref,
-                ref_type=ref_type,
-                ref_probe=ref_probe,
-                map_channel=map_channel,
-                probe=probe,
-                start=start,
-                end=end,
-            )
+            start = self.start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
+
+        self.callback(f"Getting acquisitions from {start}-{end}")
+
+        data = self.get_grp_dataset("probes", probe)
+        if channels is None:
+            channels = np.arange(data[0], data[1])
+
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+
+        self.open()
+        multi_acqs = self.file["acqs"][channels, start:end] * self.file["coeffs"][
+            channels
+        ].reshape(-1, 1) - self.file["means"][channels].reshape(-1, 1)
+
+        if ref:
+            multi_acqs = multi_acqs - self.file[ref_type][ref_probe][start:end]
+        self.close()
+
+        if map_channel:
+            channels = channel_map[channels - data[0]]
+            multi_acqs = multi_acqs[channels]
+
+        filter_dict = self.get_filter(acq_type)
+        sample_rate = self.get_file_dataset("sample_rate", rows=int(channels[0]))
+        multi_acqs = filter_array(
+            multi_acqs,
+            sample_rate=sample_rate,
+            filter_type=filter_dict["filter_type"],
+            order=filter_dict["order"],
+            highpass=filter_dict["highpass"],
+            high_width=filter_dict["high_width"],
+            lowpass=filter_dict["lowpass"],
+            low_width=filter_dict["low_width"],
+            window=filter_dict["window"],
+        )
+
         if whiten:
-            W = self.get_grp_dataset("whitening_matrix", probe)
-            multi_acq = W[start_chan:end_chan, start_chan:end_chan] @ multi_acq
-        return multi_acq
+            pass
+        #     W = self.get_grp_dataset("whitening_matrix", probe)
+        #     multi_acq = W[start_chan:end_chan, start_chan:end_chan] @ multi_acq
+        return multi_acqs
 
     def get_groups(self):
         self.open()
