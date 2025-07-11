@@ -52,7 +52,7 @@ for pair0, pair1 in spk_acq_pair:
     )
     print(f"Calculating templates for {pair0.stem}")
     filtered_templates, _ = acq_manager.extract_templates(
-        spike_waveforms=output, total_chans=64, callback=print
+        spike_waveforms=output, total_chans=64
     )
 
     print(f"Calculating template properties for {pair0.stem}.")
