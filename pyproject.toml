@@ -22,7 +22,7 @@ dependencies = [
     "PyWavelets",
     "scikit-learn",
     "scipy",
-    "send2trash",
+    "Send2Trash",
     "spectrum",
     "statsmodels"
 
