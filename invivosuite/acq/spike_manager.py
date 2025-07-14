@@ -143,7 +143,7 @@ class SpkManager:
         return np.unique(self.spike_templates[cid])
 
     def get_cluster_template_waveforms(self, cluster_id: int) -> np.ndarray:
-        return self.sparse_self.sparse_templates[cluster_id, :, :]
+        return self.sparse_templates[cluster_id, :, :]
 
     def get_cluster_best_template_waveform(
         self, cluster_id: int, nchans: int = 4

@@ -396,6 +396,7 @@ def filter_array(
     lowpass: Union[int, float, None] = None,
     low_width: Union[int, float, None] = None,
     window: Windows = "hann",
+    **kwargs,
 ):
     if filter_type == "bessel":
         filtered_array = bessel(
