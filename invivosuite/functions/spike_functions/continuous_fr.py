@@ -1,4 +1,5 @@
 from typing import Literal
+from functools import cache
 
 import numpy as np
 from numba import njit
@@ -15,7 +16,7 @@ Windows = Literal["gaussian", "exponential", "exponential_abi", "boxcar"]
 Methods = Literal["convolve", "add", "set"]
 
 
-def _create_array(array: np.ndarray, window: np.ndarray, method: Methods):
+def _create_array(array: np.ndarray, window: np.ndarray, method: Methods = "convolve"):
     if method == "convolve":
         sdf = signal.oaconvolve(array, window)
         sdf = sdf[window.size // 2 : array.size + window.size // 2]
@@ -47,11 +48,29 @@ def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
             sdf[start:end] = window[wstart:wend]
     return sdf
 
+@cache
+def _create_window(window: str, sigma: float, sampInt: float | int):
+    if window == "exponential_abi":
+        filtPts = int(5 * sigma / sampInt)
+        w = np.zeros(filtPts * 2)
+        w[-filtPts:] = windows.exponential(
+            filtPts, center=0, tau=sigma / sampInt, sym=False
+        )
+    elif window == "exponential":
+        filtPts = int(5 * sigma / sampInt) * 2
+        w = windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
+    elif window == "gaussian":
+        w = gauss_kernel(sigma)
+    else:
+        wlen = int(sigma) * 2 + 1
+        w = np.ones(wlen)
+
+    return w
 
 def create_continuous_spikes(
     spikes: np.ndarray,
     binary_size: int,
-    nperseg: int = 0,
+    nperseg: int = 1,
     fs: float = 40000.0,
     window: Windows = "boxcar",
     sigma: float = 0.02,
@@ -70,25 +89,12 @@ def create_continuous_spikes(
     Returns:
         np.ndarray: _description_
     """
-    if nperseg > 0:
+    if nperseg > 1:
         temp = bin_spikes(spikes, binary_size=binary_size, nperseg=nperseg)
         sampInt = 1 / (fs / nperseg)
     else:
         temp = np.zeros(binary_size)
         temp[spikes] = 1
         sampInt = 1
-    if window == "exponential_abi":
-        filtPts = int(5 * sigma / sampInt)
-        w = np.zeros(filtPts * 2)
-        w[-filtPts:] = windows.exponential(
-            filtPts, center=0, tau=sigma / sampInt, sym=False
-        )
-    elif window == "exponential":
-        filtPts = int(5 * sigma / sampInt) * 2
-        w = windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
-    elif window == "gaussian":
-        w = gauss_kernel(sigma)
-    else:
-        wlen = int(sigma) * 2 + 1
-        w = np.ones(wlen)
+    w = _create_window(window, sigma, sampInt)
     return _create_array(temp, w, method=method)

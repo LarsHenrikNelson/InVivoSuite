@@ -1,8 +1,8 @@
-from typing import Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 
-from typing import TypedDict
+from .continuous_fr import Methods, Windows, _create_array, _create_window
 
 
 class SyncData(TypedDict):
@@ -15,18 +15,43 @@ class SyncData(TypedDict):
     group_connectivity: dict[str, np.ndarray]
 
 
+def _create_continuous(
+    raster_binary,
+    fs: float,
+    window: Windows = "gaussian",
+    sigma: float | int = 200,
+    method: Methods = "convolve",
+):
+    continuous_sum = np.zeros(raster_binary.shape[1], dtype=np.float32)
+    raster_continuous = np.zeros(raster_binary.shape, dtype=bool)
+    window = _create_window(window, sigma, 1 / fs)
+    for i in range(raster_binary.shape[0]):
+        temp = _create_array(raster_binary[i], window, method)
+        temp[temp < 0] = 0
+        continuous_sum[:] += temp
+        raster_continuous[i, :] = temp > 0
+    return continuous_sum, raster_continuous
+
+
 def synchronous_periods(
-    raster_continuous: np.ndarray,
-    continuous_sum: np.ndarray,
     raster_binary: np.ndarray,
+    fs: float,
     cluster_ids: np.ndarray,
     threshold: float,
     threshold_type: Literal["relative", "absolute"],
     min_length: float | int,
     channels: np.ndarray,
+    window: Windows = "gaussian",
+    sigma: float | int = 200,
+    method: Methods = "convolve",
 ) -> SyncData:
+    continuous_sum, raster_continuous = _create_continuous(
+        raster_binary, fs, window, sigma, method
+    )
     if threshold_type == "relative":
-        threshold = threshold * cluster_ids.size
+        m = np.sqrt(continuous_sum).mean() ** 2
+        std = np.sqrt(continuous_sum).std() ** 2
+        threshold = m + std * threshold
     sdata = _find_synchronous_periods(
         threshold, continuous_sum=continuous_sum, min_length=min_length
     )
@@ -120,7 +145,7 @@ def _analyze_synchronous_periods(
     )
     cluster_dict["cluster_id"] = cluster_ids
     cluster_dict["counts"] = cid_counts
-    cluster_dict["ngroups"] = [len(grouped_cluster_ids)]*len(cluster_ids)
+    cluster_dict["ngroups"] = [len(grouped_cluster_ids)] * len(cluster_ids)
 
     channels = [channels[i] for i in groups]
 

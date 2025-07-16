@@ -132,6 +132,7 @@ class SpkManager:
     def cluster_spike_ids(self, cluster_id: int, start: int = 0, end: int = 0):
         if end == 0:
             end = self.end - self.start
+        self.callback(f"Extracting {cluster_id} from {start}-{end}")
         indices = np.arange(self.spike_clusters.size)
         truthiness = (self.spike_times > start) & (self.spike_times < end) * (
             self.spike_clusters == cluster_id
@@ -214,7 +215,7 @@ class SpkManager:
         self,
         cluster_id: int,
         fs: float = 40000.0,
-        nperseg: int = 0,
+        nperseg: int = 1,
         window: spkf.Windows = "boxcar",
         sigma: float = 200,
         method: spkf.Methods = "convolve",
@@ -224,6 +225,8 @@ class SpkManager:
         spike_indexes = self.get_cluster_spike_times(
             cluster_id=cluster_id, start=start, end=end
         )
+        if end == 0:
+            end = self.end-self.start
         return spkf.create_continuous_spikes(
             spike_indexes,
             end - start,
@@ -359,7 +362,7 @@ class SpkManager:
                 cids[index] = cid
                 cluster_channel[index] = chan
                 index += 1
-        return output, cid
+        return output, cid, cluster_channel
 
     def get_continuous_spikes_channel(
         self,
@@ -1435,53 +1438,43 @@ class SpkManager:
 
     def synchronous_periods(
         self,
-        threshold: int | float = 0.05,
+        threshold: int | float = 3.0,
         threshold_type: Literal["relative", "absolute"] = "relative",
         min_length: float | int = 0,
         window: spkf.Windows = "gaussian",
         sigma: float | int = 200,
         method: spkf.Methods = "convolve",
+        fs: float = 40000.0,
+        nperseg: int = 1,
         start: int = 0,
         end: int = 0,
         accepted: bool = False,
     ):
-        index = 0
         cluster_ids, channels, chans, chan_cid_dict = self._get_channel_clusters(
             channel=None, accepted=accepted
         )
-        raster_binary, _, _ = self.get_binary_spikes_channel(
-            accepted=accepted, dtype=bool
-        )
-        continuous_sum = np.zeros(raster_binary.shape, dtype=np.float32)
-        raster_continuous = np.zeros(raster_binary.shape, dtype=bool)
 
-        for chan in chans:
-            for cid in chan_cid_dict[chan]:
-                temp = self.get_continuous_spike_cluster(
-                    cid,
-                    nperseg=0,
-                    fs=40000.0,
-                    window=window,
-                    sigma=sigma,
-                    method=method,
-                    start=start,
-                    end=end,
-                )
-                continuous_sum[:] += temp
-                raster_continuous[index, :] = temp > 0
-                cluster_ids[index] = cid
-                channels[index] = chan
-                index += 1
+        if nperseg > 1:
+            raster_binary, _, _ = self.get_binned_spikes_channel(
+                accepted=accepted, nperseg=nperseg, start=start, end=end
+            )
+        else:
+            raster_binary, _, _ = self.get_binary_spikes_channel(
+                accepted=accepted, dtype=bool
+            )
 
+        self.callback("Computing synchronous periods.")
         output = spkf.synchronous_periods(
-            raster_continuous=raster_continuous,
-            continuous_sum=continuous_sum,
             raster_binary=raster_binary,
+            fs = fs/nperseg,
             cluster_ids=cluster_ids,
             threshold=threshold,
             threshold_type=threshold_type,
             min_length=min_length,
             channels=channels,
+            sigma=sigma,
+            method=method,
+            window=window
         )
 
         prob = []
