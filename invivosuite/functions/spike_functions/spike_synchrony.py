@@ -84,6 +84,13 @@ def synchronous_periods(
         "connectivity_value": values,
     }
 
+    prob = {}
+    window = _create_window(window, sigma, 1 / fs)
+    for i in range(raster_binary.shape[0]):
+        temp = _create_array(raster_binary[i], window, method)
+        prob[cluster_ids[i]] = np.sum([temp[i[0] : i[-1]].sum() for i in sdata])
+    cluster_data["prob"] = [prob[i] for i in cluster_data["cluster_id"]]
+
     output = SyncData(
         group_data=group_data,
         cluster_data=cluster_data,

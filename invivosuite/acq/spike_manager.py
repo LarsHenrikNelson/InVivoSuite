@@ -312,6 +312,12 @@ class SpkManager:
             n_units = self.accepted_units.sum() if accepted else self.cluster_ids.size
             cids = np.zeros(n_units, dtype=int)
             cluster_channel = np.zeros(n_units, dtype=int)
+        index = 0
+        for chan in chans:
+            for cid in chan_cid_dict[chan]:
+                cids[index] = cid
+                cluster_channel[index] = chan
+                index += 1
         return cids, cluster_channel, chans, chan_cid_dict
 
     def get_binary_spikes_channel(
@@ -333,8 +339,6 @@ class SpkManager:
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 output[index] = self.get_binary_spike_cluster(cid, start=start, end=end)
-                cids[index] = cid
-                cluster_channel[index] = chan
                 index += 1
         return output, cids, cluster_channel
 
@@ -359,8 +363,6 @@ class SpkManager:
                 output[index] = self.get_binned_spike_cluster(
                     cid, nperseg=nperseg, start=start, end=end
                 )
-                cids[index] = cid
-                cluster_channel[index] = chan
                 index += 1
         return output, cid, cluster_channel
 
@@ -1450,7 +1452,7 @@ class SpkManager:
         end: int = 0,
         accepted: bool = False,
     ):
-        cluster_ids, channels, chans, chan_cid_dict = self._get_channel_clusters(
+        cluster_ids, channels, _, _ = self._get_channel_clusters(
             channel=None, accepted=accepted
         )
 
@@ -1476,18 +1478,4 @@ class SpkManager:
             method=method,
             window=window
         )
-
-        prob = []
-        for chan in chans:
-            for cid in chan_cid_dict[chan]:
-                temp = self.get_continuous_spike_cluster(
-                    cid,
-                    nperseg=0,
-                    fs=40000.0,
-                    window=window,
-                    sigma=sigma,
-                    method=method,
-                )
-                prob.append(np.sum([temp[i[0] : i[-1]].sum() for i in output["sdata"]]))
-        output["cluster_data"]["prob"] = prob
         return output
