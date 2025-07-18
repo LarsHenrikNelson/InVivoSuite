@@ -1,4 +1,5 @@
 from typing import Literal, TypedDict
+from collections import defaultdict
 
 import numpy as np
 
@@ -64,24 +65,20 @@ def synchronous_periods(
         channels=channels,
     )
 
-    conn_matrix = np.zeros((cluster_ids.size, cluster_ids.size))
-    cid_index = {cid: value for value, cid in enumerate(cluster_ids)}
+    connnectivity_value = defaultdict(lambda: 0)
     for grp in groups:
         for j in range(grp.size - 1):
             for k in range(j + 1, grp.size):
-                index1 = cid_index[grp[j]]
-                index2 = cid_index[grp[k]]
-                conn_matrix[index1, index2] += 1
-                conn_matrix[index2, index1] += 1
-    conn_matrix /= float(len(groups))
-    indices = np.triu_indices(conn_matrix.shape[0], k=1)
-    cluster1_id = np.array([cluster_ids[i] for i in indices[0]])
-    cluster2_id = np.array([cluster_ids[i] for i in indices[1]])
-    values = conn_matrix[indices]
+                connnectivity_value[(grp[j], grp[k])] +=1
+    cluster_id1 = []
+    cluster_id2 = []
+    for key in connnectivity_value.keys():
+        cluster_id1.append(key[0])
+        cluster_id2.append(key[1])
     group_conn = {
-        "cluster1_id": cluster1_id,
-        "cluster2_id": cluster2_id,
-        "connectivity_value": values,
+        "cluster_id1": cluster_id1,
+        "cluster_id2": cluster_id2,
+        "connectivity_value": list(connnectivity_value.values()),
     }
 
     prob = {}
