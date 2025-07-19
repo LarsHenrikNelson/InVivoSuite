@@ -139,7 +139,7 @@ def phase_lag_value(acqs, plv_type: Literal["plv, iplv, ciplv"] = "ciplv"):
 
 
 def phase_slope_index(
-    cohy: np.ndarray[np.dtype[np.complex_]],
+    cohy: np.ndarray[np.dtype[np.complex128]],
     freqs: Union[np.ndarray[np.dtype[float], np.dtype[int]], list[Union[float, int]]],
     f_band: Union[tuple[float, float], tuple[int, int]],
 ) -> float:

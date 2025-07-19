@@ -23,7 +23,6 @@ dependencies = [
     "scikit-learn",
     "scipy",
     "Send2Trash",
-    "spectrum",
     "statsmodels"
 
 ]
