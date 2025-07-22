@@ -4,6 +4,7 @@ import os
 import joblib
 import numpy as np
 from numpy.random import default_rng
+from scipy import stats
 
 
 def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
@@ -24,8 +25,7 @@ def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
     output_bins = np.linspace(-np.pi + dt, np.pi - dt, num=steps)
     binned_data = np.zeros(steps)
     for i in range(steps):
-        indexes = np.where((phi < upper) & (phi >= lower))
-        binned_data[i] = np.mean(amp[indexes])
+        binned_data[i] = np.mean(amp[(phi < upper) & (phi >= lower)])
         lower += dt
         upper += dt
     return output_bins, binned_data
@@ -74,3 +74,13 @@ def cfc_pvalue(
     cfc_range = cfc_data.max() - cfc_data.min()
     num_above = np.where(output > cfc_range)[0]
     return num_above.size / iterations
+
+def modulation_index( phi: np.ndarray,
+    amp: np.ndarray,
+    steps: int):
+    _, binned_data = cross_frequency_coupling(phi, amp, steps)
+    
+    normalized = binned_data/binned_data.sum()
+    max_entropy = np.log(len(binned_data))
+    mi = (max_entropy-(-np.sum(normalized)*np.log(normalized)))/max_entropy
+    return mi 

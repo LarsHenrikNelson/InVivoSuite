@@ -45,6 +45,7 @@ def synchronous_periods(
     window: Windows = "gaussian",
     sigma: float | int = 200,
     method: Methods = "convolve",
+    celltypes: np.ndarray | None = None,
 ) -> SyncData:
     continuous_sum, raster_continuous = _create_continuous(
         raster_binary, fs, window, sigma, method
@@ -63,13 +64,14 @@ def synchronous_periods(
         raster_binary=raster_binary,
         sdata=sdata,
         channels=channels,
+        celltypes=celltypes,
     )
 
     connnectivity_value = defaultdict(lambda: 0)
     for grp in groups:
         for j in range(grp.size - 1):
             for k in range(j + 1, grp.size):
-                connnectivity_value[(grp[j], grp[k])] +=1
+                connnectivity_value[(grp[j], grp[k])] += 1
     cluster_id1 = []
     cluster_id2 = []
     for key in connnectivity_value.keys():
@@ -119,6 +121,7 @@ def _analyze_synchronous_periods(
     raster_binary: np.ndarray,
     sdata: np.ndarray,
     channels: np.ndarray,
+    celltypes: np.ndarray | None = None,
 ):
     groups = [
         np.apply_along_axis(np.any, 1, raster_continuous[:, i[0] : i[-1]])
@@ -134,6 +137,7 @@ def _analyze_synchronous_periods(
         for i, g in zip(sdata, groups)
     ]
 
+
     group_dict = {}
     group_dict["unit_count"] = [i.sum() for i in groups]
     group_dict["length"] = [i[-1] - i[0] for i in sdata]
@@ -141,12 +145,22 @@ def _analyze_synchronous_periods(
     group_dict["nspikes"] = [i.sum() for i in spikes]
     group_dict["total_units"] = cluster_ids.size
 
+    group_cell_types = [celltypes[i] for i in groups]
+    ucelltypes = np.unique(celltypes)
+    for i in ucelltypes:
+        group_dict[i] = []
+    for i in group_cell_types:
+        ucelltypes, counts = np.unique(i, return_counts=True)
+        temp_dict = {key: value for key, value in zip(ucelltypes, counts)}
+        for j in ucelltypes:
+            if j in temp_dict:
+                group_dict[j].append(temp_dict[j])
+            else:
+                group_dict[j].append(0)
+
     cluster_dict = {}
     grouped_cluster_ids = [cluster_ids[i] for i in groups]
-    cluster_ids, cid_counts = np.unique(
-        np.array([item for subset in grouped_cluster_ids for item in subset]),
-        return_counts=True,
-    )
+    cluster_ids, cid_counts = np.unique(np.concatenate(grouped_cluster_ids), return_counts=True)
     cluster_dict["cluster_id"] = cluster_ids
     cluster_dict["counts"] = cid_counts
     cluster_dict["ngroups"] = [len(grouped_cluster_ids)] * len(cluster_ids)

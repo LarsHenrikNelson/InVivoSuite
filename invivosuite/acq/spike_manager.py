@@ -127,7 +127,7 @@ class SpkManager:
         if temp_path.exists():
             self.celltypes = np.loadtxt(temp_path, delimiter="\t", dtype=str)
         else:
-            self.celltypes = None
+            self.celltypes = [None] * self.cluster_ids.size
 
     def cluster_spike_ids(self, cluster_id: int, start: int = 0, end: int = 0):
         if end == 0:
@@ -226,7 +226,7 @@ class SpkManager:
             cluster_id=cluster_id, start=start, end=end
         )
         if end == 0:
-            end = self.end-self.start
+            end = self.end - self.start
         return spkf.create_continuous_spikes(
             spike_indexes,
             end - start,
@@ -1456,6 +1456,15 @@ class SpkManager:
             channel=None, accepted=accepted
         )
 
+        if accepted:
+            celltypes = self.celltypes[self.accepted_units]
+            cids = self.cluster_ids[self.accepted_units]
+        else:
+            celltypes = self.celltypes
+            cids = self.cluster_ids
+        celltype_dict = {key: value for key, value in zip(cids, celltypes)}
+        cluster_celltypes = np.array([celltype_dict[cid] for cid in cluster_ids])
+
         if nperseg > 1:
             raster_binary, _, _ = self.get_binned_spikes_channel(
                 accepted=accepted, nperseg=nperseg, start=start, end=end
@@ -1464,11 +1473,11 @@ class SpkManager:
             raster_binary, _, _ = self.get_binary_spikes_channel(
                 accepted=accepted, dtype=bool
             )
-
+        
         self.callback("Computing synchronous periods.")
         output = spkf.synchronous_periods(
             raster_binary=raster_binary,
-            fs = fs/nperseg,
+            fs=fs / nperseg,
             cluster_ids=cluster_ids,
             threshold=threshold,
             threshold_type=threshold_type,
@@ -1476,6 +1485,7 @@ class SpkManager:
             channels=channels,
             sigma=sigma,
             method=method,
-            window=window
+            window=window,
+            celltypes=cluster_celltypes
         )
         return output
