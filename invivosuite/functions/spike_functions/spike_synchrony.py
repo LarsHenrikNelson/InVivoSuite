@@ -143,20 +143,19 @@ def _analyze_synchronous_periods(
     group_dict["length"] = [i[-1] - i[0] for i in sdata]
     group_dict["prob"] = [i.sum() for i in probs]
     group_dict["nspikes"] = [i.sum() for i in spikes]
-    group_dict["total_units"] = cluster_ids.size
+    group_dict["total_units"] = [cluster_ids.size]*len(sdata)
 
     group_cell_types = [celltypes[i] for i in groups]
     ucelltypes = np.unique(celltypes)
     for i in ucelltypes:
         group_dict[i] = []
+    group_dict["synchronous_units"] = []
     for i in group_cell_types:
-        ucelltypes, counts = np.unique(i, return_counts=True)
-        temp_dict = {key: value for key, value in zip(ucelltypes, counts)}
+        temp_celltype, counts = np.unique(i, return_counts=True)
+        group_dict["synchronous_units"].append(np.sum(counts))
+        temp_dict = {key: value for key, value in zip(temp_celltype, counts)}
         for j in ucelltypes:
-            if j in temp_dict:
-                group_dict[j].append(temp_dict[j])
-            else:
-                group_dict[j].append(0)
+            group_dict[j].append(temp_dict.get(j, 0))
 
     cluster_dict = {}
     grouped_cluster_ids = [cluster_ids[i] for i in groups]
