@@ -219,11 +219,6 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         sxx_attrs = self.get_grp_attrs(sxx_type)
         if channel > self.n_chans:
             raise ValueError(f"{channel} does not exist.")
@@ -368,11 +363,6 @@ class LFPManager:
         end: int = 0,
     ):
         output = {}
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
@@ -390,6 +380,8 @@ class LFPManager:
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
+                start=start,
+                end=end
             )
             pdi_temp = lfp_functions.phase_discontinuity_index(
                 cwt,
@@ -520,7 +512,6 @@ class LFPManager:
         fs = self.get_grp_attr("lfp", "sample_rate")
         probes = self.probes
         for region in probes:
-            start = self.get_grp_dataset("probes", region)[0]
             for i in range(0, 64):
                 acq_i = self.acq(
                     i,
@@ -596,11 +587,6 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         b_stats = {"channel": channel}
         if map_channel:
             channel = self.get_mapped_channel(probe, channel)
@@ -705,14 +691,6 @@ class LFPManager:
         start: int = 0,
         end: int = 0,
     ) -> dict[str, np.ndarray]:
-        if start > 0:
-            start = self.start + start
-        else:
-            start = self.start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         band_dict = {}
         for b_name, fr in freq_bands.items():
             band_dict[b_name] = self.hilbert(
