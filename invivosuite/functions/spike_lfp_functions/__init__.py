@@ -1,1 +1,1 @@
-from . import circular_stats, spike_power  # noqa: F401
+from . import circular_stats, spike_power, spike_phase

@@ -30,48 +30,37 @@ def mean_vector_length(spike_phases):
 
 
 @njit(cache=True)
-def ppc_numba(spike_phases):
-    # outer_sums = np.zeros(spike_phases.size - 1)
-    cos_sin = np.array[np.cos(spike_phases), np.sin(spike_phases)]
-    dp_sum = np.zeros(int(spike_phases.size * (spike_phases.size - 1) / 2))
+def ppc_numba(spike_phases: np.ndarray):
+    cos_sin = np.zeros((spike_phases.size, 2))
+    cos_sin[:,0] = np.cos(spike_phases)
+    cos_sin[:, 1] = np.sin(spike_phases)
+    dp_sum = np.zeros((spike_phases.size * (spike_phases.size - 1)) // 2)
     index = 0
     for index1 in range(0, spike_phases.size - 1):
-        # temp_sum = np.zeros(spike_phases.size - index1 + 1)
-        # array1[0] = np.cos(spike_phases[index1])
-        # array1[1] = np.sin(spike_phases[index1])
         for index2 in range(index1 + 1, spike_phases.size):
-            # array2[0] = np.cos(spike_phases[index2])
-            # array2[1] = np.sin(spike_phases[index2])
-            dp = np.dot(cos_sin[index1], cos_sin[index2])
-            # temp_sum[index2 - index1] = dp
+            dp = np.dot(cos_sin[index1], cos_sin[index2].T)
             dp_sum[index] = dp
             index += 1
-        # outer_sums[index1] = temp_sum.sum()
-    # dp_sum = np.sum(dp_sum)
-    # ppc_output = dp_sum / (len(spike_phases) * (len(spike_phases) - 1) // 2)
     ppc_output = dp_sum.mean()
+    return ppc_output
+
+def ppc_dot_product(spike_phases: np.ndarray):
+    cos_sin = np.zeros((spike_phases.size, 2))
+    cos_sin[:,0] = np.cos(spike_phases)
+    cos_sin[:, 1] = np.sin(spike_phases)
+    temp = cos_sin @ cos_sin.T
+    ppc_output = np.mean(temp[np.triu_indices(temp.shape[0], k=1)])
     return ppc_output
 
 
 def ppc_sampled(spike_phases, size, iterations, seed=42):
-    """This
-
-    Args:
-        spike_phases (_type_): _description_
-        size (_type_): _description_
-        iterations (_type_): _description_
-        seed (int, optional): _description_. Defaults to 42.
-
-    Returns:
-        _type_: _description_
-    """
     rng = default_rng(seed)
     output_array = np.zeros(iterations)
     for i in range(iterations):
         spk_sampled = np.ascontiguousarray(
             rng.choice(spike_phases, size=size, replace=False)
         )
-        output_array[i] = ppc_numba(spk_sampled)
+        output_array[i] = ppc_dot_product(spk_sampled)
     return output_array
 
 

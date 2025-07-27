@@ -293,8 +293,7 @@ class SpkManager:
         return channels
 
     def get_cluster_channel(self, cluster_id: int, center: Optional[int] = None) -> int:
-        temp_index = np.where(self.cluster_ids == cluster_id)[0][0]
-        template = self.sparse_templates[temp_index, :, :]
+        template = self.sparse_templates[self.cluster_ids == cluster_id, :, :]
         return spkf._best_channel(template=template, center=center)
 
     def _get_channel_clusters(

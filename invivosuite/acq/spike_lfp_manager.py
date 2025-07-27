@@ -1,29 +1,11 @@
-from collections.abc import Callable, Iterable
-from typing import Literal, TypedDict, Optional
+from collections.abc import Iterable
+from typing import Literal, Optional
 
 import numpy as np
 
-from ..functions.spike_lfp_functions.circular_stats import (
-    h_test,
-    mean_vector_length,
-    periodic_mean_std,
-    rayleightest,
-)
+from ..functions.spike_lfp_functions.spike_phase import extract_spike_phase_data
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
 from ..utils import concatenate_dicts, expand_data
-
-# TODO:  Break down spike-phase and spike-power into smaller components.
-
-
-class CircStats(TypedDict):
-    rayleigh_pval: float
-    circ_mean: float
-    circ_std: float
-    h: float
-    m: float
-    fpp: float
-    vector_length: float
-    vector_pval: float
 
 
 class SpkLFPManager:
@@ -57,49 +39,10 @@ class SpkLFPManager:
             start=start,
             end=end,
         )
-        stats, phases = self.extract_spike_phase_data(band_dict, cluster_id, nperseg)
+        spike_times = self.get_cluster_spike_times(cluster_id)//nperseg
+        stats, phases = extract_spike_phase_data(band_dict, spike_times)
         return stats, phases
 
-    def analyze_spike_phase(self, data: np.ndarray) -> CircStats:
-        cm, stdev = periodic_mean_std(data)
-        h, m, fpp = h_test(data)
-        p = rayleightest(data)
-        vlen, vp = mean_vector_length(data)
-
-        stats = CircStats(
-            rayleigh_pval=p,
-            circ_mean=cm,
-            circ_std=stdev,
-            h=h,
-            m=m,
-            fpp=fpp,
-            vector_length=vlen,
-            vector_pval=vp,
-        )
-        return stats
-
-    def extract_spike_phase_data(
-        self,
-        phase_dict: dict[str, np.ndarray],
-        cluster_id: int,
-        nperseg: int,
-        start: int = 0,
-        end: int = 0,
-    ) -> tuple[dict[str, np.ndarray]]:
-        b_spks = self.get_binned_spike_cluster(cluster_id, nperseg, start, end)
-        output_dict = {}
-        output_stats = {}
-        spk_indexes = np.where(b_spks > 0)[0]
-        spk_counts = b_spks[spk_indexes]
-        for b_name, phase in phase_dict.items():
-            b_phases = phase[spk_indexes]
-            b_phases = expand_data(b_phases, spk_counts)
-            output_dict[b_name] = b_phases
-            stats = self.analyze_spike_phase(b_phases)
-            output_stats.update(
-                {f"{b_name}_{key}": value for key, value in stats.items()}
-            )
-        return (output_stats, output_dict)
 
     def spike_phase(
         self,
@@ -134,9 +77,8 @@ class SpkLFPManager:
             )
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike phase for cluster {cid}.")
-                stats, phases = self.extract_spike_phase_data(
-                    band_dict, cid, nperseg, start, end
-                )
+                spike_times = self.get_cluster_spike_times(cid)//nperseg
+                stats, phases = extract_spike_phase_data(band_dict, spike_times)
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
                 phases["cluster_id"] = np.full(next(iter(phases.values())).size, cid)
