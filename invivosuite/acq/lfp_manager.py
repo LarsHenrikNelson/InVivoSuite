@@ -5,7 +5,7 @@ import fcwt
 import numpy as np
 from scipy import signal
 
-from .filtering_functions import Filters, Windows, filter_array
+from ..functions.filter_functions import Filters, Windows, filter_array, downsample
 from ..spectral import multitaper, get_freq_window
 from ..functions import lfp_functions, signal_functions
 
@@ -298,7 +298,7 @@ class LFPManager:
             sample_rate=sample_rate,
         )
         if resample_freq is not None:
-            acq = self.downsample(acq, sample_rate, resample_freq, up_sample)
+            acq = downsample(acq, sample_rate, resample_freq, up_sample)
 
         hil_acq = signal.hilbert(acq)
         return hil_acq
@@ -811,29 +811,22 @@ class LFPManager:
 
     def cross_freq_coupling(
         self,
-        power: list[int, int],
-        phase: list[int, int],
-        steps: int,
+        phase: tuple[int | float, int | float],
+        power: tuple[int | float, int | float],
+        steps: int = 50,
         ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
-        start: Optional[int] = None,
-        end: Optional[int] = None,
-        iterations: int = 1000,
-        seed: int = 42,
+        start: int = 0,
+        end: int = 0,
     ):
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
         output = {
-            "pvalues": np.zeros(end_chan),
+            "modulation_index": np.zeros(end_chan),
             "channels": np.arange(start_chan, end_chan),
         }
         for index, channel in enumerate(output["channels"][:5]):
@@ -849,6 +842,8 @@ class LFPManager:
                 probe=probe,
                 highpass=phase[0],
                 lowpass=phase[1],
+                start=start,
+                end=end
             )
             amp = self.hilbert(
                 channel=channel,
@@ -859,16 +854,15 @@ class LFPManager:
                 probe=probe,
                 highpass=power[0],
                 lowpass=power[1],
+                start=start,
+                end=end
             )
             phi = np.angle(phi)
             amp = np.abs(amp)
-            pval = lfp_functions.cfc_pvalue(
+            mi = lfp_functions.modulation_index(
                 phi=phi,
                 amp=amp,
                 steps=steps,
-                iterations=iterations,
-                seed=seed,
             )
-            print(pval)
-            output["pvalues"][index] = pval
+            output["modulation_index"][index] = mi
         return output

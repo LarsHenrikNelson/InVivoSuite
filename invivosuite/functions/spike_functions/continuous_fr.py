@@ -49,7 +49,7 @@ def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
     return sdf
 
 @cache
-def _create_window(window: str, sigma: float, sampInt: float | int):
+def create_window(window: Literal["exponential_abi", "exponential", "gaussian", "boxcar"], sigma: float, sampInt: float | int):
     if window == "exponential_abi":
         filtPts = int(5 * sigma / sampInt)
         w = np.zeros(filtPts * 2)
@@ -64,7 +64,6 @@ def _create_window(window: str, sigma: float, sampInt: float | int):
     else:
         wlen = int(sigma) * 2 + 1
         w = np.ones(wlen)
-
     return w
 
 def create_continuous_spikes(
@@ -96,5 +95,5 @@ def create_continuous_spikes(
         temp = np.zeros(binary_size)
         temp[spikes] = 1
         sampInt = 1
-    w = _create_window(window, sigma, sampInt)
+    w = create_window(window, sigma, sampInt)
     return _create_array(temp, w, method=method)

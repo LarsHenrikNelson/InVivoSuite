@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from .continuous_fr import Methods, Windows, _create_array, _create_window
+from .continuous_fr import Methods, Windows, _create_array, create_window
 
 
 class SyncData(TypedDict):
@@ -25,7 +25,7 @@ def _create_continuous(
 ):
     continuous_sum = np.zeros(raster_binary.shape[1], dtype=np.float32)
     raster_continuous = np.zeros(raster_binary.shape, dtype=bool)
-    window = _create_window(window, sigma, 1 / fs)
+    window = create_window(window, sigma, 1 / fs)
     for i in range(raster_binary.shape[0]):
         temp = _create_array(raster_binary[i], window, method)
         temp[temp < 0] = 0
@@ -84,7 +84,7 @@ def synchronous_periods(
     }
 
     prob = {}
-    window = _create_window(window, sigma, 1 / fs)
+    window = create_window(window, sigma, 1 / fs)
     for i in range(raster_binary.shape[0]):
         temp = _create_array(raster_binary[i], window, method)
         prob[cluster_ids[i]] = np.sum([temp[i[0] : i[-1]].sum() for i in sdata])

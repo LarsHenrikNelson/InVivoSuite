@@ -3,10 +3,11 @@ import os
 
 import joblib
 import numpy as np
+from numba import njit
 from numpy.random import default_rng
-from scipy import stats
 
 
+@njit(cache=True)
 def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
     """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
     for a good explanation and implementation.
@@ -19,15 +20,12 @@ def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
     Returns:
         _type_: _description_
     """
-    dt = np.pi * 2 / steps
-    lower = -np.pi
-    upper = -np.pi + dt
-    output_bins = np.linspace(-np.pi + dt, np.pi - dt, num=steps)
+    output_bins = np.linspace(-np.pi, np.pi, num=steps + 1)
     binned_data = np.zeros(steps)
     for i in range(steps):
-        binned_data[i] = np.mean(amp[(phi < upper) & (phi >= lower)])
-        lower += dt
-        upper += dt
+        binned_data[i] = np.mean(
+            amp[(phi < output_bins[i + 1]) & (phi >= output_bins[i])]
+        )
     return output_bins, binned_data
 
 
@@ -75,12 +73,11 @@ def cfc_pvalue(
     num_above = np.where(output > cfc_range)[0]
     return num_above.size / iterations
 
-def modulation_index( phi: np.ndarray,
-    amp: np.ndarray,
-    steps: int):
+
+def modulation_index(phi: np.ndarray, amp: np.ndarray, steps: int):
     _, binned_data = cross_frequency_coupling(phi, amp, steps)
-    
-    normalized = binned_data/binned_data.sum()
+
+    normalized = binned_data / binned_data.sum()
     max_entropy = np.log(len(binned_data))
-    mi = (max_entropy-(-np.sum(normalized)*np.log(normalized)))/max_entropy
-    return mi 
+    mi = (max_entropy - (-np.sum(normalized * np.log(normalized)))) / max_entropy
+    return mi

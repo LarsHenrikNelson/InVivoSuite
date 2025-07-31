@@ -32,6 +32,11 @@ Windows = Literal[
     "parzen",
 ]
 
+def downsample(array, sample_rate, resample_freq, up_sample):
+        ratio = sample_rate // resample_freq
+        resampled = signal.resample_poly(array, up_sample, up_sample * ratio)
+        return resampled
+
 
 def median_filter(array: Union[np.ndarray, list], order: int):
     if isinstance(order, float):

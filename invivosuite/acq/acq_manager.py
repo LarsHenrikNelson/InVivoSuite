@@ -6,7 +6,13 @@ import h5py
 import numpy as np
 from scipy import signal
 
-from .filtering_functions import Filters, Windows, filter_array, iirnotch_zero
+from ..functions.filter_functions import (
+    Filters,
+    Windows,
+    filter_array,
+    iirnotch_zero,
+    downsample,
+)
 from .lfp_manager import LFPManager
 from .spike_manager import SpkManager
 from .spike_lfp_manager import SpkLFPManager
@@ -74,11 +80,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if not self.file_open:
             self.file = h5py.File(self.file_path, "r+")
             self.file_open = True
-
-    def downsample(self, array, sample_rate, resample_freq, up_sample):
-        ratio = int(sample_rate / resample_freq)
-        resampled = signal.resample_poly(array, up_sample, up_sample * ratio)
-        return resampled
 
     @property
     def n_chans(self):
@@ -232,9 +233,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                     "acqs", rows=chans, columns=(begin, stop)
                 ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                     (chans[1] - chans[0], 1)
-                ) - self.get_file_dataset(
-                    "means", rows=chans
-                ).reshape(
+                ) - self.get_file_dataset("means", rows=chans).reshape(
                     chans[1] - chans[0], 1
                 )
                 array -= means
@@ -255,9 +254,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 "acqs", rows=chans, columns=(start, end)
             ) * self.get_file_dataset("coeffs", rows=chans).reshape(
                 (chans[1] - chans[0], 1)
-            ) - self.get_file_dataset(
-                "means", rows=chans
-            ).reshape(
+            ) - self.get_file_dataset("means", rows=chans).reshape(
                 chans[1] - chans[0], 1
             )
             cmr = ref(array, axis=0)
@@ -370,7 +367,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 fs=sample_rate,
             )
         if filter_dict["sample_rate"] != sample_rate:
-            acq = self.downsample(
+            acq = downsample(
                 acq, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
             )
         return acq

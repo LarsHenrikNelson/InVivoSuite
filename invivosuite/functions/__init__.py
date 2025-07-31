@@ -1,6 +1,7 @@
 from . import (
-    lfp_functions,  # noqa: F401
-    signal_functions,  # noqa: F401
-    spike_functions,  # noqa: F401
-    spike_lfp_functions,  # noqa: F401
+    lfp_functions,
+    signal_functions,
+    spike_functions,
+    spike_lfp_functions,
+    filter_functions
 )
