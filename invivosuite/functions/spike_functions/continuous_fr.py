@@ -4,10 +4,9 @@ from functools import cache
 import numpy as np
 from numba import njit
 from scipy import signal
-from scipy.signal import windows
 
 from .binarize_spikes import bin_spikes
-from ...functions.signal_functions import gauss_kernel
+from ..signal_functions import create_window
 
 
 __all__ = ["create_continuous_spikes", "Methods", "Windows"]
@@ -47,24 +46,6 @@ def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
         else:
             sdf[start:end] = window[wstart:wend]
     return sdf
-
-@cache
-def create_window(window: Literal["exponential_abi", "exponential", "gaussian", "boxcar"], sigma: float, sampInt: float | int):
-    if window == "exponential_abi":
-        filtPts = int(5 * sigma / sampInt)
-        w = np.zeros(filtPts * 2)
-        w[-filtPts:] = windows.exponential(
-            filtPts, center=0, tau=sigma / sampInt, sym=False
-        )
-    elif window == "exponential":
-        filtPts = int(5 * sigma / sampInt) * 2
-        w = windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
-    elif window == "gaussian":
-        w = gauss_kernel(sigma)
-    else:
-        wlen = int(sigma) * 2 + 1
-        w = np.ones(wlen)
-    return w
 
 def create_continuous_spikes(
     spikes: np.ndarray,

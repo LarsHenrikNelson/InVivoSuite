@@ -1472,7 +1472,7 @@ class SpkManager:
             raster_binary, _, _ = self.get_binary_spikes_channel(
                 accepted=accepted, dtype=bool
             )
-        
+
         self.callback("Computing synchronous periods.")
         output = spkf.synchronous_periods(
             raster_binary=raster_binary,
@@ -1485,6 +1485,41 @@ class SpkManager:
             sigma=sigma,
             method=method,
             window=window,
-            celltypes=cluster_celltypes
+            celltypes=cluster_celltypes,
         )
         return output
+
+    def ei_balance(
+        self,
+        nperseg: int = 1,
+        start: int = 0,
+        end: int = 0,
+        accepted: bool = False,
+    ):
+        cluster_ids, channels, _, _ = self._get_channel_clusters(
+            channel=None, accepted=accepted
+        )
+        if accepted:
+            celltypes = self.celltypes[self.accepted_units]
+            cids = self.cluster_ids[self.accepted_units]
+        else:
+            celltypes = self.celltypes
+            cids = self.cluster_ids
+        celltype_dict = {key: value for key, value in zip(cids, celltypes)}
+        cluster_celltypes = np.array([celltype_dict[cid] for cid in cluster_ids])
+
+        if nperseg > 1:
+            raster_binary, _, _ = self.get_binned_spikes_channel(
+                accepted=accepted, nperseg=nperseg, start=start, end=end
+            )
+        else:
+            raster_binary, _, _ = self.get_binary_spikes_channel(
+                accepted=accepted, dtype=bool
+            )
+
+        # Might need to normalized to total number of cells as well.
+        pyr = raster_binary[cluster_celltypes == "Pyramidal", :].sum(axis=0)
+        inter = raster_binary[cluster_celltypes == "Interneuron", :].sum(axis=0)
+        temp = (pyr / (cluster_celltypes == "Pyramidal").sum()
+            - inter / (cluster_celltypes == "Interneuron").sum())
+        return temp.sum(), temp.mean(), temp.std()

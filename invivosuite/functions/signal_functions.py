@@ -1,3 +1,4 @@
+from functools import cache
 from typing import Literal, Optional, Union
 
 import KDEpy
@@ -261,14 +262,20 @@ def convolve(
     return output
 
 
-@njit(parallel=True)
+@njit(cache=True)
 def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
     output = np.zeros(cutoff * 2)
-    for i in prange(cutoff):
-        output[cutoff - i] = np.corrcoef(acq2[i:], acq1[: acq1.size - i])[0, 1]
-    for i in prange(cutoff):
-        output[i + cutoff] = np.corrcoef(acq1[i:], acq2[: acq2.size - i])[0, 1]
+    for i in range(cutoff):
+        output[cutoff - i] = corrcoef(acq2[i:], acq1[: acq1.size - i])
+        output[i + cutoff] = corrcoef(acq1[i:], acq2[: acq2.size - i])       
     return output
+
+@njit(cache=True)
+def corrcoef(x: np.ndarray, y: np.ndarray):
+    std_x = np.std(x)
+    std_y = np.std(y)
+    n = len(x)
+    return ((x - x.mean()) * (y - y.mean())).sum() / n / (std_x * std_y)
 
 
 def envelopes_idx(
@@ -480,3 +487,26 @@ def gauss_kernel(sigma, norm: Optional[Literal["standard"]] = None):
     if norm == "standard":
         phi_x = phi_x / phi_x.sum()
     return phi_x
+
+
+@cache
+def create_window(
+    window: Literal["exponential_abi", "exponential", "gaussian", "boxcar"],
+    sigma: float,
+    sampInt: float | int,
+):
+    if window == "exponential_abi":
+        filtPts = int(5 * sigma / sampInt)
+        w = np.zeros(filtPts * 2)
+        w[-filtPts:] = signal.windows.exponential(
+            filtPts, center=0, tau=sigma / sampInt, sym=False
+        )
+    elif window == "exponential":
+        filtPts = int(5 * sigma / sampInt) * 2
+        w = signal.windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
+    elif window == "gaussian":
+        w = gauss_kernel(sigma)
+    else:
+        wlen = int(sigma) * 2 + 1
+        w = np.ones(wlen)
+    return w
