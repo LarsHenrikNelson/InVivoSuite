@@ -31,8 +31,7 @@ def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
 
 def rand_cfc(phi: np.ndarray, amp: np.ndarray, steps: int, seed: int = 42):
     rng = default_rng(seed)
-    indexes = rng.integers(0, amp.size, size=amp.size)
-    amp_rand = amp[indexes]
+    amp_rand = rng.permutation(amp)
     _, temp = cross_frequency_coupling(phi, amp_rand, steps)
     output = temp.max() - temp.min()
     return output
@@ -51,13 +50,11 @@ def cfc_pvalue(
         rng = default_rng(seed)
         output = np.zeros(iterations)
         for i in range(iterations):
-            indexes = rng.integers(0, amp.size, size=amp.size)
-            amp_rand = amp[indexes]
+            amp_rand = rng.permutation(amp)
             _, temp = cross_frequency_coupling(phi, amp_rand, steps)
             output[i] = temp.max() - temp.min()
     else:
         pfunc = functools.partial(rand_cfc, phi=phi, amp=amp, steps=steps)
-        indexes = np.arange(0, iterations)
         physical_core_count = os.cpu_count() // 2
         if threads == -1:
             threads = physical_core_count - 1
@@ -70,8 +67,7 @@ def cfc_pvalue(
 
     _, cfc_data = cross_frequency_coupling(phi, amp, steps)
     cfc_range = cfc_data.max() - cfc_data.min()
-    num_above = np.where(output > cfc_range)[0]
-    return num_above.size / iterations
+    return (output > cfc_range).sum() / iterations
 
 
 def modulation_index(phi: np.ndarray, amp: np.ndarray, steps: int):
