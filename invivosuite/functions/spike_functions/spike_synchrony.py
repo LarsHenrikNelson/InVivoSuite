@@ -25,7 +25,7 @@ def _create_continuous(
 ):
     continuous_sum = np.zeros(raster_binary.shape[1], dtype=np.float32)
     raster_continuous = np.zeros(raster_binary.shape, dtype=bool)
-    window = create_window(window, sigma, 1 / fs)
+    window = create_window(window, sigma, fs)
     for i in range(raster_binary.shape[0]):
         temp = _create_array(raster_binary[i], window, method)
         temp[temp < 0] = 0

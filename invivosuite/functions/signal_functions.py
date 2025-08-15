@@ -4,7 +4,7 @@ from typing import Literal, Optional, Union
 import KDEpy
 import numpy as np
 from numba import njit, prange
-from scipy import interpolate, optimize, signal
+from scipy import interpolate, optimize, signal, stats
 
 from ..spectral import fft
 
@@ -270,12 +270,24 @@ def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
         output[i + cutoff] = corrcoef(acq1[i:], acq2[: acq2.size - i])       
     return output
 
+
+@njit(cache=True)
+def sliding_corr(x: np.ndarray, y: np.ndarray, window: int = 25):
+    assert x.size == y.size
+    N = x.size//window
+    output = np.zeros(N)
+    for i in range(N):
+        val = i+window
+        output[i] = corrcoef(x[i:val], y[i:val])
+    return output
+
+
 @njit(cache=True)
 def corrcoef(x: np.ndarray, y: np.ndarray):
-    std_x = np.std(x)
-    std_y = np.std(y)
-    n = len(x)
-    return ((x - x.mean()) * (y - y.mean())).sum() / n / (std_x * std_y)
+    x = x - x.mean()
+    y = y - y.mean()
+    c = (y*x).sum()/np.sqrt((x**2).sum()*(y**2).sum())
+    return c
 
 
 def envelopes_idx(
@@ -493,20 +505,47 @@ def gauss_kernel(sigma, norm: Optional[Literal["standard"]] = None):
 def create_window(
     window: Literal["exponential_abi", "exponential", "gaussian", "boxcar"],
     sigma: float,
-    sampInt: float | int,
+    fs: float | int,
 ):
     if window == "exponential_abi":
-        filtPts = int(5 * sigma / sampInt)
-        w = np.zeros(filtPts * 2)
-        w[-filtPts:] = signal.windows.exponential(
-            filtPts, center=0, tau=sigma / sampInt, sym=False
+        duration = 5 * sigma
+        N = int(duration * fs)
+        w = np.zeros(N * 2)
+        tau_samples = sigma * fs
+        w[-N:] = signal.windows.exponential(
+            N, center=0, tau=tau_samples, sym=False
         )
     elif window == "exponential":
-        filtPts = int(5 * sigma / sampInt) * 2
-        w = signal.windows.exponential(filtPts, tau=sigma / sampInt, sym=True)
+        duration = 5 * sigma
+        N = int(duration * fs)
+        w = np.zeros(N * 2)
+        tau_samples = sigma * fs
+        w = signal.windows.exponential(N, tau=tau_samples, sym=True)
     elif window == "gaussian":
-        w = gauss_kernel(sigma)
+        w = gauss_kernel(sigma*fs)
     else:
-        wlen = int(sigma) * 2 + 1
+        wlen = int(sigma*fs) * 2 + 1
         w = np.ones(wlen)
     return w
+
+def mutual_info(x, y, bins=20):
+    """
+    Using scipy's entropy function
+    """
+    # Joint histogram
+    joint_hist, _, _ = np.histogram2d(x, y, bins=bins)
+    joint_prob = joint_hist / np.sum(joint_hist)
+    
+    # Marginal histograms
+    x_hist, _ = np.histogram(x, bins=bins)
+    y_hist, _ = np.histogram(y, bins=bins)
+    
+    x_prob = x_hist / np.sum(x_hist)
+    y_prob = y_hist / np.sum(y_hist)
+    
+    # Using scipy's entropy function
+    joint_entropy = stats.entropy(joint_prob.flatten(), base=2)
+    x_entropy = stats.entropy(x_prob, base=2)
+    y_entropy = stats.entropy(y_prob, base=2)
+    
+    return x_entropy + y_entropy - joint_entropy

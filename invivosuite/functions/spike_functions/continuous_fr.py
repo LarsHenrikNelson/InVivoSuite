@@ -71,10 +71,9 @@ def create_continuous_spikes(
     """
     if nperseg > 1:
         temp = bin_spikes(spikes, binary_size=binary_size, nperseg=nperseg)
-        sampInt = 1 / (fs / nperseg)
+        fs = fs / nperseg
     else:
         temp = np.zeros(binary_size)
         temp[spikes] = 1
-        sampInt = 1
-    w = create_window(window, sigma, sampInt)
+    w = create_window(window, sigma, fs)
     return _create_array(temp, w, method=method)
