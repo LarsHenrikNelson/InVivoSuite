@@ -1297,12 +1297,18 @@ class SpkManager:
         if test_sig is not None:
             sig_vals = np.zeros(size)
 
+        # Cache all the clusters so we don't have to call this more than once for each cluster.
+        # Could probably make this a little bit faster but maybe not worth it.
+        cluster_dict = {}
+        for i in self.cluster_ids:
+            cluster_dict[i] = self.get_cluster_spike_times(
+                i, output_type=output_type, fs=fs, start=start, end=end
+            )
+
         output_index = 0
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
-            indexes1 = self.get_cluster_spike_times(
-                clust_id1, output_type=output_type, fs=fs, start=start, end=end
-            )
+            indexes1 = cluster_dict[i]
 
             if indexes1.size > 3:
                 iei_1 = np.diff(indexes1)
@@ -1312,9 +1318,7 @@ class SpkManager:
                 self.callback(
                     f"Analyzing sttc for cluster {clust_id1} and {clust_id2}."
                 )
-                indexes2 = self.get_cluster_spike_times(
-                    clust_id2, output_type=output_type, fs=fs, start=start, end=end
-                )
+                indexes2 = cluster_dict[clust_id2]
 
                 if indexes2.size > 3:
                     iei_2 = np.diff(indexes2)
