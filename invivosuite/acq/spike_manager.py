@@ -1269,8 +1269,8 @@ class SpkManager:
     def compute_sttc(
         self,
         dt: Union[float, int] = 200,
-        start: Union[float, int] = -1,
-        end: Union[float, int] = -1,
+        start: int = 0,
+        end: int = 0,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
         output_type: Literal["sec", "ms", "samples"] = "ms",
         fs: float = 40000.0,
@@ -1280,9 +1280,6 @@ class SpkManager:
             "poisson", "gamma", "inverse_gaussian", "lognormal"
         ] = "poisson",
     ):
-        if end == 0:
-            end = self.end - self.start
-
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
         sttc_end = self.index_to_time(end, fs=fs, output_type=output_type)
 
@@ -1387,8 +1384,8 @@ class SpkManager:
     def compute_correlation(
         self,
         dt: Union[float, int] = 200,
-        start: Union[float, int] = -1,
-        end: Union[float, int] = -1,
+        start: int = 0,
+        end: int = 0,
         output_type: Literal["sec", "ms", "samples"] = "samples",
         fs: float = 40000.0,
     ):
