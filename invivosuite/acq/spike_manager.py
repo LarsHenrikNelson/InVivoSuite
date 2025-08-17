@@ -1280,8 +1280,10 @@ class SpkManager:
             "poisson", "gamma", "inverse_gaussian", "lognormal"
         ] = "poisson",
     ):
+        if end == 0:
+            temp = self.end - self.start
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
-        sttc_end = self.index_to_time(end, fs=fs, output_type=output_type)
+        sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         sttc_data = np.zeros(size)
@@ -1390,17 +1392,14 @@ class SpkManager:
         fs: float = 40000.0,
     ):
         output_index = 0
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
+        if end == 0:
+            temp = self.end - self.start
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         correlation_data = np.zeros(size)
         cluster_ids = np.zeros((size, 4), dtype=int)
 
         corr_start = self.index_to_time(start, fs=fs, output_type=output_type)
-        corr_end = self.index_to_time(end, fs=fs, output_type=output_type)
+        corr_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
