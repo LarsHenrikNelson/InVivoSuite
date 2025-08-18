@@ -1308,7 +1308,7 @@ class SpkManager:
         output_index = 0
         for index1 in range(self.cluster_ids.size - 1):
             clust_id1 = self.cluster_ids[index1]
-            indexes1 = cluster_dict[i]
+            indexes1 = cluster_dict[clust_id1]
 
             if indexes1.size > 3:
                 iei_1 = np.diff(indexes1)
