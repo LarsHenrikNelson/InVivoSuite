@@ -508,19 +508,14 @@ def create_window(
     fs: float | int,
 ):
     if window == "exponential_abi":
-        duration = 5 * sigma
-        N = int(duration * fs)
-        w = np.zeros(N * 2)
-        tau_samples = sigma * fs
-        w[-N:] = signal.windows.exponential(
-            N, center=0, tau=tau_samples, sym=False
+        filtPts = int(5 * (1/sigma) / sampInt)
+        w = np.zeros(filtPts * 2)
+        w[-filtPts:] = signal.windows.exponential(
+            filtPts, center=0, tau=(1/sigma) / sampInt, sym=False
         )
     elif window == "exponential":
-        duration = 5 * sigma
-        N = int(duration * fs)
-        w = np.zeros(N * 2)
-        tau_samples = sigma * fs
-        w = signal.windows.exponential(N, tau=tau_samples, sym=True)
+        filtPts = int(5 * (1/sigma) / sampInt) * 2
+        w = signal.windows.exponential(filtPts, tau=(1/sigma) / sampInt, sym=True)
     elif window == "gaussian":
         w = gauss_kernel(sigma*fs)
     else:
