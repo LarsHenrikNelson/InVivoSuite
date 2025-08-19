@@ -267,17 +267,17 @@ def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
     output = np.zeros(cutoff * 2)
     for i in range(cutoff):
         output[cutoff - i] = corrcoef(acq2[i:], acq1[: acq1.size - i])
-        output[i + cutoff] = corrcoef(acq1[i:], acq2[: acq2.size - i])       
+        output[i + cutoff] = corrcoef(acq1[i:], acq2[: acq2.size - i])
     return output
 
 
 @njit(cache=True)
 def sliding_corr(x: np.ndarray, y: np.ndarray, window: int = 25):
     assert x.size == y.size
-    N = x.size//window
+    N = x.size // window
     output = np.zeros(N)
     for i in range(N):
-        val = i+window
+        val = i + window
         output[i] = corrcoef(x[i:val], y[i:val])
     return output
 
@@ -286,7 +286,7 @@ def sliding_corr(x: np.ndarray, y: np.ndarray, window: int = 25):
 def corrcoef(x: np.ndarray, y: np.ndarray):
     x = x - x.mean()
     y = y - y.mean()
-    c = (y*x).sum()/np.sqrt((x**2).sum()*(y**2).sum())
+    c = (y * x).sum() / np.sqrt((x**2).sum() * (y**2).sum())
     return c
 
 
@@ -508,20 +508,21 @@ def create_window(
     fs: float | int,
 ):
     if window == "exponential_abi":
-        filtPts = int(5 * (1/sigma) / sampInt)
+        filtPts = int(5 * sigma * fs)*2
         w = np.zeros(filtPts * 2)
         w[-filtPts:] = signal.windows.exponential(
-            filtPts, center=0, tau=(1/sigma) / sampInt, sym=False
+            filtPts, center=0, tau=(1 / sigma), sym=False
         )
     elif window == "exponential":
-        filtPts = int(5 * (1/sigma) / sampInt) * 2
-        w = signal.windows.exponential(filtPts, tau=(1/sigma) / sampInt, sym=True)
+        filtPts = int(5 * sigma * fs) * 4
+        w = signal.windows.exponential(filtPts, tau=(1 / sigma), sym=True)
     elif window == "gaussian":
-        w = gauss_kernel(sigma*fs)
+        w = gauss_kernel(sigma * fs)
     else:
-        wlen = int(sigma*fs) * 2 + 1
+        wlen = int(sigma * fs) * 2 + 1
         w = np.ones(wlen)
     return w
+
 
 def mutual_info(x, y, bins=20):
     """
@@ -530,17 +531,17 @@ def mutual_info(x, y, bins=20):
     # Joint histogram
     joint_hist, _, _ = np.histogram2d(x, y, bins=bins)
     joint_prob = joint_hist / np.sum(joint_hist)
-    
+
     # Marginal histograms
     x_hist, _ = np.histogram(x, bins=bins)
     y_hist, _ = np.histogram(y, bins=bins)
-    
+
     x_prob = x_hist / np.sum(x_hist)
     y_prob = y_hist / np.sum(y_hist)
-    
+
     # Using scipy's entropy function
     joint_entropy = stats.entropy(joint_prob.flatten(), base=2)
     x_entropy = stats.entropy(x_prob, base=2)
     y_entropy = stats.entropy(y_prob, base=2)
-    
+
     return x_entropy + y_entropy - joint_entropy
