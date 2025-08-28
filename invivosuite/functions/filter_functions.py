@@ -395,7 +395,7 @@ def filter_array(
     array,
     sample_rate,
     filter_type: Filters = "butterworth_zero",
-    order: Union[None, int] = 301,
+    order: Union[None, int] = 4,
     highpass: Union[int, float, None] = None,
     high_width: Union[int, float, None] = None,
     lowpass: Union[int, float, None] = None,

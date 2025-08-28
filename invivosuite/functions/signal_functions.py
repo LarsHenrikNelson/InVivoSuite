@@ -274,7 +274,7 @@ def cross_corr(acq1: np.ndarray, acq2: np.ndarray, cutoff: int):
 @njit(cache=True)
 def sliding_corr(x: np.ndarray, y: np.ndarray, window: int = 25):
     assert x.size == y.size
-    N = x.size // window
+    N = x.size - window
     output = np.zeros(N)
     for i in range(N):
         val = i + window
@@ -286,7 +286,11 @@ def sliding_corr(x: np.ndarray, y: np.ndarray, window: int = 25):
 def corrcoef(x: np.ndarray, y: np.ndarray):
     x = x - x.mean()
     y = y - y.mean()
-    c = (y * x).sum() / np.sqrt((x**2).sum() * (y**2).sum())
+    divisor = np.sqrt((x**2).sum() * (y**2).sum())
+    if divisor != 0.0:
+        c = (y * x).sum() / divisor
+    else:
+        c = np.nan
     return c
 
 
@@ -545,3 +549,25 @@ def mutual_info(x, y, bins=20):
     y_entropy = stats.entropy(y_prob, base=2)
 
     return x_entropy + y_entropy - joint_entropy
+
+
+@njit(cache=True)
+def bin_by(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float):
+    """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
+    for a good explanation and implementation.
+
+    Args:
+        phi (np.ndarray): The computed angle of an analytic signal
+        amp (np.ndarray): The computed amplitude of an analytic signal
+        steps (int): number of bins for binning the data
+
+    Returns:
+        _type_: _description_
+    """
+    output_bins = np.linspace(min_value, max_value, num=steps + 1)
+    binned_data = np.zeros(steps)
+    for i in range(steps):
+        subset = amp[(phi < output_bins[i + 1]) & (phi >= output_bins[i])]
+        if subset.size > 0:
+            binned_data[i] = np.mean(subset)
+    return output_bins, binned_data

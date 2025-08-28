@@ -265,8 +265,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         neighbors: int,
         probe: str = "all",
         acq_type: Literal["spike", "lfp"] = "spike",
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = True,
     ):
@@ -280,7 +279,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             for channel in range(probe_chans[1]):
                 acquisitions = self.get_multichans(
                     "spike",
-                    ref=ref,
                     channel=channel,
                     nchans=neighbors,
                     ref_probe=ref_probe,
@@ -303,7 +301,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 acquisitions[i, :] = self.acq(
                     i,
                     acq_type=acq_type,
-                    ref=ref,
                     ref_type=ref_type,
                     ref_probe=ref_probe,
                     map_channel=map_channel,
@@ -318,8 +315,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         channel: int,
         acq_type: Literal["spike", "lfp", "wideband"],
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -341,7 +337,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         ) * self.get_file_dataset("coeffs", rows=int(channel)) - self.get_file_dataset(
             "means", rows=int(channel)
         )
-        if ref:
+        if ref_type != "none":
             median = self.get_grp_dataset(ref_type, ref_probe)
             array -= median[start:end]
         if acq_type == "wideband":
@@ -376,7 +372,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         acq_type: Literal["spike", "lfp", "wideband"],
         channels: Union[Iterable[int], None] = None,
-        ref: bool = False,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -407,7 +402,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             channels
         ].reshape(-1, 1) - self.file["means"][channels].reshape(-1, 1)
 
-        if ref:
+        if ref_type != "none":
             multi_acqs = multi_acqs - self.file[ref_type][ref_probe][start:end]
         self.close()
 

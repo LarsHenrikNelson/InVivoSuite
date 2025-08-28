@@ -6,33 +6,12 @@ import numpy as np
 from numba import njit
 from numpy.random import default_rng
 
-
-@njit(cache=True)
-def cross_frequency_coupling(phi: np.ndarray, amp: np.ndarray, steps: int):
-    """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
-    for a good explanation and implementation.
-
-    Args:
-        phi (np.ndarray): The computed angle of an analytic signal
-        amp (np.ndarray): The computed amplitude of an analytic signal
-        steps (int): number of bins for binning the data
-
-    Returns:
-        _type_: _description_
-    """
-    output_bins = np.linspace(-np.pi, np.pi, num=steps + 1)
-    binned_data = np.zeros(steps)
-    for i in range(steps):
-        binned_data[i] = np.mean(
-            amp[(phi < output_bins[i + 1]) & (phi >= output_bins[i])]
-        )
-    return output_bins, binned_data
-
+from ..signal_functions import bin_by
 
 def rand_cfc(phi: np.ndarray, amp: np.ndarray, steps: int, seed: int = 42):
     rng = default_rng(seed)
     amp_rand = rng.permutation(amp)
-    _, temp = cross_frequency_coupling(phi, amp_rand, steps)
+    _, temp = bin_by(phi, amp_rand, steps, -np.pi, np.pi)
     output = temp.max() - temp.min()
     return output
 
@@ -51,7 +30,7 @@ def cfc_pvalue(
         output = np.zeros(iterations)
         for i in range(iterations):
             amp_rand = rng.permutation(amp)
-            _, temp = cross_frequency_coupling(phi, amp_rand, steps)
+            _, temp = bin_by(phi, amp_rand, steps, -np.pi, np.pi)
             output[i] = temp.max() - temp.min()
     else:
         pfunc = functools.partial(rand_cfc, phi=phi, amp=amp, steps=steps)
@@ -65,13 +44,13 @@ def cfc_pvalue(
         )
         output = np.array(output)
 
-    _, cfc_data = cross_frequency_coupling(phi, amp, steps)
+    _, cfc_data = bin_by(phi, amp, steps, -np.pi, np.pi)
     cfc_range = cfc_data.max() - cfc_data.min()
     return (output > cfc_range).sum() / iterations
 
 
 def modulation_index(phi: np.ndarray, amp: np.ndarray, steps: int):
-    _, binned_data = cross_frequency_coupling(phi, amp, steps)
+    _, binned_data = bin_by(phi, amp, steps, -np.pi, np.pi)
 
     normalized = binned_data / binned_data.sum()
     max_entropy = np.log(len(binned_data))

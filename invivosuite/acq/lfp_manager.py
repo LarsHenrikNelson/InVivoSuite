@@ -134,8 +134,7 @@ class LFPManager:
         self,
         channel: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -149,7 +148,6 @@ class LFPManager:
         array = self.acq(
             channel,
             "lfp",
-            ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
             probe=probe,
@@ -211,8 +209,7 @@ class LFPManager:
         self,
         channel: int,
         sxx_type: Literal["cwt", "spectrogram"],
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -226,7 +223,6 @@ class LFPManager:
         array = self.acq(
             channel,
             "lfp",
-            ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
             probe=probe,
@@ -253,8 +249,7 @@ class LFPManager:
     def hilbert(
         self,
         channel: int,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -282,7 +277,7 @@ class LFPManager:
             "acqs", rows=channel, columns=(start, end)
         ) * self.get_file_dataset("coeffs", rows=channel)
         array -= array.mean()
-        if ref:
+        if ref_type != "none":
             ref_data = self.get_grp_dataset(ref_type, ref_probe)
             array -= ref_data
         acq = filter_array(
@@ -307,8 +302,7 @@ class LFPManager:
         self,
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -330,7 +324,7 @@ class LFPManager:
             f, p = self.pxx(
                 channel=channel,
                 pxx_type=pxx_type,
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -353,8 +347,7 @@ class LFPManager:
     def calc_all_pdi(
         self,
         freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         size: int = 2000,
@@ -375,7 +368,7 @@ class LFPManager:
             freqs, cwt = self.sxx(
                 channel,
                 "cwt",
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -396,8 +389,7 @@ class LFPManager:
     def get_short_time_energy(
         self,
         channel: Union[None, int] = None,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -429,7 +421,6 @@ class LFPManager:
         acq = self.acq(
             channel,
             "lfp",
-            ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
             probe=probe,
@@ -579,8 +570,7 @@ class LFPManager:
         channel: int,
         bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
         calc_average: bool = True,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -594,7 +584,6 @@ class LFPManager:
         acq = self.acq(
             channel,
             "lfp",
-            ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
             probe=probe,
@@ -652,8 +641,7 @@ class LFPManager:
         self,
         freq_bands: dict[str, Iterable],
         channel: int,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -663,7 +651,6 @@ class LFPManager:
         freqs, cwt = self.sxx(
             channel=channel,
             sxx_type="cwt",
-            ref=ref,
             ref_type=ref_type,
             ref_probe=ref_probe,
             map_channel=map_channel,
@@ -683,8 +670,7 @@ class LFPManager:
         self,
         freq_bands: dict[str, Iterable],
         channel: int,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -695,7 +681,7 @@ class LFPManager:
         for b_name, fr in freq_bands.items():
             band_dict[b_name] = self.hilbert(
                 channel=channel,
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -715,8 +701,7 @@ class LFPManager:
         freq_bands: dict[str, Iterable],
         sxx_type: Literal["cwt", "hilbert"],
         channel: int,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -727,7 +712,7 @@ class LFPManager:
             band_dict = self.get_cwt_freq_bands(
                 freq_bands=freq_bands,
                 channel=channel,
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -739,7 +724,7 @@ class LFPManager:
             band_dict = self.get_hilbert_freq_bands(
                 freq_bands=freq_bands,
                 channel=channel,
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -765,8 +750,7 @@ class LFPManager:
         freq_bands: dict[str, Iterable],
         sxx_type: Literal["cwt", "hilbert"],
         channel: int,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -794,7 +778,7 @@ class LFPManager:
                 freq_bands=freq_bands,
                 sxx_type=sxx_type,
                 channel=channel,
-                ref=ref,
+
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -814,8 +798,7 @@ class LFPManager:
         phase: tuple[int | float, int | float],
         power: tuple[int | float, int | float],
         steps: int = 50,
-        ref: bool = False,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
@@ -835,7 +818,7 @@ class LFPManager:
             )
             phi = self.hilbert(
                 channel=channel,
-                ref=ref,
+
                 ref_probe=ref_probe,
                 ref_type=ref_type,
                 map_channel=map_channel,
@@ -847,7 +830,7 @@ class LFPManager:
             )
             amp = self.hilbert(
                 channel=channel,
-                ref=ref,
+
                 ref_probe=ref_probe,
                 ref_type=ref_type,
                 map_channel=map_channel,

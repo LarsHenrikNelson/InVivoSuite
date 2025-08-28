@@ -5,7 +5,6 @@ from .burst_finding import (
 )
 from .phase_discontinuity import phase_discontinuity_index
 from .cross_frequency_coupling import (
-    cross_frequency_coupling,
     cfc_pvalue,
     modulation_index,
 )
