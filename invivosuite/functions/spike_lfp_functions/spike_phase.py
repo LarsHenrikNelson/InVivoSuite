@@ -2,7 +2,7 @@ from typing import TypedDict
 
 import numpy as np
 
-from .circular_stats import (
+from ..circular_stats import (
     h_test,
     mean_vector_length,
     periodic_mean_std,

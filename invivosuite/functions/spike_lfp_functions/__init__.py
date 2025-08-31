@@ -1,1 +1,1 @@
-from . import circular_stats, spike_power, spike_phase
+from . import spike_power, spike_phase

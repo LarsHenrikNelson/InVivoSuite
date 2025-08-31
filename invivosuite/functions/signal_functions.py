@@ -1,5 +1,5 @@
 from functools import cache
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, Callable
 
 import KDEpy
 import numpy as np
@@ -69,19 +69,25 @@ def short_time_energy(
     return se_array
 
 
-@njit()
-def sliding_count(array, window, closed: Literal["left", "right"] = "left"):
-    output = np.zeros(array.size, dtype=int)
-    if closed == "left":
-        for i in range(window):
-            output[i] = array[:i].sum()
-        for i in range(window, array.size):
-            output[i] = array[i : i + window].sum()
+@njit(cache=True)
+def sliding_func(array: np.array, window: int, closed: Literal["left", "right", "center"] = "center", func: Callable = np.mean):
+    output = np.zeros(array.size+window+1)
+    index = 0
+    for i in range(0,window):
+        output[index] = func(array[:i+1])
+        index += 1
+    for i in range(0, array.size + 1-window):
+        output[index] = func(array[i : i + window])
+        index += 1
+    for i in range(array.size - window, array.size):
+        output[index] = func(array[i : array.size])
+        index += 1
+    if closed == "center":
+        output = output[window:array.size]
+    elif closed == "left":
+        output = output[:array.size]
     else:
-        for i in range(array.size - window):
-            output[i] = array[i : i + window].sum()
-        for i in range(array.size - window, array.size):
-            output[i] = array[i : array.size].sum()
+        output = output[window:]
     return output
 
 
@@ -290,7 +296,7 @@ def corrcoef(x: np.ndarray, y: np.ndarray):
     if divisor != 0.0:
         c = (y * x).sum() / divisor
     else:
-        c = np.nan
+        c = 0
     return c
 
 
