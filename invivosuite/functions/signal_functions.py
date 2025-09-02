@@ -557,8 +557,28 @@ def mutual_info(x, y, bins=20):
     return x_entropy + y_entropy - joint_entropy
 
 
+def bin_by(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float, func: Callable = np.mean):
+    """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
+    for a good explanation and implementation.
+
+    Args:
+        phi (np.ndarray): The computed angle of an analytic signal
+        amp (np.ndarray): The computed amplitude of an analytic signal
+        steps (int): number of bins for binning the data
+
+    Returns:
+        _type_: _description_
+    """
+    output_bins = np.linspace(min_value, max_value, num=steps + 1)
+    binned_data = np.zeros(steps)
+    for i in range(steps):
+        subset = amp[(phi < output_bins[i + 1]) & (phi >= output_bins[i])]
+        if subset.size > 0:
+            binned_data[i] = func(subset)
+    return output_bins, binned_data
+
 @njit(cache=True)
-def bin_by(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float):
+def bin_by_numba(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float):
     """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
     for a good explanation and implementation.
 
