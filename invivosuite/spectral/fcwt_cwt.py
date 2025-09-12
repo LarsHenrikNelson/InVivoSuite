@@ -12,14 +12,11 @@ from .wavelets import fcwt_wavelet, mne_wavelet, scipy_wavelet
 
 # Reimplemented fcwt in "pure" python as a learning resource
 
-__all__ = [
-    "PyFCWT",
-]
-
 
 @njit(cache=True, parallel=True)
 def daughter_wavelet_multiplication(
     input_fft: np.ndarray,
+    output: np.ndarray,
     mother: np.ndarray,
     scale: float,
     threads: int = 1,
@@ -57,9 +54,9 @@ def daughter_wavelet_multiplication(
     mm = isizef - 1
     s1 = isize - 1
 
-    get_amp_scale
+    # get_amp_scale
 
-    output = np.zeros(input_fft.size, dtype=np.complex128)
+    # output = np.zeros(input_fft.size, dtype=np.complex128)
 
     for q1 in prange(0, int(batchsize)):
         tmp = min(mm, step * q1)
@@ -148,7 +145,6 @@ def fft_normalize(transform, size):
 
 
 class PyFCWT:
-
     def __init__(self, fs: float):
         self.fs = fs
         self.mother = None
@@ -158,7 +154,7 @@ class PyFCWT:
     def mother_wavelet(self):
         pass
 
-    def pyfcwt_cwt(
+    def cwt(
         self,
         input_data: np.ndarray,
         threads: int = -1,
@@ -196,10 +192,9 @@ class PyFCWT:
         for index, s in enumerate(self.scales):
             # if s == self.scales[-1]:
             #     last_scale = True
-            output = daughter_wavelet_multiplication(Ihat, self.mother, s)
-            c[:] = output
+            daughter_wavelet_multiplication(Ihat, c, self.mother, s)
             backward_fft()
-            cwt[index] = d[:size]
+            cwt[index, :] = d[:size]
 
         # cwt = pyfftw.zeros_aligned((self.scales.size, size), dtype=np.complex128)
         # for index, s in enumerate(self.scales):

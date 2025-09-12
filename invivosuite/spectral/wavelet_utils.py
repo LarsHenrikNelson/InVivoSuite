@@ -1,5 +1,3 @@
-from typing import Union
-
 import numpy as np
 
 __all__ = [
@@ -33,13 +31,13 @@ def fwhm_to_cycles(fwhm, freqs):
 
 
 def f_to_s(
-    fc: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
+    fc: float | np.ndarray, fs: float | np.ndarray, n_cycles: float = 7.0
 ):
     return n_cycles * fs / (2 * fc * np.pi)
 
 
 def s_to_f(
-    s: Union[float, np.ndarray], fs: Union[float, np.ndarray], n_cycles: float = 7.0
+    s: float | np.ndarray, fs: float | np.ndarray, n_cycles: float = 7.0
 ):
     return n_cycles * fs / (2 * s * np.pi)
 

@@ -1,11 +1,12 @@
 from . import (
-    coherence_funcs,  # noqa: F401
-    fft,  # noqa: F401
-    superlets,  # noqa: F401
-    wavelet_utils,  # noqa:F401
+    coherence_funcs,
+    fft,
+    superlets,
+    wavelet_utils,
 )
-from .fast_multitaper import fast_multitaper  # noqa: F401
-from .fcwt_cwt import *  # noqa: F403
-from .fftw_wisdom import *  # noqa:F403
-from .tapered_spectra import multitaper  # noqa: F401
-from .spectral_utilities import *  # noqa: F403
+from .fast_multitaper import fast_multitaper
+from .fcwt_cwt import * 
+from .fftw_wisdom import *
+from .tapered_spectra import multitaper
+from .spectral_utilities import * 
+from .mne_wavelet import mne_cwt

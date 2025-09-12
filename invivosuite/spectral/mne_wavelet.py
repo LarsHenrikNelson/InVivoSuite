@@ -137,31 +137,14 @@ def gen_cwt(
 
     array_fft = fft.r2c_fft(array, nfft=nfft, threads=threads)
 
-    # if not skip_fft:
-    #     fft_Ws = np.array(
-    #         joblib.Parallel(n_jobs=workers)(
-    #             joblib.delayed(fft.ifft)(fft.fft(i, n=nfft) * array_fft)
-    #             for i in wavelets
-    #         )
-    #     )
-
-    # else:
-    #     fft_Ws = fft.ifft(wavelets * array)
     for index, ws in enumerate(wavelets):
-        ret = fft.c2c_ifft(fft.c2c_fft(ws, nfft=nfft) * array_fft, threads=1)
+        ret = fft.c2c_ifft(fft.c2c_fft(ws, nfft=nfft, threads=threads) * array_fft, threads=threads)
         ret = ret[: ws.size + input_size - 1]
 
         startind = (ret.size - input_size) // 2
         endind = startind + input_size
 
         output[index, :] = ret[startind:endind]
-
-    # if not skip_fft:
-    #     output = np.array(
-    #         joblib.Parallel(n_jobs=workers, prefer="threads")(
-    #             joblib.delayed(simple_cwt)(i, array_fft, input_size, nfft)
-    #             for i in wavelets
-    #         )
 
 
 def mne_cwt(
@@ -170,7 +153,7 @@ def mne_cwt(
     f1: float,
     fs: float,
     num: int,
-    scaling: str = "linear",
+    scaling: Literal["linear", "log"] = "log",
     n_cycles: int = 7,
     sigma: int = -1,
     zero_mean: bool = True,
@@ -220,7 +203,7 @@ class mneCWT:
         n_cycles: int = 7,
         sigma: int = -1,
         zero_mean: bool = True,
-        order: Literal[1, 2] = 2,
+        order: Literal[1, 2] = 1,
         threads: int = -1,
     ):
         self.input_size = input_size
@@ -229,15 +212,26 @@ class mneCWT:
         self.fs = fs
         self.num = num
         self.scaling = scaling
-        self.n_cycles = n_cycles
+
+        if not isinstance(n_cycles, int):
+            self.n_cycles = np.array(n_cycles).ravel()
+        else:
+            self.n_cycles = np.array([n_cycles])
+
         self.sigma = sigma
         self.zero_mean = zero_mean
         self.order = order
-        self.threads = threads
-        if self.threads == -1:
-            self.threads = os.cpu_count() // 2
 
-    def create_wavelets(self):
+        if threads == -1:
+            self.threads = os.cpu_count() // 2
+        else:
+            self.threads = threads
+
+        if scaling == "linear":
+            self.freqs = np.linspace(start=f0, stop=f1, num=num)
+        else:
+            self.freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=num)
+    
         self.wavelets = mne_wavelets(
             self.freqs,
             self.fs,
@@ -247,19 +241,8 @@ class mneCWT:
             self.gauss_sd,
             self.order,
         )
-        nfft = 1 << int(np.ceil(np.log2(self.input_size)))
-        self.output = np.zeros((self.num, self.input_size), dtype=np.complex128)
-
-        # Somewhat risky to do but this expects wavelets to be in reverse order
-        # so that input data is fully erased.
-        self.input_array = pyfftw.empty_aligned(nfft, dtype="complex128")
-        self.output_array = pyfftw.empty_aligned(nfft, dtype="complex128")
-        self.forward_fft = pyfftw.FFTW(
-            self.input_array, self.output_array, threads=self.threads
-        )
 
     def cwt(self, data):
-        self.input_array[: self.input] = data
-        self.forward_fft()
-
-        return self.output
+        output = np.zeros((len(self.wavelets), data.size), dtype=np.complex128)
+        gen_cwt(data, output, self.wavelets, skip_fft=False, threads=self.threads)
+        return output
