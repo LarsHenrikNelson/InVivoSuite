@@ -1,6 +1,80 @@
 import numpy as np
 from numba import njit
 
+import pyfftw
+
+from .wavelet_utils import f_to_s
+
+class Wavelet:
+    def __init__(
+        self,
+        fc: float,
+        fs: float,
+        n_cycles: float = 7.0,
+        gauss_sd: float = 5.0,
+        sigma: int = -1,
+        zero_mean: bool = True,
+        imaginary: bool = True,
+    ):
+        self.fc = fc
+        self.fs = fs
+        self.n_cycles = n_cycles
+        self.gauss_sd = gauss_sd
+        self.sigma = sigma
+        self.zero_mean = zero_mean
+        self.imaginary = imaginary
+        self.scale = f_to_s(self.fc, self.fs, self.n_cycles)
+
+    def time(self):
+        inv_fs = 1.0 / self.fs
+
+        # I think this fraction bandwidth in the freq domain
+        if self.sigma == -1:
+            sigma_t = self.n_cycles / (2.0 * np.pi * self.fc)
+        else:
+            sigma_t = self.n_cycles / (2.0 * np.pi * self.sigma)
+
+        # Go gauss_sd STDEVs out on each side
+        num_values = int((self.gauss_sd * sigma_t) // inv_fs)
+        t = np.arange(-num_values, num_values + 1) / self.fs
+        oscillation = np.exp(2.0 * 1j * np.pi * self.fc * t)
+        if self.zero_mean:
+            real_offset = np.exp(-2 * (np.pi * self.fc * sigma_t) ** 2)
+            oscillation -= real_offset
+        gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
+        oscillation *= gaussian_env
+        oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation, ord=2)
+        if self.imaginary:
+            return oscillation
+        else:
+            return oscillation.real
+
+    def frequency(self, size: int):
+        wavelet = self.time()
+        a = pyfftw.zeros_aligned(size, dtype="complex128")
+        b = pyfftw.empty_aligned(size, dtype="complex128")
+
+        a[: wavelet.size] = wavelet
+
+        forward_fft = pyfftw.FFTW(a, b, threads=1)
+        forward_fft()
+        if self.imaginary:
+            return b
+        else:
+            return np.abs(b)
+
+    def daughter_length(self, fc):
+        inv_fs = 1.0 / self.fs
+
+        # I think this fraction bandwidth in the freq domain
+        if self.sigma == -1:
+            sigma_t = self.n_cycles / (2.0 * np.pi * self.fc)
+        else:
+            sigma_t = self.n_cycles / (2.0 * np.pi * self.sigma)
+
+        # Go gauss_sd STDEVs out on each side
+        num_values = int((self.gauss_sd * sigma_t) // inv_fs)
+        return num_values * 2 + 1
 
 def morlet(w, mu):
     cs = (1 + np.exp(-(mu**2)) - 2 * np.exp(-3 / 4 * mu**2)) ** (-0.5)

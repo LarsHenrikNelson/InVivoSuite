@@ -1,16 +1,6 @@
-import numpy as np
+from typing import Literal
 
-__all__ = [
-    "f_to_s",
-    "fwhm_freq",
-    "fwhm_sigma",
-    "fwhm_to_cycles",
-    "gen_freqs",
-    "get_amp_scale",
-    "get_support",
-    "get_wavelet_length",
-    "s_to_f",
-]
+import numpy as np
 
 
 def get_support(fb, scale):

@@ -1,11 +1,11 @@
 from . import (
-    spectral,  # noqa: F401
-    utils,  # noqa: F401
+    spectral,
+    utils,
 )
 from .acq import (
-    AcqManager,  # noqa: F401
-    load_hdf5_acqs,  # noqa: F401
+    AcqManager,
+    load_hdf5_acqs,
 )
-from .functions import *  # noqa: F403
+from .functions import *
 
 spectral.load_wisdom()
