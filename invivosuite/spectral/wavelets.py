@@ -44,15 +44,12 @@ class Wavelet:
         gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
         oscillation *= gaussian_env
         oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation, ord=2)
-        if self.imaginary:
-            return oscillation
-        else:
-            return oscillation.real
+        return oscillation
 
     def frequency(self, size: int):
         wavelet = self.time()
         a = pyfftw.zeros_aligned(size, dtype="complex128")
-        b = pyfftw.empty_aligned(size, dtype="complex128")
+        b = pyfftw.zeros_aligned(size, dtype="complex128")
 
         a[: wavelet.size] = wavelet
 
@@ -68,7 +65,7 @@ class Wavelet:
 
         # I think this fraction bandwidth in the freq domain
         if self.sigma == -1:
-            sigma_t = self.n_cycles / (2.0 * np.pi * self.fc)
+            sigma_t = self.n_cycles / (2.0 * np.pi * fc)
         else:
             sigma_t = self.n_cycles / (2.0 * np.pi * self.sigma)
 

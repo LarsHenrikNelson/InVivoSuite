@@ -51,8 +51,8 @@ def daughter_wavelet_multiplication(
     for q1 in prange(0, int(batchsize)):
         tmp = min(maximum, step * q1)
 
-        output[q1] = input_fft[q1].real * mother[int(tmp)] + (
-            input_fft[q1].imag * mother[int(tmp)] * multiplier
+        output[q1] = input_fft[q1] * (
+            mother[int(tmp)] + (mother[int(tmp)] * multiplier)
         )
     # if doublesided:
     #     for q1 in prange(0, int(batchsize)):
@@ -61,6 +61,7 @@ def daughter_wavelet_multiplication(
     #         output[s1 - q1] = input_fft[s1 - q1].real * mother[int(tmp)] + input_fft[
     #             s1 - q1
     #         ].imag * mother[int(tmp)] * (1j - 2 * imaginary)
+
 
 class PyFCWT:
     def __init__(
@@ -97,7 +98,8 @@ class PyFCWT:
         input_data: np.ndarray,
     ):
         size = input_data.size
-        newsize = pyfftw.next_fast_len(size)
+        max_w_size = self.wavelet.daughter_length(self.frequencies.freqs[-1])
+        newsize = pyfftw.next_fast_len(size + max_w_size - 1)
 
         if self.mother is None:
             self.mother = self.wavelet.frequency(newsize)
@@ -109,7 +111,7 @@ class PyFCWT:
 
         # Only need for rfft or if using fftw
         a = pyfftw.zeros_aligned(newsize, dtype=self.fftw_fdtype)
-        b = pyfftw.empty_aligned(newsize // 2 + 1, dtype=self.fftw_cdtype)
+        b = pyfftw.zeros_aligned(newsize // 2 + 1, dtype=self.fftw_cdtype)
         Ihat = np.zeros(newsize, dtype=complex)
         a[:size] = input_data
 
@@ -120,14 +122,14 @@ class PyFCWT:
 
         Ihat[newsize // 2 :] = np.conjugate(b[1:][::-1])
 
-        c = pyfftw.empty_aligned(newsize, dtype=self.fftw_cdtype)
-        d = pyfftw.empty_aligned(newsize, dtype=self.fftw_cdtype)
+        c = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
+        d = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
         backward_fft = pyfftw.FFTW(
             c, d, direction="FFTW_BACKWARD", threads=self.threads
         )
 
         cwt = np.zeros((self.frequencies.scales.size, size), dtype=self.n_cdtype)
-        for index, s in enumerate(self.frequencies.scales[::-1]):
+        for index, s in enumerate(self.frequencies.scales):
             # if s == self.scales[-1]:
             #     last_scale = True
             daughter_wavelet_multiplication(
@@ -139,13 +141,12 @@ class PyFCWT:
                 imaginary=self.wavelet.imaginary,
             )
             backward_fft()
+
             if not self.wavelet.imaginary:
                 cwt[index, :] = d[:size]
             else:
-                startind = ((self.wavelet.daughter_length(self.frequencies.freqs[::-1][index]) + size - 1) - size) // 2
-                endind = startind + size
-
-                cwt[index, :] = d[startind:endind]
+                temp = self.wavelet.daughter_length(self.frequencies.freqs[index]) // 2
+                cwt[index, :] = d[temp : size + temp]
 
         if self.norm:
             cwt /= newsize

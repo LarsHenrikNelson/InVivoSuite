@@ -132,7 +132,7 @@ def gen_cwt(
     threads=-1,
 ):
     input_size = array.size
-    conv_size = input_size + np.max([i.size for i in wavelets]) - 1
+    conv_size = int(input_size + np.max([i.size for i in wavelets]) - 1)
     nfft = pyfftw.next_fast_len(conv_size)
 
     array_fft = fft.r2c_fft(array, nfft=nfft, threads=threads)

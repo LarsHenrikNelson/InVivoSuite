@@ -24,9 +24,9 @@ class Frequencies:
         self.scaling = scaling
 
         if scaling == "linear":
-            self.freqs = np.linspace(start=f0, stop=f1, num=steps)
+            self.freqs = np.linspace(start=f0, stop=f1, num=steps)[::-1]
         else:
-            self.freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=steps)
+            self.freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=steps)[::-1]
 
         self.scales = f_to_s(self.freqs, self.fs, self.wavelet.n_cycles)
 
