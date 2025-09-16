@@ -16,7 +16,6 @@ def daughter_wavelet_multiplication(
     mother: np.ndarray,
     scale: float,
     mscale: float,
-    imaginary: bool = False,
     doublesided: bool = False,
 ):
     """FFT wavelet convolution from fCWT using numpy. That utilizes
@@ -34,8 +33,6 @@ def daughter_wavelet_multiplication(
         Scale to convolve input with
     threads : int, optional
         Number of threads to use, by default 1
-    imaginary : bool, optional
-        Whether the wavelet contains imaginary numbers, by default False
     doublesided : bool, optional
         Whether the wavelet is has a doubleside FFT (not in use), by default False
     """
@@ -46,14 +43,11 @@ def daughter_wavelet_multiplication(
     endpoint = int(endpointf)
     batchsize = endpoint
     maximum = isizef - 1.0
-    multiplier = -1j if imaginary else 1j
 
     for q1 in prange(0, int(batchsize)):
         tmp = min(maximum, step * q1)
 
-        output[q1] = input_fft[q1] * (
-            mother[int(tmp)] + (mother[int(tmp)] * multiplier)
-        )
+        output[q1] = input_fft[q1] * mother[int(tmp)]
     # if doublesided:
     #     for q1 in prange(0, int(batchsize)):
     #         tmp = min(mm, step * q1)
@@ -76,6 +70,7 @@ class PyFCWT:
         self.frequencies = frequencies
         self.wavelet = wavelet
         self.mother = None
+        self.mscale = None
         if threads == -1:
             self.threads = os.cpu_count() // 2
         else:
@@ -98,11 +93,12 @@ class PyFCWT:
         input_data: np.ndarray,
     ):
         size = input_data.size
-        max_w_size = self.wavelet.daughter_length(self.frequencies.freqs[-1])
+        max_w_size = self.wavelet.length(self.frequencies.f[-1])
         newsize = pyfftw.next_fast_len(size + max_w_size - 1)
 
         if self.mother is None:
-            self.mother = self.wavelet.frequency(newsize)
+            self.mother = self.wavelet.frequency(self.frequencies.f[1], newsize)
+            self.mscale = self.frequencies.s[0]
         if self.mother.dtype != self.n_cdtype:
             self.mother.astype(self.n_cdtype)
 
@@ -128,8 +124,8 @@ class PyFCWT:
             c, d, direction="FFTW_BACKWARD", threads=self.threads
         )
 
-        cwt = np.zeros((self.frequencies.scales.size, size), dtype=self.n_cdtype)
-        for index, s in enumerate(self.frequencies.scales):
+        cwt = np.zeros((self.frequencies.s.size, size), dtype=self.n_cdtype)
+        for index, s in enumerate(self.frequencies.s):
             # if s == self.scales[-1]:
             #     last_scale = True
             daughter_wavelet_multiplication(
@@ -137,15 +133,14 @@ class PyFCWT:
                 output=c,
                 mother=self.mother,
                 scale=s,
-                mscale=self.wavelet.scale,
-                imaginary=self.wavelet.imaginary,
+                mscale=self.mscale,
             )
             backward_fft()
 
             if not self.wavelet.imaginary:
                 cwt[index, :] = d[:size]
             else:
-                temp = self.wavelet.daughter_length(self.frequencies.freqs[index]) // 2
+                temp = self.wavelet.length(self.frequencies.f[index]) // 2
                 cwt[index, :] = d[temp : size + temp]
 
         if self.norm:

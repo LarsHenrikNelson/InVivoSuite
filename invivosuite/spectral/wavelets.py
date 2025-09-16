@@ -8,7 +8,6 @@ from .wavelet_utils import f_to_s
 class Wavelet:
     def __init__(
         self,
-        fc: float,
         fs: float,
         n_cycles: float = 7.0,
         gauss_sd: float = 5.0,
@@ -16,38 +15,39 @@ class Wavelet:
         zero_mean: bool = True,
         imaginary: bool = True,
     ):
-        self.fc = fc
         self.fs = fs
         self.n_cycles = n_cycles
         self.gauss_sd = gauss_sd
         self.sigma = sigma
         self.zero_mean = zero_mean
         self.imaginary = imaginary
-        self.scale = f_to_s(self.fc, self.fs, self.n_cycles)
+    
+    def scale(self, fc):
+        return f_to_s(fc, self.fs, self.n_cycles)
 
-    def time(self):
+    def time(self, fc):
         inv_fs = 1.0 / self.fs
 
         # I think this fraction bandwidth in the freq domain
         if self.sigma == -1:
-            sigma_t = self.n_cycles / (2.0 * np.pi * self.fc)
+            sigma_t = self.n_cycles / (2.0 * np.pi * fc)
         else:
             sigma_t = self.n_cycles / (2.0 * np.pi * self.sigma)
 
         # Go gauss_sd STDEVs out on each side
         num_values = int((self.gauss_sd * sigma_t) // inv_fs)
         t = np.arange(-num_values, num_values + 1) / self.fs
-        oscillation = np.exp(2.0 * 1j * np.pi * self.fc * t)
+        oscillation = np.exp(2.0 * 1j * np.pi * fc * t)
         if self.zero_mean:
-            real_offset = np.exp(-2 * (np.pi * self.fc * sigma_t) ** 2)
+            real_offset = np.exp(-2 * (np.pi * fc * sigma_t) ** 2)
             oscillation -= real_offset
         gaussian_env = np.exp(-(t**2) / (2.0 * sigma_t**2))
         oscillation *= gaussian_env
         oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation, ord=2)
         return oscillation
 
-    def frequency(self, size: int):
-        wavelet = self.time()
+    def frequency(self, fc: float, size: int):
+        wavelet = self.time(fc)
         a = pyfftw.zeros_aligned(size, dtype="complex128")
         b = pyfftw.zeros_aligned(size, dtype="complex128")
 
@@ -60,7 +60,7 @@ class Wavelet:
         else:
             return np.abs(b)
 
-    def daughter_length(self, fc):
+    def length(self, fc):
         inv_fs = 1.0 / self.fs
 
         # I think this fraction bandwidth in the freq domain

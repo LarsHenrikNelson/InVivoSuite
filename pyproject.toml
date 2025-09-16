@@ -10,7 +10,6 @@ authors = [{ name = "Lars Henrik Nelson", email = "larshnelson@protonmail.com" }
 version = "2024.07.25"
 keywords = ["electrophysiology", "analysis"]
 dependencies = [
-    "fcwt",
     "h5py",
     "joblib",
     "KDEpy",
@@ -24,7 +23,6 @@ dependencies = [
     "scipy",
     "Send2Trash",
     "statsmodels"
-
 ]
 requires-python = ">=3.10"
 license = {text = 'GNU General Public License v3 (GPLv3)'}

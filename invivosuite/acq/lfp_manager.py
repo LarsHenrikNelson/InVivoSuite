@@ -1,13 +1,13 @@
 import os
-from typing import Literal, Union, Iterable, Optional
+from typing import Iterable, Literal, Optional, Union
 
 import fcwt
 import numpy as np
 from scipy import signal
 
-from ..functions.filter_functions import Filters, Windows, filter_array, downsample
-from ..spectral import multitaper, get_freq_window
 from ..functions import lfp_functions, signal_functions
+from ..functions.filter_functions import Filters, Windows, downsample, filter_array
+from ..spectral import Frequencies, PyFCWT, Wavelet, get_freq_window, multitaper
 
 
 class LFPManager:
@@ -16,9 +16,13 @@ class LFPManager:
         f0: int = 1,
         f1: int = 110,
         fn: int = 200,
-        scaling: Literal["log", "lin"] = "log",
+        scaling: Literal["log", "linear"] = "log",
         sigma: float = 2.0,
+        n_cycles: float = 7.0,
         norm: bool = True,
+        zero_mean: bool = True,
+        imaginary: bool = False,
+        dtype: Literal["complex64", "complex128"] = "complex64",
         nthreads: int = -1,
     ):
         self.set_spectral_settings(
@@ -27,9 +31,13 @@ class LFPManager:
             f1=f1,
             fn=fn,
             scaling=scaling,
-            nthreads=nthreads,
-            norm=norm,
             sigma=sigma,
+            n_cycles=n_cycles,
+            norm=norm,
+            nthreads=nthreads,
+            zero_mean=zero_mean,
+            imaginary=imaginary,
+            dtype=dtype,
         )
 
     def set_spectrogram(
@@ -163,47 +171,29 @@ class LFPManager:
         elif pxx_type == "welch":
             freqs, pxx = signal.welch(array, fs=fs, **pxx_attrs)
         elif pxx_type == "cwt":
-            cpuc = os.cpu_count()
-            if pxx_attrs["nthreads"] == -1 or pxx_attrs["nthreads"] > cpuc:
-                pxx_attrs["nthreads"] = (cpuc // 2) - 1
-            freqs, sxx = fcwt.cwt(
-                array,
-                int(fs),
-                int(pxx_attrs["f0"]),
-                int(pxx_attrs["f1"]),
-                int(pxx_attrs["fn"]),
-                int(pxx_attrs["nthreads"]),
+            w = Wavelet(fs, imaginary=pxx_attrs["imaginary"])
+            f = Frequencies(
+                w,
+                pxx_attrs["f0"],
+                pxx_attrs["f1"],
+                pxx_attrs["fn"],
+                fs,
                 pxx_attrs["scaling"],
-                False,
-                bool(pxx_attrs["norm"]),
             )
+            freqs = f.f
+            pyf = PyFCWT(
+                w,
+                f,
+                pxx_attrs["nthreads"],
+                dtype=pxx_attrs["dtype"],
+                norm=pxx_attrs["scaling"],
+            )
+            sxx = pyf.cwt(array)
             pxx = np.abs(sxx).mean(axis=1)
         else:
             AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
         return freqs, pxx
-
-    def _create_cwt_object(self, attrs, size):
-        self.cwt_morl = fcwt.Morlet(attrs["sigma"])
-
-        _scales = (
-            fcwt.FCWT_LINFREQS if attrs["scaling"] == "lin" else fcwt.FCWT_LOGSCALES
-        )
-
-        self.cwt_scales = fcwt.Scales(
-            self.cwt_morl,
-            _scales,
-            int(attrs["fs"]),
-            float(attrs["f0"]),
-            float(attrs["f1"]),
-            int(attrs["fn"]),
-        )
-        self.cwt_obj = fcwt.FCWT(
-            self.cwt_morl, int(attrs["nthreads"]), False, bool(attrs["norm"])
-        )
-        self.cwt_output = np.zeros((attrs["fn"], size), dtype=np.complex64)
-        self.cwt_frequencies = np.zeros((attrs["fn"]), dtype=np.float32)
-        self.cwt_scales.getFrequencies(self.cwt_frequencies)
 
     def sxx(
         self,
@@ -232,18 +222,24 @@ class LFPManager:
         )
         array = array.astype(np.float32)
         if sxx_type == "cwt":
-            cpuc = os.cpu_count()
-            if sxx_attrs["nthreads"] == -1 or sxx_attrs["nthreads"] > (cpuc // 2):
-                sxx_attrs["nthreads"] = (cpuc // 2) - 1
-            if not self._set_cwt:
-                self._create_cwt_object(sxx_attrs, array.size)
-            self.cwt_obj.cwt(
-                array,
-                self.cwt_scales,
-                self.cwt_output,
+            w = Wavelet(sxx_attrs["fs"], imaginary=sxx_attrs["imaginary"])
+            f = Frequencies(
+                w,
+                sxx_attrs["f0"],
+                sxx_attrs["f1"],
+                sxx_attrs["fn"],
+                sxx_attrs["fs"],
+                sxx_attrs["scaling"],
             )
-            freqs = self.cwt_frequencies
-            sxx = self.cwt_output
+            freqs = f.f
+            pyf = PyFCWT(
+                w,
+                f,
+                sxx_attrs["nthreads"],
+                dtype=sxx_attrs["dtype"],
+                norm=sxx_attrs["scaling"],
+            )
+            sxx = pyf.cwt(array)
         return freqs, sxx
 
     def hilbert(
@@ -324,7 +320,6 @@ class LFPManager:
             f, p = self.pxx(
                 channel=channel,
                 pxx_type=pxx_type,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -368,13 +363,12 @@ class LFPManager:
             freqs, cwt = self.sxx(
                 channel,
                 "cwt",
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
                 probe=probe,
                 start=start,
-                end=end
+                end=end,
             )
             pdi_temp = lfp_functions.phase_discontinuity_index(
                 cwt,
@@ -681,7 +675,6 @@ class LFPManager:
         for b_name, fr in freq_bands.items():
             band_dict[b_name] = self.hilbert(
                 channel=channel,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -712,7 +705,6 @@ class LFPManager:
             band_dict = self.get_cwt_freq_bands(
                 freq_bands=freq_bands,
                 channel=channel,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -724,7 +716,6 @@ class LFPManager:
             band_dict = self.get_hilbert_freq_bands(
                 freq_bands=freq_bands,
                 channel=channel,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -778,7 +769,6 @@ class LFPManager:
                 freq_bands=freq_bands,
                 sxx_type=sxx_type,
                 channel=channel,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -818,7 +808,6 @@ class LFPManager:
             )
             phi = self.hilbert(
                 channel=channel,
-
                 ref_probe=ref_probe,
                 ref_type=ref_type,
                 map_channel=map_channel,
@@ -826,11 +815,10 @@ class LFPManager:
                 highpass=phase[0],
                 lowpass=phase[1],
                 start=start,
-                end=end
+                end=end,
             )
             amp = self.hilbert(
                 channel=channel,
-
                 ref_probe=ref_probe,
                 ref_type=ref_type,
                 map_channel=map_channel,
@@ -838,7 +826,7 @@ class LFPManager:
                 highpass=power[0],
                 lowpass=power[1],
                 start=start,
-                end=end
+                end=end,
             )
             phi = np.angle(phi)
             amp = np.abs(amp)

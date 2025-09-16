@@ -12,21 +12,21 @@ class Frequencies:
         wavelet: Wavelet,
         f0: float,
         f1: float,
-        steps: float,
+        fn: float,
         fs: float,
         scaling: Literal["linear", "log"] = "log",
     ):
         self.wavelet = wavelet
         self.f0 = f0
         self.f1 = f1
-        self.steps = steps
+        self.fn = fn
         self.fs = fs
         self.scaling = scaling
 
         if scaling == "linear":
-            self.freqs = np.linspace(start=f0, stop=f1, num=steps)[::-1]
+            self.f = np.linspace(start=f0, stop=f1, num=fn)[::-1]
         else:
-            self.freqs = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=steps)[::-1]
+            self.f = np.logspace(start=np.log10(f0), stop=np.log10(f1), num=fn)[::-1]
 
-        self.scales = f_to_s(self.freqs, self.fs, self.wavelet.n_cycles)
+        self.s = f_to_s(self.f, self.fs, self.wavelet.n_cycles)
 

@@ -179,7 +179,6 @@ def isi_violations(spike_train, min_time, max_time, isi_threshold=1.5, min_isi=0
 
 @njit(cache=True)
 def rb_violations(spike_train, min_time, max_time, isi_threshold, min_isi):
-
     T = max_time - min_time
     rp_nv = 0
     N = len(spike_train)
@@ -197,3 +196,11 @@ def rb_violations(spike_train, min_time, max_time, isi_threshold, min_isi):
     rp_contamination = 1 - math.sqrt(D) if D >= 0 else 1.0
 
     return rp_contamination, rp_nv
+
+
+def autocorrelogram(spike_times: np.ndarray, lag: float = 100.0, bin_width: float = 1):
+    differences = (spike_times[:, np.newaxis] - spike_times[np.newaxis, :]).flatten()
+    differences = differences[differences != 0]
+    bins = np.linspace(-lag, lag, num=int(lag/bin_width))
+    hist, _ = np.histogram(differences, bins=bins, density=True)
+    return bins, hist

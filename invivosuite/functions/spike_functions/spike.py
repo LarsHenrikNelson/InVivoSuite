@@ -1,6 +1,5 @@
 import math
 
-import fcwt
 import numpy as np
 from KDEpy import TreeKDE
 from numba import njit
@@ -100,16 +99,16 @@ def find_isi_max(spikes):
     return max_isi
 
 
-def get_spike_cwt(spikes, fs=40000, f0=300, f1=1500, fn=100, bandwidth=2.0):
-    morl = fcwt.Morlet(bandwidth)
-    scales = fcwt.Scales(morl, fcwt.FCWT_LOGSCALES, fs, f0, f1, fn)
-    cwt_obj = fcwt.FCWT(morl, 2, False, True)
-    data = np.zeros((spikes.shape))
-    output = np.zeros((fn, spikes[0].size), dtype=np.complex64)
-    for index, i in enumerate(spikes):
-        if i.dtype != "single":
-            i = i.astype("single")
-        cwt_obj.cwt(i, scales, output)
-        c = PCA(n_components=1).fit_transform(np.abs(output.T))
-        data[index] = c.T
-    return data
+# def get_spike_cwt(spikes, fs=40000, f0=300, f1=1500, fn=100, bandwidth=2.0):
+#     morl = fcwt.Morlet(bandwidth)
+#     scales = fcwt.Scales(morl, fcwt.FCWT_LOGSCALES, fs, f0, f1, fn)
+#     cwt_obj = fcwt.FCWT(morl, 2, False, True)
+#     data = np.zeros((spikes.shape))
+#     output = np.zeros((fn, spikes[0].size), dtype=np.complex64)
+#     for index, i in enumerate(spikes):
+#         if i.dtype != "single":
+#             i = i.astype("single")
+#         cwt_obj.cwt(i, scales, output)
+#         c = PCA(n_components=1).fit_transform(np.abs(output.T))
+#         data[index] = c.T
+#     return data
