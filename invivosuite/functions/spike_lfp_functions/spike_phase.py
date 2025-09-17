@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import TypedDict, Literal
 
 import numpy as np
 
@@ -8,6 +8,7 @@ from ..circular_stats import (
     periodic_mean_std,
     rayleightest,
     ppc_dot_product,
+    ppc_numba,
 )
 
 

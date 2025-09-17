@@ -64,18 +64,15 @@ def ppc_sampled(spike_phases, size, iterations, seed=42):
     return output_array
 
 
-@njit()
 def periodic_mean_std(angles: np.ndarray) -> tuple[float, float]:
     sines = np.sin(angles)
     cosines = np.cos(angles)
     mean = np.arctan2(np.mean(sines), np.mean(cosines))
     R = np.sqrt(np.sum(sines) ** 2 + np.sum(cosines) ** 2) / len(angles)
     std = np.sqrt(-2 * np.log(R))
-
     return mean, std
 
 
-@njit()
 def rayleightest(data: np.ndarray) -> float:
     n = data.size
     S = np.sum(np.sin(data)) / n

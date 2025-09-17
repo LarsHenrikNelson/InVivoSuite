@@ -2,14 +2,19 @@ from collections.abc import Iterable
 from typing import Literal, Optional
 
 import numpy as np
+from joblib import Parallel, delayed
 
-from ..functions.spike_lfp_functions.spike_phase import extract_spike_phase_data
+from ..functions.filter_functions import downsample
+from ..functions.spike_lfp_functions.spike_phase import (
+    analyze_spike_phase,
+    extract_spike_phase_data,
+)
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
+from ..spectral import Frequencies, PyFCWT, Wavelet, get_freq_window, multitaper
 from ..utils import concatenate_dicts, expand_data
 
 
 class SpkLFPManager:
-
     def get_cluster_spike_phase(
         self,
         cluster_id: int,
@@ -37,10 +42,9 @@ class SpkLFPManager:
             start=start,
             end=end,
         )
-        spike_times = self.get_cluster_spike_times(cluster_id)//nperseg
+        spike_times = self.get_cluster_spike_times(cluster_id) // nperseg
         stats, phases = extract_spike_phase_data(band_dict, spike_times)
         return stats, phases
-
 
     def spike_phase(
         self,
@@ -64,7 +68,6 @@ class SpkLFPManager:
                 output_type="phase",
                 freq_bands=freq_bands,
                 channel=chan,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
@@ -74,7 +77,7 @@ class SpkLFPManager:
             )
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike phase for cluster {cid}.")
-                spike_times = self.get_cluster_spike_times(cid)//nperseg
+                spike_times = self.get_cluster_spike_times(cid) // nperseg
                 stats, phases = extract_spike_phase_data(band_dict, spike_times)
                 stats["channel"] = chan
                 stats["cluster_id"] = cid
@@ -85,6 +88,61 @@ class SpkLFPManager:
         output_data = concatenate_dicts(output_data)
         analyzed_spk_phase = concatenate_dicts(analyzed_spk_phase)
         return output_data, analyzed_spk_phase
+
+    def cwt_spike_phase(
+        self,
+        nperseg: int = 40,
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: int = 0,
+        end: int = 0,
+    ) -> dict[str, np.ndarray]:
+        sxx_attrs = self.get_grp_attrs("cwt")
+        chan_dict = self.get_channel_clusters()
+        chans = sorted(list(chan_dict.keys()))
+        output_data = []
+        analyzed_spk_phase = []
+
+        w = Wavelet(sxx_attrs["fs"], imaginary=sxx_attrs["imaginary"])
+        f = Frequencies(
+            w,
+            sxx_attrs["f0"],
+            sxx_attrs["f1"],
+            sxx_attrs["fn"],
+            sxx_attrs["fs"],
+            sxx_attrs["scaling"],
+        )
+        pyf = PyFCWT(
+            w,
+            f,
+            sxx_attrs["nthreads"],
+            dtype=sxx_attrs["dtype"],
+            norm=sxx_attrs["scaling"],
+        )
+
+        for chan in chans:
+            sample_rate = self.get_file_dataset("sample_rate", rows=int(chan))
+            wb = self.acq(
+                chan, acq_type="wideband", ref_type=ref_type, ref_probe=ref_probe
+            )
+            acq = downsample(wb, sample_rate, sample_rate / nperseg, 3)
+            cwt = pyf.cwt(acq)
+            for cid in chan_dict[chan]:
+                self.callback(f"Extracting spike phase for cluster {cid}.")
+                spike_times = self.get_cluster_spike_times(cid) // nperseg
+                temp = np.angle(cwt[:, spike_times])
+                stats = Parallel(n_jobs=4, prefer="threads")(
+                    delayed(analyze_spike_phase)(temp[i, :])
+                    for i in range(cwt.shape[0])
+                )
+                for i, freq in zip(stats, f.f):
+                    i["channel"] = chan
+                    i["cluster_id"] = cid
+                    i["frequency"] = freq
+                analyzed_spk_phase.extend(stats)
+        return output_data
 
     def extract_spike_power_data(
         self,
@@ -128,7 +186,6 @@ class SpkLFPManager:
                 output_type=output_type,
                 freq_bands=freq_bands,
                 channel=chan,
-
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,
