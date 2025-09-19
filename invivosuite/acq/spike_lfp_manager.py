@@ -102,16 +102,16 @@ class SpkLFPManager:
         sxx_attrs = self.get_grp_attrs("cwt")
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
-        output_data = []
         analyzed_spk_phase = []
 
-        w = Wavelet(sxx_attrs["fs"], imaginary=sxx_attrs["imaginary"])
+        sample_rate = self.get_file_dataset("sample_rate", rows=0)
+        w = Wavelet(sample_rate, imaginary=sxx_attrs["imaginary"])
         f = Frequencies(
             w,
             sxx_attrs["f0"],
             sxx_attrs["f1"],
             sxx_attrs["fn"],
-            sxx_attrs["fs"],
+            sample_rate,
             sxx_attrs["scaling"],
         )
         pyf = PyFCWT(
@@ -123,9 +123,15 @@ class SpkLFPManager:
         )
 
         for chan in chans:
-            sample_rate = self.get_file_dataset("sample_rate", rows=int(chan))
             wb = self.acq(
-                chan, acq_type="wideband", ref_type=ref_type, ref_probe=ref_probe
+                chan,
+                acq_type="wideband",
+                ref_type=ref_type,
+                ref_probe=ref_probe,
+                map_channel=map_channel,
+                probe=probe,
+                start=start,
+                end=end,
             )
             acq = downsample(wb, sample_rate, sample_rate / nperseg, 3)
             cwt = pyf.cwt(acq)
@@ -135,14 +141,14 @@ class SpkLFPManager:
                 temp = np.angle(cwt[:, spike_times])
                 stats = Parallel(n_jobs=4, prefer="threads")(
                     delayed(analyze_spike_phase)(temp[i, :])
-                    for i in range(cwt.shape[0])
+                    for i in range(temp.shape[0])
                 )
                 for i, freq in zip(stats, f.f):
                     i["channel"] = chan
                     i["cluster_id"] = cid
                     i["frequency"] = freq
                 analyzed_spk_phase.extend(stats)
-        return output_data
+        return analyzed_spk_phase
 
     def extract_spike_power_data(
         self,
