@@ -222,20 +222,26 @@ class LFPManager:
         )
         array = array.astype(np.float32)
         if sxx_type == "cwt":
-            w = Wavelet(sxx_attrs["fs"], imaginary=sxx_attrs["imaginary"])
+            w = Wavelet(
+                fs=sxx_attrs["fs"],
+                n_cycles=sxx_attrs["n_cylces"],
+                gauss_sd=sxx_attrs["gauss_sd"],
+                zero_mean=sxx_attrs["zero_mean"],
+                imaginary=sxx_attrs["imaginary"],
+            )
             f = Frequencies(
                 w,
-                sxx_attrs["f0"],
-                sxx_attrs["f1"],
-                sxx_attrs["fn"],
-                sxx_attrs["fs"],
-                sxx_attrs["scaling"],
+                f0=sxx_attrs["f0"],
+                f1=sxx_attrs["f1"],
+                fn=sxx_attrs["fn"],
+                fs=sxx_attrs["fs"],
+                scaling=sxx_attrs["scaling"],
             )
             freqs = f.f
             pyf = PyFCWT(
-                w,
-                f,
-                sxx_attrs["nthreads"],
+                wavelet=w,
+                frequencies=f,
+                nthreads=sxx_attrs["nthreads"],
                 dtype=sxx_attrs["dtype"],
                 norm=sxx_attrs["norm"],
             )
