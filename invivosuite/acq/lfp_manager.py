@@ -17,7 +17,8 @@ class LFPManager:
         f1: int = 110,
         fn: int = 200,
         scaling: Literal["log", "linear"] = "log",
-        sigma: float = 2.0,
+        gauss_sd: float = 5.0,
+        sigma: float = -1,
         n_cycles: float = 7.0,
         norm: bool = True,
         zero_mean: bool = True,
@@ -31,6 +32,7 @@ class LFPManager:
             f1=f1,
             fn=fn,
             scaling=scaling,
+            gauss_sd=gauss_sd,
             sigma=sigma,
             n_cycles=n_cycles,
             norm=norm,
@@ -171,22 +173,29 @@ class LFPManager:
         elif pxx_type == "welch":
             freqs, pxx = signal.welch(array, fs=fs, **pxx_attrs)
         elif pxx_type == "cwt":
-            w = Wavelet(fs, imaginary=pxx_attrs["imaginary"])
+            w = Wavelet(
+                fs=pxx_attrs["fs"],
+                n_cycles=pxx_attrs["n_cycles"],
+                sigma=pxx_attrs["sigma"],
+                gauss_sd=pxx_attrs["gauss_sd"],
+                zero_mean=pxx_attrs["zero_mean"],
+                imaginary=pxx_attrs["imaginary"],
+            )
             f = Frequencies(
                 w,
-                pxx_attrs["f0"],
-                pxx_attrs["f1"],
-                pxx_attrs["fn"],
-                fs,
-                pxx_attrs["scaling"],
+                f0=pxx_attrs["f0"],
+                f1=pxx_attrs["f1"],
+                fn=pxx_attrs["fn"],
+                fs=pxx_attrs["fs"],
+                scaling=pxx_attrs["scaling"],
             )
             freqs = f.f
             pyf = PyFCWT(
-                w,
-                f,
-                pxx_attrs["nthreads"],
+                wavelet=w,
+                frequencies=f,
+                threads=pxx_attrs["nthreads"],
                 dtype=pxx_attrs["dtype"],
-                norm=pxx_attrs["scaling"],
+                norm=pxx_attrs["norm"],
             )
             sxx = pyf.cwt(array)
             pxx = np.abs(sxx).mean(axis=1)
@@ -224,7 +233,8 @@ class LFPManager:
         if sxx_type == "cwt":
             w = Wavelet(
                 fs=sxx_attrs["fs"],
-                n_cycles=sxx_attrs["n_cylces"],
+                n_cycles=sxx_attrs["n_cycles"],
+                sigma=sxx_attrs["sigma"],
                 gauss_sd=sxx_attrs["gauss_sd"],
                 zero_mean=sxx_attrs["zero_mean"],
                 imaginary=sxx_attrs["imaginary"],
@@ -241,7 +251,7 @@ class LFPManager:
             pyf = PyFCWT(
                 wavelet=w,
                 frequencies=f,
-                nthreads=sxx_attrs["nthreads"],
+                threads=sxx_attrs["nthreads"],
                 dtype=sxx_attrs["dtype"],
                 norm=sxx_attrs["norm"],
             )
