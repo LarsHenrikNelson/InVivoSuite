@@ -237,7 +237,7 @@ class LFPManager:
                 f,
                 sxx_attrs["nthreads"],
                 dtype=sxx_attrs["dtype"],
-                norm=sxx_attrs["scaling"],
+                norm=sxx_attrs["norm"],
             )
             sxx = pyf.cwt(array)
         return freqs, sxx
