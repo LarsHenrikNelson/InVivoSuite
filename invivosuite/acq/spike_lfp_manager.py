@@ -8,6 +8,7 @@ from ..functions.filter_functions import downsample
 from ..functions.spike_lfp_functions.spike_phase import (
     analyze_spike_phase,
     extract_spike_phase_data,
+    cwt_phase_best_frequency,
 )
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
 from ..spectral import Frequencies, PyFCWT, Wavelet, get_freq_window, multitaper
@@ -91,6 +92,7 @@ class SpkLFPManager:
 
     def cwt_spike_phase(
         self,
+        freq_bands: dict[str, Iterable],
         nperseg: int = 40,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -102,7 +104,6 @@ class SpkLFPManager:
         sxx_attrs = self.get_grp_attrs("cwt")
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
-        analyzed_spk_phase = []
 
         sample_rate = self.get_file_dataset("sample_rate", rows=0)
         w = Wavelet(sample_rate, imaginary=sxx_attrs["imaginary"])
@@ -135,6 +136,9 @@ class SpkLFPManager:
             )
             acq = downsample(wb, sample_rate, sample_rate / nperseg, 3)
             cwt = pyf.cwt(acq)
+
+            cwt_spike_phase = []
+            band_specific_phase = []
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike phase for cluster {cid}.")
                 spike_times = self.get_cluster_spike_times(cid) // nperseg
@@ -147,8 +151,19 @@ class SpkLFPManager:
                     i["channel"] = chan
                     i["cluster_id"] = cid
                     i["frequency"] = freq
-                analyzed_spk_phase.extend(stats)
-        return analyzed_spk_phase
+                
+                min_f = f.f.min()
+                max_f = f.f.max()
+                for key, value in freq_bands.items():
+                    min_f = min(min_f, value[0])
+                    max_f = max(max_f, value[1])
+                    freq_output = cwt_phase_best_frequency(value[0], value[1], f.f, temp)
+                    freq_output["key"] = key
+                    band_specific_phase.append(freq_output)
+                freq_output = cwt_phase_best_frequency(min_f, max_f, f.f, temp)
+                freq_output["key"] = "all"
+                cwt_spike_phase.extend(stats)
+        return cwt_spike_phase
 
     def extract_spike_power_data(
         self,

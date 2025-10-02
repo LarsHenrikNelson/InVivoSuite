@@ -11,7 +11,6 @@ from ..circular_stats import (
     ppc_numba,
 )
 
-
 class CircStats(TypedDict):
     rayleigh_pval: float
     circ_mean: float
@@ -22,6 +21,20 @@ class CircStats(TypedDict):
     vector_length: float
     vector_pval: float
     ppc: float
+
+def cwt_phase_best_frequency(f0, f1, frequencies, phases):
+    indices = (frequencies>f0) & (frequencies<f1)
+    phase_subset = phases[indices,:]
+    temp = phase_subset - np.pi
+    temp = np.arctan2(np.sin(temp), np.cos(temp))
+    best_frequency = np.argmin(np.abs(temp)-np.pi, axis=0)
+    x = phase_subset[best_frequency, np.arange(temp.shape[1])]
+    best_f = frequencies[indices][best_frequency]
+    output = analyze_spike_phase(x)
+    u, counts = np.unique(best_f, return_counts=True)
+    output["mean_frequency"] = np.mean(best_f)
+    output["preferred_frequency"] = u[np.argmax(counts)]
+    return output
 
 def analyze_spike_phase(phases: np.ndarray) -> CircStats:
     cm, stdev = periodic_mean_std(phases)

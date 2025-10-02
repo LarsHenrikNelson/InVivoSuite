@@ -189,6 +189,19 @@ class SpkManager:
             return spk_times / (fs / 1000)
         elif output_type == "sec":
             return spk_times / fs
+    
+    def get_spike_times(
+        self,
+        fs: Optional[int] = None,
+        output_type: Literal["sec", "ms", "samples"] = "samples",
+        start: int = 0,
+        end: int = 0,):
+        cluster_dict = {}
+        for i in self.cluster_ids:
+            cluster_dict[i] = self.get_cluster_spike_times(
+                i, output_type=output_type, fs=fs, start=start, end=end
+            )
+        return cluster_dict
 
     def get_cluster_spike_amplitudes(
         self, cluster_id: int, start: int = 0, end: int = 0
