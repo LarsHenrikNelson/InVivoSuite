@@ -123,6 +123,8 @@ class SpkLFPManager:
             norm=sxx_attrs["scaling"],
         )
 
+        cwt_spike_phase = []
+        band_specific_phase = []
         for chan in chans:
             wb = self.acq(
                 chan,
@@ -137,8 +139,6 @@ class SpkLFPManager:
             acq = downsample(wb, sample_rate, sample_rate / nperseg, 3)
             cwt = pyf.cwt(acq)
 
-            cwt_spike_phase = []
-            band_specific_phase = []
             for cid in chan_dict[chan]:
                 self.callback(f"Extracting spike phase for cluster {cid}.")
                 spike_times = self.get_cluster_spike_times(cid) // nperseg
@@ -151,19 +151,24 @@ class SpkLFPManager:
                     i["channel"] = chan
                     i["cluster_id"] = cid
                     i["frequency"] = freq
-                
-                min_f = f.f.min()
-                max_f = f.f.max()
+
+                cwt_spike_phase.extend(stats)
+                min_f = f.f.max()
+                max_f = f.f.min()
                 for key, value in freq_bands.items():
                     min_f = min(min_f, value[0])
                     max_f = max(max_f, value[1])
                     freq_output = cwt_phase_best_frequency(value[0], value[1], f.f, temp)
                     freq_output["key"] = key
+                    freq_output["cluster_id"] = cid
+                    freq_output["channel"] = chan
                     band_specific_phase.append(freq_output)
                 freq_output = cwt_phase_best_frequency(min_f, max_f, f.f, temp)
                 freq_output["key"] = "all"
-                cwt_spike_phase.extend(stats)
-        return cwt_spike_phase
+                freq_output["cluster_id"] = cid
+                freq_output["channel"] = chan
+                band_specific_phase.append(freq_output)
+        return cwt_spike_phase, band_specific_phase
 
     def extract_spike_power_data(
         self,
