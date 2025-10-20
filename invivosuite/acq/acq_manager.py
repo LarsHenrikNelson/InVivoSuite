@@ -35,6 +35,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         wb_channels,
         sample_rates,
         coeffs,
+        timestamps,
         units,
         enabled,
         identifier="test",
@@ -54,6 +55,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.file.create_dataset("acqs", data=acqs)
         self.file.create_dataset("coeffs", data=coeffs)
         self.file.create_dataset("sample_rate", data=sample_rates)
+        self.file.create_dataset("timestamps", data=timestamps)
         self.file.create_dataset("units", data=units)
         self.file.create_dataset("enabled", data=enabled)
         self.file.create_dataset("wb_channels", data=wb_channels)
@@ -67,6 +69,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             self.set_grp_dataset("ai", "fs", ai[1])
             self.set_grp_dataset("ai", "coeffs", ai[2])
             self.set_grp_dataset("ai", "units", ai[3])
+            self.set_grp_dataset("ai", "timestamps", ai[4])
         self.close()
 
     def load_hdf5(self, file_path):

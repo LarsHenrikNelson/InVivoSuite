@@ -63,6 +63,7 @@ def load_pl2_acqs(
     acqs = None
     fs = np.zeros(len(wb_channels))
     coeffs = np.zeros(len(wb_channels))
+    timestamps = np.zeros(len(wb_channels))
     units = []
     enabled = np.zeros(len(wb_channels), np.int16)
     for index, i in enumerate(wb_channels):
@@ -77,12 +78,14 @@ def load_pl2_acqs(
         acqs[index] = data.ad[start:end]
         fs[index] = data.adfrequency
         coeffs[index] = data.coeff
+        timestamps[index] = data.timestamps[0]
         units.append(ad_info.m_Units)
 
     ais = None
     ai_data = None
     ai_fs = np.zeros(len(ai_channels))
     ai_coeffs = np.zeros(len(ai_channels))
+    ai_timestamp = np.zeros(len(ai_channels))
     ai_units = []
     for index, i in enumerate(ai_channels):
         ad_info = PL2AnalogChannelInfo()
@@ -95,14 +98,15 @@ def load_pl2_acqs(
             ais = np.zeros((len(ai_channels), end - start), np.int16)
         ais[index] = data.ad[start:end]
         ai_fs[index] = data.adfrequency
+        ai_timestamp[index] = data.timestamps[0]
         ai_coeffs[index] = data.coeff
         ai_units.append(ad_info.m_Units)
-    ai_data = (ais, ai_fs, ai_coeffs, np.asarray(ai_units))
+    ai_data = (ais, ai_fs, ai_coeffs, np.asarray(ai_units), ai_timestamp)
     acq_man = AcqManager()
     if save_path == "":
         save_path = Path(pl2_path).parent
     acq_man.create_hdf5_file(
-        acqs, wb_channels, fs, coeffs, np.asarray(units), enabled, name, save_path, ai=ai_data
+        acqs, wb_channels, fs, coeffs, timestamps, np.asarray(units), enabled, name, save_path, ai=ai_data
     )
     # acq_data = (acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
