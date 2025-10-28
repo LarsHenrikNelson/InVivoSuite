@@ -63,6 +63,16 @@ def ppc_sampled(spike_phases, size, iterations, seed=42):
         output_array[i] = ppc_dot_product(spk_sampled)
     return output_array
 
+def periodic_mean(angles: np.ndarray) -> float:
+    sines = np.sin(angles)
+    cosines = np.cos(angles)
+    return np.arctan2(np.mean(sines), np.mean(cosines))
+
+def periodic_std(angles: np.ndarray) -> float:
+    sines = np.sin(angles)
+    cosines = np.cos(angles)
+    R = np.sqrt(np.sum(sines) ** 2 + np.sum(cosines) ** 2) / len(angles)
+    return np.sqrt(-2 * np.log(R))
 
 def periodic_mean_std(angles: np.ndarray) -> tuple[float, float]:
     sines = np.sin(angles)

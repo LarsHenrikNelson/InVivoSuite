@@ -6,6 +6,7 @@ from ..circular_stats import (
     h_test,
     mean_vector_length,
     periodic_mean_std,
+    periodic_mean,
     rayleightest,
     ppc_dot_product,
     ppc_numba,
@@ -23,18 +24,15 @@ class CircStats(TypedDict):
     ppc: float
 
 def cwt_phase_best_frequency(f0, f1, frequencies, phases):
-    indices = (frequencies>f0) & (frequencies<f1)
-    phase_subset = phases[indices,:]
-    temp = phase_subset - np.pi
-    temp = np.arctan2(np.sin(temp), np.cos(temp))
-    best_frequency = np.argmin(np.abs(temp)-np.pi, axis=0)
-    x = phase_subset[best_frequency, np.arange(temp.shape[1])]
-    best_f = frequencies[indices][best_frequency]
-    output = analyze_spike_phase(x)
-    u, counts = np.unique(best_f, return_counts=True)
-    output["mean_frequency"] = np.mean(best_f)
-    output["preferred_frequency"] = u[np.argmax(counts)]
-    return output
+    band_phase = phases[(frequencies >= f0) & (frequencies <= f1),:]
+    phases = np.apply_along_axis(periodic_mean, 0, band_phase)
+    ppc = np.apply_along_axis(ppc_dot_product, 0, band_phase)
+    phase_output = analyze_spike_phase(phases)
+    phase_output["grand_ppc"] = np.mean(ppc)
+    p, s = periodic_mean_std(phases)
+    phase_output["grand_phase_mean"] = p
+    phase_output["grand_phase_std"] = s
+    return phase_output
 
 def analyze_spike_phase(phases: np.ndarray) -> CircStats:
     cm, stdev = periodic_mean_std(phases)

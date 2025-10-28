@@ -1271,12 +1271,13 @@ class SpkManager:
 
     def compute_sttc(
         self,
-        dt: Union[float, int] = 200,
+        dt: Union[float, int] = 25,
         start: int = 0,
         end: int = 0,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
         output_type: Literal["sec", "ms", "samples"] = "ms",
         fs: float = 40000.0,
+        accepted: bool = False,
         test_sig: Optional[Literal["shuffle", "distribution"]] = None,
         reps: int = 1000,
         gen_type: Literal[
@@ -1302,8 +1303,10 @@ class SpkManager:
 
         # Cache all the clusters so we don't have to call this more than once for each cluster.
         # Could probably make this a little bit faster but maybe not worth it.
+        if accepted:
+            cluster_ids = self.cluster_ids[self.accepted_units]
         cluster_dict = {}
-        for i in self.cluster_ids:
+        for i in cluster_ids:
             cluster_dict[i] = self.get_cluster_spike_times(
                 i, output_type=output_type, fs=fs, start=start, end=end
             )
