@@ -108,7 +108,7 @@ class PyFCWT:
         # Only need for rfft or if using fftw
         a = pyfftw.zeros_aligned(newsize, dtype=self.fftw_fdtype)
         b = pyfftw.zeros_aligned(newsize // 2 + 1, dtype=self.fftw_cdtype)
-        Ihat = np.zeros(newsize, dtype=complex)
+        Ihat = pyfftw.zeros_aligned(newsize, dtype=self.ffw_cdtype)
         a[:size] = input_data
 
         forward_fft = pyfftw.FFTW(a, b, threads=self.threads)
@@ -116,7 +116,12 @@ class PyFCWT:
 
         Ihat[: newsize // 2 + 1] = b
 
-        Ihat[newsize // 2 :] = np.conjugate(b[1:][::-1])
+        if newsize % 2 == 0:
+            # Even length: exclude DC and Nyquist components
+            Ihat[newsize // 2 + 1:] = np.conjugate(b[1:newsize // 2][::-1])
+        else:
+            # Odd length: exclude only DC component
+            Ihat[newsize // 2 + 1:] = np.conjugate(b[1:newsize // 2 + 1][::-1])
 
         c = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
         d = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
