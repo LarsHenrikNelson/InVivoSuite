@@ -42,7 +42,6 @@ for pair in spk_acq_pair[:1]:
     all_phases, phase_stats = am.spike_phase(
         freq_bands={"gamma": [30, 80], "beta": [12, 20], "theta": [4, 10]},
         sxx_type="hilbert",
-        ref=False,
         ref_type="cmr",
         ref_probe="acc",
         map_channel=True,
@@ -53,7 +52,6 @@ for pair in spk_acq_pair[:1]:
     # all_phases, phase_stats = am.spike_phase(
     #     freq_bands={"gamma": [30, 80], "beta": [12, 20], "theta": [4, 10]},
     #     sxx_type="cwt",
-    #     ref=False,
     #     ref_type="cmr",
     #     ref_probe="acc",
     #     map_channel=True,

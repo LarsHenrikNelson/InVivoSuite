@@ -46,7 +46,6 @@ for pair0, pair1 in spk_acq_pair:
         probe="acc",
         nchans=4,
         chunk_size=3000000,
-        ref=True,
         acq_type="spike",
         subtract=False,
     )

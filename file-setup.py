@@ -139,7 +139,6 @@ for i in acqs:
         neighbors=2,
         probe="acc",
         acq_type="spike",
-        ref=True,
         ref_type="cmr",
         ref_probe="acc",
         map_channel=True,
@@ -218,7 +217,6 @@ with cleaning small amplitude spikes. However, I would export your templates
 acq_manager.export_to_phy(
     nchans=4,
     waveform_length=82,
-    ref=True,
     ref_type="cmr",
     ref_probe="acc",
     map_channel=True,

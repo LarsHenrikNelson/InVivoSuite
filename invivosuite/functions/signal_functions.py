@@ -464,7 +464,6 @@ def center_spikes(phy_model, acq_manager, probe="acc", ref_type="cmr", size=45):
                 spk_acq = acq_manager.acq(
                     acq_num=chan,
                     acq_type="spike",
-                    ref=True,
                     ref_type=ref_type,
                     ref_probe=probe,
                     map_channel=True,

@@ -277,7 +277,6 @@ def duplicate_spikes(chan, cluster_id, acq_manager):
     spk_acq = acq_manager.acq(
         chan,
         acq_type="spike",
-        ref=True,
         ref_type="cmr",
         ref_probe="acc",
         map_channel=True,
