@@ -28,9 +28,7 @@ def _sttc_sig(
     input_type: Literal["sec", "ms"] = "ms",
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
     test_version: Literal["distribution", "shuffle"] = "shuffle",
-    gen_type: Literal[
-        "poisson", "gamma", "inverse_gaussian", "lognormal", "uniform"
-    ] = "poisson",
+    gen_type: Literal["poisson", "lognormal"] = "poisson",
 ):
     if test_version == "shuffle":
         dist = _shuffle_bootstrap_sttc(
@@ -147,7 +145,6 @@ def _shuffle_bootstrap_sttc(
     reps: int,
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
 ):
-
     rng = default_rng(seed=42)
 
     sttc_data = np.zeros(reps)
@@ -185,7 +182,7 @@ def _shuffle_bootstrap_sttc(
 @njit()
 def run_P(
     spk_times_1: np.ndarray, spk_times_2: np.ndarray, dt: Union[int, float]
-) -> int:
+) -> tuple[int, int]:
     Nab = 0
     j = 0
     k = 0
