@@ -2,6 +2,7 @@ from typing import Literal, TypedDict
 from collections import defaultdict
 
 import numpy as np
+from numpy.typing import NDArray
 
 from .continuous_fr import Methods, Windows, _create_array, create_window
 
@@ -9,11 +10,11 @@ from .continuous_fr import Methods, Windows, _create_array, create_window
 class SyncData(TypedDict):
     group_data: dict[str, np.ndarray]
     cluster_data: dict[str, np.ndarray]
-    groups: list[np.ndarray[int]]
+    groups: list[NDArray[np.int_]]
     channels: np.ndarray
-    sdata: np.ndarray[int]
-    cluster_ids: np.ndarray[int]
-    group_connectivity: dict[str, np.ndarray]
+    sdata: NDArray[np.int_]
+    cluster_ids: NDArray[np.int_]
+    group_connectivity: dict[str, list]
 
 
 def _create_continuous(
@@ -145,17 +146,18 @@ def _analyze_synchronous_periods(
     group_dict["nspikes"] = [i.sum() for i in spikes]
     group_dict["total_units"] = [cluster_ids.size]*len(sdata)
 
-    group_cell_types = [celltypes[i] for i in groups]
-    ucelltypes = np.unique(celltypes)
-    for i in ucelltypes:
-        group_dict[i] = []
-    group_dict["synchronous_units"] = []
-    for i in group_cell_types:
-        temp_celltype, counts = np.unique(i, return_counts=True)
-        group_dict["synchronous_units"].append(np.sum(counts))
-        temp_dict = {key: value for key, value in zip(temp_celltype, counts)}
-        for j in ucelltypes:
-            group_dict[j].append(temp_dict.get(j, 0))
+    if celltypes is not None:
+        group_cell_types = [celltypes[i] for i in groups]
+        ucelltypes = np.unique(celltypes)
+        for i in ucelltypes:
+            group_dict[i] = []
+        group_dict["synchronous_units"] = []
+        for i in group_cell_types:
+            temp_celltype, counts = np.unique(i, return_counts=True)
+            group_dict["synchronous_units"].append(np.sum(counts))
+            temp_dict = {key: value for key, value in zip(temp_celltype, counts)}
+            for j in ucelltypes:
+                group_dict[j].append(temp_dict.get(j, 0))
 
     cluster_dict = {}
     grouped_cluster_ids = [cluster_ids[i] for i in groups]

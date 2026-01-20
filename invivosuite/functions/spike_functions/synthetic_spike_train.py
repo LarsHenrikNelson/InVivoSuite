@@ -45,13 +45,16 @@ def gen_spike_train(
             generator = stats.expon(
                 scale=1 / rate,
             )
-    elif gen_type == "gamma":
-        generator = stats.gamma(a=shape[0], scale=1 / (shape[0] * rate))
-    elif gen_type == "inverse_gaussian":
-        mu = -np.log(rate) - shape[0] / 2
-        generator = stats.lognorm(s=shape[0], scale=np.exp(mu))
+    # elif gen_type == "gamma":
+    #     generator = stats.gamma(a=shape[0], scale=1 / (shape[0] * rate))
     elif gen_type == "lognormal":
-        generator = stats.gaussian(mu=shape[0] ** 2, scale=1 / (rate * shape[0] ** 2))
+        if shape is not None and isinstance(shape, float):
+            mu = -np.log(rate) - shape / 2
+            generator = stats.lognorm(s=shape, scale=np.exp(mu))
+        else:
+            raise ValueError("Shape must be float if gen_type is lognormal.")
+    # elif gen_type == "lognormal":
+    #     generator = stats.gaussian(mu=shape[0] ** 2, scale=1 / (rate * shape[0] ** 2))
     else:
         raise AttributeError("gen_type is not recognized.")
 
