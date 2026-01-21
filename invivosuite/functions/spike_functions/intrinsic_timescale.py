@@ -19,7 +19,7 @@ class SExpDecayFit(NamedTuple):
     offset: float = np.nan
 
 
-class CurveFitBase:
+class SExpDecay:
     _params: SExpDecayFit
     _model_metrics: ModelMetrics
     _fit_success: bool
@@ -56,8 +56,8 @@ class CurveFitBase:
         return SExpDecayFit(*popt)
 
     def _get_bounds(self, x: np.ndarray, y: np.ndarray) -> None | tuple | list:
-        upper_bounds = [1.0, x[-1], np.inf]
-        lower_bounds = [0.0, 0.0, 0]
+        upper_bounds = [y.max() * 2, x[-1], np.inf]
+        lower_bounds = [0.0, 0.0, -np.inf]
         return lower_bounds, upper_bounds
 
     def predict(self, x: np.ndarray) -> np.ndarray:
@@ -115,17 +115,17 @@ class CurveFitBase:
         return self._params
 
 
-def iSTTC(
+def sttc_autocorr(
     timestamps: np.ndarray,
     dt: float,
     lag: float,
-    n_lags: int,
+    nlags: int,
     start: float,
     stop: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    output = np.zeros(n_lags)
+    output = np.zeros(nlags)
     rec_len = stop - start
-    lags = np.arange(1, n_lags + 1) * lag
+    lags = np.arange(1, nlags + 1) * lag
     for index, i in enumerate(lags):
         index1 = np.searchsorted(timestamps, i, side="right")
         a = timestamps[index1:] - i

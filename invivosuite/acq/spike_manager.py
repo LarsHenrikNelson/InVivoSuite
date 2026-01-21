@@ -189,13 +189,14 @@ class SpkManager:
             return spk_times / (fs / 1000)
         elif output_type == "sec":
             return spk_times / fs
-    
+
     def get_spike_times(
         self,
         fs: Optional[int] = None,
         output_type: Literal["sec", "ms", "samples"] = "samples",
         start: int = 0,
-        end: int = 0,):
+        end: int = 0,
+    ):
         cluster_dict = {}
         for i in self.cluster_ids:
             cluster_dict[i] = self.get_cluster_spike_times(
@@ -1291,7 +1292,7 @@ class SpkManager:
 
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         sttc_data = np.zeros(size)
-        cluster_ids = np.zeros((size, 4), dtype=int)
+        cluster_ids_output = np.zeros((size, 4), dtype=int)
         if sttc_version == "ivs":
             num1dt_array = np.zeros(size, dtype=int)
             num2dt_array = np.zeros(size, dtype=int)
@@ -1305,6 +1306,8 @@ class SpkManager:
         # Could probably make this a little bit faster but maybe not worth it.
         if accepted:
             cluster_ids = self.cluster_ids[self.accepted_units]
+        else:
+            cluster_ids = self.cluster_ids
         cluster_dict = {}
         for i in cluster_ids:
             cluster_dict[i] = self.get_cluster_spike_times(
@@ -1372,18 +1375,18 @@ class SpkManager:
                         sig_vals[output_index] = 0.9999
 
                 sttc_data[output_index] = sttc_index
-                cluster_ids[output_index, 0] = clust_id1
-                cluster_ids[output_index, 1] = clust_id2
-                cluster_ids[output_index, 2] = indexes1.size
-                cluster_ids[output_index, 3] = indexes2.size
+                cluster_ids_output[output_index, 0] = clust_id1
+                cluster_ids_output[output_index, 1] = clust_id2
+                cluster_ids_output[output_index, 2] = indexes1.size
+                cluster_ids_output[output_index, 3] = indexes2.size
                 output_index += 1
 
         data = {}
         data["sttc"] = sttc_data
-        data["cluster1_id"] = cluster_ids[:, 0].flatten()
-        data["cluster2_id"] = cluster_ids[:, 1].flatten()
-        data["cluster1_size"] = cluster_ids[:, 2].flatten()
-        data["cluster2_size"] = cluster_ids[:, 3].flatten()
+        data["cluster1_id"] = cluster_ids_output[:, 0].flatten()
+        data["cluster2_id"] = cluster_ids_output[:, 1].flatten()
+        data["cluster1_size"] = cluster_ids_output[:, 2].flatten()
+        data["cluster2_size"] = cluster_ids_output[:, 3].flatten()
         if sttc_version == "ivs":
             data["1_before_2"] = num1_2_array
             data["2_before_1"] = num2_1_array
@@ -1526,6 +1529,55 @@ class SpkManager:
         # Might need to normalized to total number of cells as well.
         pyr = raster_binary[cluster_celltypes == "Pyramidal", :].sum(axis=0)
         inter = raster_binary[cluster_celltypes == "Interneuron", :].sum(axis=0)
-        temp = (pyr / (cluster_celltypes == "Pyramidal").sum()
-            - inter / (cluster_celltypes == "Interneuron").sum())
+        temp = (
+            pyr / (cluster_celltypes == "Pyramidal").sum()
+            - inter / (cluster_celltypes == "Interneuron").sum()
+        )
         return temp.sum(), temp.mean(), temp.std()
+
+    def isttc(
+        self,
+        dt: Union[float, int] = 25,
+        lag: float = 50,
+        nlags: int = 50,
+        start: int = 0,
+        end: int = 0,
+        output_type: Literal["sec", "ms", "samples"] = "ms",
+        fs: float = 40000.0,
+        accepted: bool = False,
+    ):
+        if end == 0:
+            temp = self.end - self.start
+        sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
+        sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
+
+        size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
+
+        if accepted:
+            cluster_ids = self.cluster_ids[self.accepted_units]
+        else:
+            cluster_ids = self.cluster_ids
+        sttc_corrs = []
+        lag_corrs = []
+        for i in cluster_ids:
+            cluster_times = self.get_cluster_spike_times(
+                i, output_type=output_type, fs=fs, start=start, end=end
+            )
+            lags, corrs = spkf.sttc_autocorr(
+                cluster_times,
+                dt=dt,
+                lag=lag,
+                nlags=nlags,
+                start=sttc_start,
+                stop=sttc_end,
+            )
+            sttc_corrs.append(corrs)
+            lag_corrs.append(lags)
+        sttc_corrs = np.concatenate(sttc_corrs)
+        lag_corrs = np.concatenate(lag_corrs)
+        mask = (sttc_corrs < 1.0) & (sttc_corrs > -1.0)
+        sttc_corrs = sttc_corrs[mask]
+        lag_corrs = lag_corrs[mask]
+        decay_fit = spkf.SExpDecay()
+        decay_fit.fit(lag_corrs, sttc_corrs)
+        return lag_corrs, sttc_corrs, decay_fit
