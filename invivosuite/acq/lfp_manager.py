@@ -1,7 +1,6 @@
 import os
 from typing import Iterable, Literal, Optional, Union
 
-import fcwt
 import numpy as np
 from scipy import signal
 
