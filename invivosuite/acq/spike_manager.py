@@ -1569,6 +1569,7 @@ class SpkManager:
                 cluster_times,
                 dt=dt,
                 lag=lag,
+                start_lag=start_lag,
                 nlags=nlags,
                 start=sttc_start,
                 stop=sttc_end,
