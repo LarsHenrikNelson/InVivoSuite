@@ -1539,6 +1539,7 @@ class SpkManager:
         self,
         dt: Union[float, int] = 25,
         lag: float = 50,
+        start_lag: float | None = None,
         nlags: int = 50,
         sttc_limit: float = 1.0,
         start: int = 0,
@@ -1576,7 +1577,7 @@ class SpkManager:
             lag_corrs.append(lags)
         sttc_corrs = np.concatenate(sttc_corrs)
         lag_corrs = np.concatenate(lag_corrs)
-        mask = (sttc_corrs < sttc_limit) & (sttc_corrs > -sttc_limit)
+        mask = (sttc_corrs <= sttc_limit) & (sttc_corrs >= -sttc_limit)
         sttc_corrs = sttc_corrs[mask]
         lag_corrs = lag_corrs[mask]
         decay_fit = spkf.SExpDecay()

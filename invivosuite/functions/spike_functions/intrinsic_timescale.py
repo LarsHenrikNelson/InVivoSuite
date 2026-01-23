@@ -119,13 +119,16 @@ def sttc_autocorr(
     timestamps: np.ndarray,
     dt: float,
     lag: float,
+    start_lag: float | None,
     nlags: int,
     start: float,
     stop: float,
 ) -> tuple[np.ndarray, np.ndarray]:
+    if start_lag is None:
+        start_lag = lag
     output = np.zeros(nlags)
     rec_len = stop - start
-    lags = np.arange(1, nlags + 1) * lag
+    lags = np.arange(nlags) * lag + start_lag
     for index, i in enumerate(lags):
         index1 = np.searchsorted(timestamps, i, side="right")
         a = timestamps[index1:] - i
