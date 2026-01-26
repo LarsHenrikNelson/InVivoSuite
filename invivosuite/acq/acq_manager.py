@@ -108,14 +108,14 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         acq_type: Literal["spike", "lfp"],
         filter_type: Filters = "butterworth_zero",
-        order: Union[None, int] = None,
-        highpass: Union[int, float, None] = None,
-        high_width: Union[int, float, None] = None,
-        lowpass: Union[int, float, None] = None,
-        low_width: Union[int, float, None] = None,
+        order: int | None = None,
+        highpass: int | float | None = None,
+        high_width: int | float | None = None,
+        lowpass: int | float | None = None,
+        low_width: int | float | None = None,
         window: Windows = "hann",
-        polyorder: Union[int, None] = 0,
-        sample_rate: Union[float, int] = 40000,
+        polyorder: int | None = 0,
+        sample_rate: float | int = 40000,
         up_sample=3,
         notch_filter: bool = False,
         notch_freq: float = 60.0,
@@ -360,9 +360,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         channel_map = self.get_grp_dataset("channel_maps", probe)
 
         with h5py.File(self.file_path, "r+") as f:
-            multi_acqs = f["acqs"][channels, start:end] * f["coeffs"][
-                channels
-            ].reshape(-1, 1) - f["means"][channels].reshape(-1, 1)
+            multi_acqs = f["acqs"][channels, start:end] * f["coeffs"][channels].reshape(
+                -1, 1
+            ) - f["means"][channels].reshape(-1, 1)
 
             if ref_type != "none":
                 multi_acqs = multi_acqs - f[ref_type][ref_probe][start:end]
@@ -442,8 +442,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         grp,
         dataset,
-        rows: Union[int, tuple[int, int], list[int, int], None] = None,
-        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+        rows: int | tuple[int, int] | list[int, int] | None = None,
+        columns: int | tuple[int, int] | list[int, int] | None = None,
     ):
         with h5py.File(self.file_path, "r+") as f:
             if grp in f:
@@ -478,8 +478,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def get_file_dataset(
         self,
         dataset: str,
-        rows: Union[int, tuple[int, int], list[int, int], None] = None,
-        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+        rows: int | tuple[int, int] | list[int, int] | None = None,
+        columns: int | tuple[int, int] | list[int, int] | None = None,
     ):
         with h5py.File(self.file_path, "r+") as f:
             if dataset in f:
@@ -492,8 +492,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         grp,
         dataset: str,
-        rows: Union[int, tuple[int, int], list[int, int], None] = None,
-        columns: Union[int, tuple[int, int], list[int, int], None] = None,
+        rows: int | tuple[int, int] | list[int, int] | None = None,
+        columns: int | tuple[int, int] | list[int, int] | None = None,
     ):
         if rows is None and columns is None:
             file_dataset = grp[dataset][()]
@@ -598,11 +598,11 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     def save_kilosort_bin(
         self,
-        rows: Union[int, tuple[int, int], list[int, int], None] = None,
-        columns: Union[int, tuple[int, int], list[int, int], None] = None,
-        probe: Union[str, None] = None,
-        chunk_size=None,
-        save_path=None,
+        rows: int | tuple[int, int] | list[int, int] | None = None,
+        columns: int | tuple[int, int] | list[int, int] | None = None,
+        probe: str | None = None,
+        chunk_size: int | None = None,
+        save_path: str | Path = "",
     ):
         if probe is None:
             if rows is None:
@@ -640,15 +640,35 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 rows = (0, self.shape[1])
             elif probe is not None:
                 rows = self.get_grp_dataset("probes", probe)
-        acqs = self.get_file_dataset("acqs", rows, columns)
-        acqs = acqs.T
-        if save_path is None:
+        if save_path == "":
             save_path = Path(self.file_path).with_suffix(".bin")
         else:
             save_path = (Path(save_path) / Path(self.file_path).stem).with_suffix(
                 ".bin"
             )
-        acqs.tofile(save_path)
+        if chunk_size is not None:
+            size = columns[1] - columns[0]
+            n_acqs = rows[1] - rows[0]
+            output = np.memmap(
+                save_path,
+                dtype=np.int16,
+                mode="w+",  # Create/overwrite and allow read/write
+                shape=(size, n_acqs),
+            )
+            for chunk_start in range(0, size, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, size)
+                file_col_start = columns[0] + chunk_start
+                file_col_end = columns[0] + chunk_end
+                acqs = self.get_file_dataset(
+                    "acqs", rows, (file_col_start, file_col_end)
+                )
+                output[chunk_start:chunk_end, :] = acqs.T
+                output.flush()
+            del output
+        else:
+            acqs = self.get_file_dataset("acqs", rows, columns)
+            acqs = acqs.T
+            acqs.tofile(save_path)
 
     def set_start(self, start: int = 0):
         """Set the start of the recording in samples.
