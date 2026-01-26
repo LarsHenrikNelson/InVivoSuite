@@ -29,12 +29,12 @@ def create_wisdom(inputs: list[FFTDATA], outputs: list[str]):
             a = pyfftw.empty_aligned(i.length, dtype="float64")
             b = pyfftw.empty_aligned(i.length // 2 + 1, dtype="complex128")
 
-            fft_object = pyfftw.FFTW(a, b)  # noqa
+            _ = pyfftw.FFTW(a, b)
         elif i.dtype == "complex128" and o.dtype == "complex128":
             a = pyfftw.empty_aligned(i.length, dtype="complex128")
             b = pyfftw.empty_aligned(i.length, dtype="complex128")
 
-            fft_object = pyfftw.FFTW(a, b)  # noqa
+            _ = pyfftw.FFTW(a, b)
 
 
 def get_wisdom():

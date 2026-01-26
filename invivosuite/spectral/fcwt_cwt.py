@@ -108,7 +108,7 @@ class PyFCWT:
         # Only need for rfft or if using fftw
         a = pyfftw.zeros_aligned(newsize, dtype=self.fftw_fdtype)
         b = pyfftw.zeros_aligned(newsize // 2 + 1, dtype=self.fftw_cdtype)
-        Ihat = pyfftw.zeros_aligned(newsize, dtype=self.ffw_cdtype)
+        Ihat = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
         a[:size] = input_data
 
         forward_fft = pyfftw.FFTW(a, b, threads=self.threads)

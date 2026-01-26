@@ -23,9 +23,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     filters = Filters
     windows = Windows
 
-    def __init__(self):
-        self.file = None
-        self.file_open = False
+    def __init__(self, file_path: str | Path):
+        self.file_path = file_path
         self._set_cwt = False
         self.callback = print
 
@@ -39,26 +38,16 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         units,
         enabled,
         identifier="test",
-        save_path="",
         ai=None,
     ):
-        if save_path == "":
-            save_path = os.getcwd()
-            self.file_path = f"{save_path}.hdf5"
-        else:
-            save_path = Path(save_path)
-            if not save_path.exists():
-                save_path.mkdir()
-            save_path = save_path / identifier
-            self.file_path = f"{save_path}.hdf5"
-        self.file = h5py.File(self.file_path, "a")
-        self.file.create_dataset("acqs", data=acqs)
-        self.file.create_dataset("coeffs", data=coeffs)
-        self.file.create_dataset("sample_rate", data=sample_rates)
-        self.file.create_dataset("timestamps", data=timestamps)
-        self.file.create_dataset("units", data=units)
-        self.file.create_dataset("enabled", data=enabled)
-        self.file.create_dataset("wb_channels", data=wb_channels)
+        with h5py.File(self.file_path, "a") as f:
+            f.create_dataset("acqs", data=acqs)
+            f.create_dataset("coeffs", data=coeffs)
+            f.create_dataset("sample_rate", data=sample_rates)
+            f.create_dataset("timestamps", data=timestamps)
+            f.create_dataset("units", data=units)
+            f.create_dataset("enabled", data=enabled)
+            f.create_dataset("wb_channels", data=wb_channels)
         self.set_file_attr("id", identifier)
         self.set_file_attr("start", 0)
         self.set_file_attr("end", acqs.shape[1])
@@ -72,23 +61,14 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             self.set_grp_dataset("ai", "timestamps", ai[4])
         self.close()
 
-    def load_hdf5(self, file_path):
-        self.file_path = file_path
-
     def load_kilosort(self, file_directory, load_type: str = "r+"):
         self.ks_directory = Path(file_directory)
         self.load_ks_data(load_type=load_type)
 
-    def open(self):
-        if not self.file_open:
-            self.file = h5py.File(self.file_path, "r+")
-            self.file_open = True
-
     @property
     def n_chans(self):
-        self.open()
-        channels = self.file["acqs"].shape[0]
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            channels = f["acqs"].shape[0]
         return channels
 
     @property
@@ -101,9 +81,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     @property
     def shape(self):
-        self.open()
-        shape = self.file["acqs"].shape
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            shape = f["acqs"].shape
         return shape
 
     def index_to_time(self, index, fs, output_type: Literal["samples", "ms", "sec"]):
@@ -116,32 +95,14 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         else:
             raise AttributeError("Outputype not recognized.")
 
-    # @property
-    # def id(self):
-    #     self.open()
-    #     id = self.file.attrs["id"]
-    #     self.close()
-    #     return id
-
     @property
     def probes(self):
-        self.open()
-        if "probes" in self.file:
-            p = list(self.file["probes"].keys())
-            self.close()
-            return p
-        else:
-            return None
-
-    # def channel_map(self):
-    #     self.open()
-    #     if self.file.get("channel_map"):
-    #         channel_map = self.file["channel_map"][()]
-    #         self.close()
-    #         return channel_map
-    #     else:
-    #         self.close()
-    #         return None
+        with h5py.File(self.file_path, "r+") as f:
+            if "probes" in f:
+                p = list(f["probes"].keys())
+            else:
+                p = None
+        return p
 
     def set_filter(
         self,
@@ -181,18 +142,17 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             self.set_grp_attr(acq_type, key, value)
 
     def get_filter(self, acq_type: Literal["spike", "lfp"]):
-        self.open()
-        try:
-            grp = self.file[acq_type]
-        except KeyError:
-            raise KeyError(
-                f"{acq_type} does not exist. Use set_filter to create {acq_type}."
-            )
-        input_dict = dict(grp.attrs)
-        for key, value in input_dict.items():
-            if value == "None":
-                input_dict[key] = None
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            try:
+                grp = f[acq_type]
+            except KeyError:
+                raise KeyError(
+                    f"{acq_type} does not exist. Use set_filter to create {acq_type}."
+                )
+            input_dict = dict(grp.attrs)
+            for key, value in input_dict.items():
+                if value == "None":
+                    input_dict[key] = None
         return input_dict
 
     def compute_means(self):
@@ -213,9 +173,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         bin_size: int = 0,
     ):
         start = 0
-        self.open()
-        end = self.file["acqs"].shape[1]
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            end = f["acqs"].shape[1]
         if ref_type == "cmr":
             ref = np.median
         elif ref_type == "car":
@@ -400,14 +359,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
         channel_map = self.get_grp_dataset("channel_maps", probe)
 
-        self.open()
-        multi_acqs = self.file["acqs"][channels, start:end] * self.file["coeffs"][
-            channels
-        ].reshape(-1, 1) - self.file["means"][channels].reshape(-1, 1)
+        with h5py.File(self.file_path, "r+") as f:
+            multi_acqs = f["acqs"][channels, start:end] * f["coeffs"][
+                channels
+            ].reshape(-1, 1) - f["means"][channels].reshape(-1, 1)
 
-        if ref_type != "none":
-            multi_acqs = multi_acqs - self.file[ref_type][ref_probe][start:end]
-        self.close()
+            if ref_type != "none":
+                multi_acqs = multi_acqs - f[ref_type][ref_probe][start:end]
 
         if map_channel:
             channels = channel_map[channels - data[0]]
@@ -434,9 +392,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         return multi_acqs
 
     def get_groups(self):
-        self.open()
-        groups = self.file.keys()
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            groups = f.keys()
         return groups
 
     def envelope(self, acq: np.ndarray, interp: bool = True):
@@ -444,46 +401,42 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         return env_min, env_max
 
     def set_file_attr(self, attr, data):
-        self.open()
-        if attr not in self.file.attrs:
-            self.file.attrs.create(attr, data=data)
-        else:
-            self.file.attrs[attr] = data
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            if attr not in f.attrs:
+                f.attrs.create(attr, data=data)
+            else:
+                f.attrs[attr] = data
 
     def set_file_dataset(self, name, data):
-        self.open()
-        if name in self.file:
-            del self.file[name]
-            self.file.create_dataset(name, data=data)
-        else:
-            self.file.create_dataset(name, data=data)
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            if name in f:
+                del f[name]
+                f.create_dataset(name, data=data)
+            else:
+                f.create_dataset(name, data=data)
 
     def set_grp_attr(self, grp_name, attr, data):
-        self.open()
-        if grp_name in self.file:
-            grp = self.file[grp_name]
-        else:
-            grp = self.file.create_group(grp_name)
-        if attr not in self.file.attrs:
-            grp.attrs.create(attr, data)
-        else:
-            grp.attrs[attr] = data
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            if grp_name in f:
+                grp = f[grp_name]
+            else:
+                grp = f.create_group(grp_name)
+            if attr not in f.attrs:
+                grp.attrs.create(attr, data)
+            else:
+                grp.attrs[attr] = data
 
     def set_grp_dataset(self, grp_name, name, data):
-        self.open()
-        if grp_name in self.file:
-            grp = self.file[grp_name]
-        else:
-            grp = self.file.create_group(grp_name)
-        if name in grp:
-            del grp[name]
-            grp.create_dataset(name, data=data)
-        else:
-            grp.create_dataset(name, data=data)
-        self.close()
+        with h5py.File(self.file_path, "r+") as f:
+            if grp_name in f:
+                grp = f[grp_name]
+            else:
+                grp = f.create_group(grp_name)
+            if name in grp:
+                del grp[name]
+                grp.create_dataset(name, data=data)
+            else:
+                grp.create_dataset(name, data=data)
 
     def get_grp_dataset(
         self,
@@ -492,42 +445,34 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         rows: Union[int, tuple[int, int], list[int, int], None] = None,
         columns: Union[int, tuple[int, int], list[int, int], None] = None,
     ):
-        self.open()
-        if grp in self.file:
-            if dataset in self.file[grp]:
-                group = self.file[grp]
-                file_dataset = self._get_data(group, dataset, rows, columns)
-                self.close()
-                return file_dataset
+        with h5py.File(self.file_path, "r+") as f:
+            if grp in f:
+                if dataset in f[grp]:
+                    group = f[grp]
+                    file_dataset = self._get_data(group, dataset, rows, columns)
+                    return file_dataset
+                else:
+                    raise AttributeError(f"{dataset} does not exist.")
             else:
-                self.close()
-                raise AttributeError(f"{dataset} does not exist.")
-        else:
-            self.close()
-            raise AttributeError(f"{grp} does not exist.")
+                raise AttributeError(f"{grp} does not exist.")
 
     def get_grp_attr(self, grp_name, name):
-        self.open()
-        if grp_name in self.file:
-            if name in self.file[grp_name].attrs:
-                value = self.file[grp_name].attrs[name]
-                self.close()
-                return value
+        with h5py.File(self.file_path, "r+") as f:
+            if grp_name in f:
+                if name in f[grp_name].attrs:
+                    value = f[grp_name].attrs[name]
+                    return value
+                else:
+                    raise KeyError(f"{name} is not an attribute of {grp_name}.")
             else:
-                self.close()
-                raise KeyError(f"{name} is not an attribute of {grp_name}.")
-        else:
-            self.close()
-            raise KeyError(f"{grp_name} does not exist.")
+                raise KeyError(f"{grp_name} does not exist.")
 
     def get_file_attr(self, attr: str):
-        self.open()
-        if attr in self.file.attrs:
-            file_attr = self.file.attrs[attr]
-            self.close()
-        else:
-            self.close()
-            raise KeyError(f"{attr} does not exist.")
+        with h5py.File(self.file_path, "r+") as f:
+            if attr in f.attrs:
+                file_attr = f.attrs[attr]
+            else:
+                raise KeyError(f"{attr} does not exist.")
         return file_attr
 
     def get_file_dataset(
@@ -536,14 +481,12 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         rows: Union[int, tuple[int, int], list[int, int], None] = None,
         columns: Union[int, tuple[int, int], list[int, int], None] = None,
     ):
-        self.open()
-        if dataset in self.file:
-            file_dataset = self._get_data(self.file, dataset, rows, columns)
-            self.close()
-            return file_dataset
-        else:
-            self.close()
-            raise KeyError(f"{dataset} does not exist.")
+        with h5py.File(self.file_path, "r+") as f:
+            if dataset in f:
+                file_dataset = self._get_data(f, dataset, rows, columns)
+                return file_dataset
+            else:
+                raise KeyError(f"{dataset} does not exist.")
 
     def _get_data(
         self,
@@ -576,15 +519,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         return file_dataset
 
     def get_grp_attrs(self, grp_name: str):
-        self.open()
-        if grp_name in self.file:
-            grp = self.file[grp_name]
-            attrs = dict(grp.attrs)
-            self.close()
-            return attrs
-        else:
-            self.close()
-            raise KeyError(f"{grp_name} settings do not exist in file. Use set_pxx")
+        with h5py.File(self.file_path, "r+") as f:
+            if grp_name in f:
+                grp = f[grp_name]
+                attrs = dict(grp.attrs)
+                return attrs
+            else:
+                raise KeyError(f"{grp_name} settings do not exist in file. Use set_pxx")
 
     def set_channel_map_from_file(
         self, map_path: Union[str, Path], probe: str = "None"
@@ -660,6 +601,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         rows: Union[int, tuple[int, int], list[int, int], None] = None,
         columns: Union[int, tuple[int, int], list[int, int], None] = None,
         probe: Union[str, None] = None,
+        chunk_size=None,
         save_path=None,
     ):
         if probe is None:
@@ -708,11 +650,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             )
         acqs.tofile(save_path)
 
-    def close(self):
-        if self.file is not None:
-            self.file.close()
-        self.file_open = False
-
     def set_start(self, start: int = 0):
         """Set the start of the recording in samples.
 
@@ -730,14 +667,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         Raises:
             ValueError: _description_
         """
-        self.open()
-        len_of_rec = self.file["acqs"].shape[1]
+        with h5py.File(self.file_path, "r+") as f:
+            len_of_rec = f["acqs"].shape[1]
         if end > len_of_rec:
             self.close()
             raise ValueError(
                 f"{end} is longer than the length of the recording ({len_of_rec})"
             )
-        self.close()
         self.set_file_attr("end", end)
 
     def set_probe(self, probe: str, array: np.array):

@@ -1,16 +1,16 @@
 from collections import namedtuple
-from pathlib import Path, PurePath
+from pathlib import Path
 from typing import Union
 
 import numpy as np
 
 from .acq_manager import AcqManager
-from .pypl2 import PL2DigitalChannelInfo  # noqa: F401
-from .pypl2 import PL2SpikeChannelInfo  # noqa: F401
-from .pypl2 import pl2_comments  # noqa: F401
-from .pypl2 import pl2_events  # noqa: F401
-from .pypl2 import pl2_info  # noqa: F401
-from .pypl2 import pl2_spikes  # noqa: F401
+from .pypl2 import PL2DigitalChannelInfo
+from .pypl2 import PL2SpikeChannelInfo
+from .pypl2 import pl2_comments
+from .pypl2 import pl2_events
+from .pypl2 import pl2_info
+from .pypl2 import pl2_spikes
 from .pypl2 import PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
@@ -23,14 +23,19 @@ __all__ = [
 
 
 def load_pl2_acqs(
-    pl2_path: str,
-    save_path: str = "",
+    pl2_path: str | Path,
+    save_path: str | Path = "",
     start: int = 0,
     end: Union[None, int] = None,
 ):
-    name = PurePath(pl2_path).stem
-    if not _path_checker(pl2_path, save_path):
-        return None
+    name = Path(pl2_path).stem
+    _ = _path_checker(pl2_path, save_path)
+    if save_path == "":
+        save_path = Path(pl2_path).with_suffix(".hdf5")
+    else:
+        save_path = Path(save_path)
+        if save_path.suffix != ".hdf5":
+            save_path = save_path.with_suffix(".hdf5")
     reader = PyPL2FileReader()
     handle = reader.pl2_open_file(pl2_path)
     file_info = PL2FileInfo()
@@ -102,13 +107,10 @@ def load_pl2_acqs(
         ai_coeffs[index] = data.coeff
         ai_units.append(ad_info.m_Units)
     ai_data = (ais, ai_fs, ai_coeffs, np.asarray(ai_units), ai_timestamp)
-    acq_man = AcqManager()
-    if save_path == "":
-        save_path = Path(pl2_path).parent
+    acq_man = AcqManager(save_path)
     acq_man.create_hdf5_file(
-        acqs, wb_channels, fs, coeffs, timestamps, np.asarray(units), enabled, name, save_path, ai=ai_data
+        acqs, wb_channels, fs, coeffs, timestamps, np.asarray(units), enabled, name, ai=ai_data
     )
-    # acq_data = (acqs, fs, coeffs, units, enabled, name, save_path)
     reader.pl2_close_file(handle)
     return acq_man
 
@@ -131,9 +133,8 @@ def load_acq(
     end: int = 24000000,
 ):
     acq = AcqManager()
-    if not _path_checker(file_path, save_path):
-        return None
-    elif PurePath(file_path).suffix == ".pl2":
+    _ = _path_checker(file_path, save_path)
+    if Path(file_path).suffix == ".pl2":
         data = pl2_ad(file_path, channel)
         acq.load_pl2_acq(
             data.ad,
@@ -144,7 +145,7 @@ def load_acq(
             save_path=save_path,
         )
         return acq
-    elif PurePath(file_path).suffix == ".hdf5":
+    elif Path(file_path).suffix == ".hdf5":
         acq.load_hdf5_file(file_path)
         return acq
     else:
@@ -157,17 +158,14 @@ def _path_checker(file_path: str, save_path: str):
         if Path(file_path).exists():
             return True
         else:
-            FileNotFoundError("The file path does not exist.")
-            return False
+            raise FileNotFoundError("The file path does not exist.")
     elif save_path is not None:
         if Path(save_path).exists() and Path(file_path).exists():
             return True
         elif not Path(save_path).exists() and Path(file_path).exists():
-            NotADirectoryError("The save path is not a directory.")
-            return False
+            raise NotADirectoryError("The save path is not a directory.")
         elif Path(save_path).exists() and not Path(file_path).exists():
-            FileNotFoundError("The file path does not exist.")
-            return False
+            raise FileNotFoundError("The file path does not exist.")
         else:
             return False
     else:

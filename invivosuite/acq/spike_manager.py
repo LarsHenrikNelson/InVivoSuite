@@ -1553,8 +1553,6 @@ class SpkManager:
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
         sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
-        size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
-
         if accepted:
             cluster_ids = self.cluster_ids[self.accepted_units]
         else:

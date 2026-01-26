@@ -20,18 +20,18 @@
 #      parts of the API.
 
 from .pypl2lib import (
-    PL2FileInfo,  # noqa: F401
-    PL2AnalogChannelInfo,  # noqa: F401
-    PL2SpikeChannelInfo,  # noqa: F401
-    PL2DigitalChannelInfo,  # noqa: F401
-    PyPL2FileReader,  # noqa: F401
+    PL2FileInfo,
+    PL2AnalogChannelInfo,
+    PL2SpikeChannelInfo,
+    PL2DigitalChannelInfo,
+    PyPL2FileReader,
 )
 from .pypl2api import (
-    pl2_ad,  # noqa: F401
-    pl2_spikes,  # noqa: F401
-    pl2_events,  # noqa: F401
-    pl2_info,  # noqa: F401
-    pl2_comments,  # noqa: F401
+    pl2_ad,
+    pl2_spikes,
+    pl2_events,
+    pl2_info,
+    pl2_comments,
 )
 
 __author__ = "Chris Heydrick (chris@plexon.com)"
