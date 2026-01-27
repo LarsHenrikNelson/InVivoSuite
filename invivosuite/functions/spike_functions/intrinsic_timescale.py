@@ -41,8 +41,7 @@ class SExpDecay:
         return y
 
     def _get_bounds(self, x: np.ndarray, y: np.ndarray) -> tuple:
-        amplitude = y.max() - y.min()
-        upper_bounds = [amplitude * 2, x.max() * 5, np.inf]
+        upper_bounds = [y.max() * 2, x.max() * 5, np.inf]
         lower_bounds = [0.0, 0.0, -np.inf]
         return lower_bounds, upper_bounds
 
@@ -54,11 +53,6 @@ class SExpDecay:
 
     def _create_result(self, popt: tuple):
         return SExpDecayFit(*popt)
-
-    def _get_bounds(self, x: np.ndarray, y: np.ndarray) -> None | tuple | list:
-        upper_bounds = [y.max() * 2, x[-1], np.inf]
-        lower_bounds = [0.0, 0.0, -np.inf]
-        return lower_bounds, upper_bounds
 
     def predict(self, x: np.ndarray) -> np.ndarray:
         if self._params is None:
