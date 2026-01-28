@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal, Optional, Union
 
 import numpy as np
+from scipy import ndimage
 from send2trash import send2trash
 
 from ..functions import spike_functions as spkf
@@ -73,11 +74,6 @@ class SpkManager:
                 self.ks_directory / "spike_clusters.npy", load_type
             ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
-
-    def _create_chan_clusters(self):
-        self.chan_clusters = defaultdict(list)
-        for cluster, chan in zip(self.cluster_ids, self.cluster_channels):
-            self.chan_clusters[chan].append(cluster)
 
     def _load_spike_times(self, load_type: str = "r+"):
         # Ignoring load_type here because kilosort spike_times may be
@@ -194,14 +190,31 @@ class SpkManager:
         self,
         fs: Optional[int] = None,
         output_type: Literal["sec", "ms", "samples"] = "samples",
+        accepted: bool = False,
         start: int = 0,
         end: int = 0,
     ):
-        cluster_dict = {}
-        for i in self.cluster_ids:
-            cluster_dict[i] = self.get_cluster_spike_times(
-                i, output_type=output_type, fs=fs, start=start, end=end
-            )
+        spike_times = self.spike_times
+        if start != end:
+            indices = (spike_times <= end) & (spike_times >= start)
+            spike_times = spike_times[indices]
+            spike_ids = self.spike_clusters[indices]
+        else:
+            spike_ids = self.spike_clusters
+        sort_idx = np.argsort(spike_ids, kind="stable")  # stable preserves time order
+        sorted_ids = spike_ids[sort_idx]
+        sorted_times = spike_times[sort_idx]
+
+        # Find split points
+        split_points = np.flatnonzero(np.diff(sorted_ids)) + 1
+
+        # Split into list of arrays
+        times = np.split(sorted_times, split_points)
+        clusters = np.split(sorted_ids, split_points)
+        cluster_dict = {key[0]: value for key, value in zip(clusters, times)}
+        if accepted:
+            cids = self.cluster_ids[self.accepted_units]
+            cluster_dict = {i: cluster_dict[i] for i in cids}
         return cluster_dict
 
     def get_cluster_spike_amplitudes(
@@ -333,27 +346,78 @@ class SpkManager:
                 index += 1
         return cids, cluster_channel, chans, chan_cid_dict
 
-    def get_binary_spikes_channel(
+    def get_raster(
         self,
-        channel: Union[int, list[int]] | None = None,
+        bin_size=1,
+        jitter=1,
         start: int = 0,
         end: int = 0,
         accepted: bool = False,
-        dtype: Union[int, bool] = int,
+        dtype: Literal["int", "bool"] = "bool",
     ) -> np.ndarray:
-        if end == 0:
-            temp_end = self.end - self.start
-        length = temp_end - start
-        index = 0
-        cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
-            channel=channel, accepted=accepted
-        )
-        output = np.zeros((cids.size, length), dtype=dtype)
-        for chan in chans:
-            for cid in chan_cid_dict[chan]:
-                output[index] = self.get_binary_spike_cluster(cid, start=start, end=end)
-                index += 1
-        return output, cids, cluster_channel
+        """Generate a raster plot of spike times. The raster can be binned and have jitter added
+
+        Parameters
+        ----------
+        bin_size : int, optional
+            Binning size in samples, by default 1
+        jitter : int, optional
+            Jitter size in samples and must be larger than bin_size, by default 1
+        start : int, optional
+            Start index of spike times in samples to grab, by default 0
+        end : int, optional
+            End index of spike times in samples to grab, by default 0
+        accepted : bool, optional
+            Return only accepted units, by default False
+        dtype : Literal[&quot;int&quot;, &quot;bool&quot;], optional
+            "bool" will return an array with ones or zeros while "int" can go above one (true spike count), by default "bool"
+
+        Returns
+        -------
+        np.ndarray
+            _description_
+        """
+        if start != end:
+            duration = end - start
+        else:
+            duration = self.end - self.start
+
+        n_bins = int(np.ceil(duration / bin_size))
+
+        if accepted:
+            accepted_cids = set(self.cluster_ids[self.accepted_units])
+            truth_index = [
+                True if i in accepted_cids else False for i in self.spike_clusters
+            ]
+            id_to_row = {
+                uid: i for i, uid in enumerate(self.cluster_ids[self.accepted_units])
+            }
+            row_indices = np.array(
+                [id_to_row[sid] for sid in self.spike_clusters[truth_index]]
+            )
+            bin_indices = np.clip(
+                (self.spike_times[truth_index] / bin_size).astype(int), 0, n_bins - 1
+            )
+        else:
+            id_to_row = {uid: i for i, uid in enumerate(self.cluster_ids)}
+            row_indices = np.array([id_to_row[sid] for sid in self.spike_clusters])
+            bin_indices = np.clip(
+                (self.spike_times / bin_size).astype(int), 0, n_bins - 1
+            )
+            accepted_cids = self.cluster_ids
+
+        n_neurons = len(accepted_cids)
+        raster = np.zeros((n_neurons, n_bins), dtype=np.uint8)
+
+        np.add.at(raster, (row_indices, bin_indices), 1)
+        if dtype == "bool":
+            np.clip(raster, 0, 1, out=raster)
+
+        if jitter > 1 and jitter > bin_size:
+            kernel_width = 2 * int(np.ceil(jitter / bin_size)) + 1
+            kernel = np.ones(kernel_width, dtype=np.float32)
+            raster = ndimage.convolve1d(raster, kernel, axis=1, mode="constant")
+        return raster
 
     def get_binned_spikes_channel(
         self,

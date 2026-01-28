@@ -47,6 +47,7 @@ def _set_array(array: np.ndarray, window: np.ndarray, method: Methods):
             sdf[start:end] = window[wstart:wend]
     return sdf
 
+
 def create_continuous_spikes(
     spikes: np.ndarray,
     binary_size: int,

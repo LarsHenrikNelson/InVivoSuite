@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 
 class WordAnalyzer:
@@ -7,12 +8,6 @@ class WordAnalyzer:
     """
 
     def __init__(self, raster):
-        """
-        Parameters
-        ----------
-        raster : ndarray
-            Binary array (neurons × timepoints), dtype should be uint8 or bool
-        """
         self.raster = np.asarray(raster, dtype=np.uint8)
         self.n_neurons, self.n_timepoints = raster.shape
 
@@ -108,26 +103,12 @@ class WordAnalyzer:
         return self._analysis
 
     def _shuffle_raster(self, rng):
-        """Shuffle each neuron's spike train independently."""
-        shuffled = np.empty_like(self.raster)
-        for i in range(self.n_neurons):
-            shuffled[i] = rng.permutation(self.raster[i])
-        return shuffled
-
-    def _shuffle_raster_fast(self, rng):
         """
         Faster shuffling using argsort trick.
         Shuffles all neurons at once.
         """
-        # Generate random values and argsort to get permutation indices
-        random_vals = rng.random(self.raster.shape)
-        sort_indices = np.argsort(random_vals, axis=1)
 
-        # Apply permutation to each row
-        row_indices = np.arange(self.n_neurons)[:, None]
-        shuffled = self.raster[row_indices, sort_indices]
-
-        return shuffled
+        return rng.permuted(self.raster, axis=1)
 
     def permutation_test(
         self, n_permutations=1000, seed=None, top_n=None, z_threshold=None
@@ -194,14 +175,12 @@ class WordAnalyzer:
         # Run permutations
         for _ in range(n_permutations):
             # Shuffle and count
-            shuffled = self._shuffle_raster_fast(rng)
+            shuffled = self._shuffle_raster(rng)
             packed_shuffled = self._pack_raster(shuffled)
             null_words, _, null_word_counts = self._count_packed(packed_shuffled)
 
             # Build count lookup
             seen_this_perm = set()
-
-            # Only iterate through null words that we're testing
             for null_word, count in zip(null_words, null_word_counts):
                 if null_word in word_to_idx:
                     i = word_to_idx[null_word]
@@ -232,7 +211,8 @@ class WordAnalyzer:
         null_var = (null_sum_sq / n_permutations) - (null_mean**2)
         null_std = np.sqrt(np.maximum(null_var, 0))
 
-        z_scores = np.where(null_std > 0, (obs_counts - null_mean) / null_std, 0)
+        safe_std = np.where(null_std > 0, null_std, 1)
+        z_scores = np.where(null_std > 0, (obs_counts - null_mean) / safe_std, 0)
 
         p_greater = count_exceeds / n_permutations
         p_less = count_below / n_permutations
@@ -319,7 +299,6 @@ class WordAnalyzer:
             perm_results = self.permutation_test(
                 n_permutations=n_perms,
                 z_threshold=kwargs.get("pre_filter_z", 2.0),
-                verbose=kwargs.get("verbose", True),
             )
 
             synchrony = []
