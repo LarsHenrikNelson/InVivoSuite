@@ -98,6 +98,7 @@ class WordAnalyzer:
             "z_scores": z_scores,
             "n_active": bit_matrix.sum(axis=1),
             "n_unique": n_unique,
+            "n_units": self.raster.shape[0],
         }
 
         return self._analysis
@@ -219,33 +220,19 @@ class WordAnalyzer:
         p_two_sided = 2 * np.minimum(p_greater, p_less)
         p_two_sided = np.minimum(p_two_sided, 1.0)
 
-        # Build results
-        results = []
-        for i, word in enumerate(words_to_test):
-            results.append(
-                {
-                    "word": word,
-                    "bits": self.bytes_to_bits(word),
-                    "n_active": self.bytes_to_bits(word).sum(),
-                    "observed": int(obs_counts[i]),
-                    "null_mean": null_mean[i],
-                    "null_std": null_std[i],
-                    "null_min": int(null_min[i]),
-                    "null_max": int(null_max[i]),
-                    "z_score": z_scores[i],
-                    "p_two_sided": p_two_sided[i],
-                    "p_greater": p_greater[i],
-                    "p_less": p_less[i],
-                }
-            )
-
-        results.sort(key=lambda x: -abs(x["z_score"]))
-
-        return {
-            "results": results,
-            "n_permutations": n_permutations,
-            "n_tested": len(words_to_test),
+        output = {
+            "word": words_to_test,
+            "observed": obs_counts.astype(int),
+            "null_mean": null_mean,
+            "null_std": null_std,
+            "null_min": null_min.astype(int),
+            "null_max": null_max.astype(int),
+            "z_score": z_scores,
+            "p_two_sided": p_two_sided,
+            "p_greater": p_greater,
+            "p_less": p_less,
         }
+        return output
 
     def get_significant_words(self, method="independence", **kwargs):
         """

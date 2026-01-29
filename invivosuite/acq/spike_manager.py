@@ -8,6 +8,7 @@ from scipy import ndimage
 from send2trash import send2trash
 
 from ..functions import spike_functions as spkf
+from ..functions import signal_functions as signal_f
 from ..utils import concatenate_dicts, save_tsv, TempMemmap
 
 Callback = Callable[[str], None]
@@ -1646,3 +1647,72 @@ class SpkManager:
         decay_fit = spkf.SExpDecay()
         fit = decay_fit.fit(lag_corrs, sttc_corrs)
         return lag_corrs, sttc_corrs, fit, decay_fit
+
+    def stpr(
+        self,
+        sigma: float,
+        bin_size: int = 1,
+        accepted: bool = False,
+        start: int = 0,
+        end: int = 0,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Spike triggered population rate. For each unit grab the population spike rate that is within +/-bin_size of each spike.
+        For each unit the summed binary data excluding the unit of interest is convolved with a gaussian of width sigma before
+        the stPR is extracted.
+
+        Parameters
+        ----------
+        sigma : float
+            Sigma of the gaussian curve used for convolution. Sigma is in samples.
+        bin_size : int, optional
+            Number of samples to bin, by default 1
+        accepted : bool, optional
+            Whether to get accepted or all units, by default False
+        start : int, optional
+            Start of spike timestamps in samples to use. If zero then uses HDF5 self.start, by default 0
+        end : int, optional
+            End of spike timestamps in samples to use. If zero then uses HDF5 self.start, by default 0
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, np.ndarray]
+            stPRs, n_spikes per unit, Standard deviation of each stPR
+        """
+        if end == 0:
+            temp = self.end - self.start
+        else:
+            temp = end - start
+        raster_binary = self.get_raster(
+            accepted=accepted, bin_size=bin_size, dtype="int", start=start, end=end
+        )
+        normalized_activity = raster_binary / raster_binary.sum(axis=1, keepdims=True)
+        width = 500
+        timestamps = np.arange(raster_binary.shape[1])
+        longest = raster_binary.shape[1] - width
+        stprs = []
+        n_spikes = []
+        for i in range(raster_binary.shape[0]):
+            window = signal_f.create_window(
+                "gaussian", sigma=sigma, fs=int(temp / bin_size)
+            )
+            summed_activity = np.delete(normalized_activity, i, axis=0).mean(axis=0)
+            smoothed = signal_f.convolve(summed_activity, window / window.sum())
+            # hsum = signal.hilbert(smoothed)
+            times = timestamps[raster_binary[i,] == 1]
+            stpr = (
+                np.array(
+                    [
+                        smoothed[i - width : i + width]
+                        for i in times
+                        if i < longest and i > width
+                    ]
+                ).mean(axis=0)
+                - summed_activity.mean()
+            )
+            stprs.append(stpr)
+            n_spikes.append(times.sum())
+
+        stprs = np.array(stprs)
+        stdev = np.sqrt((stprs**2).sum(axis=1))
+        n_spikes = np.array(n_spikes)
+        return stprs, n_spikes, stdev

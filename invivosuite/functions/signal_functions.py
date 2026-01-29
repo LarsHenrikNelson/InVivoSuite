@@ -59,7 +59,10 @@ def instantaneous_frequency(analytic_signal, fs):
 
 
 def short_time_energy(
-    array, window: Windows = "hamming", wlen: int = 0.2, fs: Union[float, int] = 1000.0
+    array,
+    window: Windows = "hamming",
+    wlen: float = 0.2,
+    fs: Union[float, int] = 1000.0,
 ):
     wlen = int(wlen * fs)
     win_array = signal.get_window(window, wlen)
@@ -70,22 +73,27 @@ def short_time_energy(
 
 
 @njit(cache=True)
-def sliding_func(array: np.array, window: int, closed: Literal["left", "right", "center"] = "center", func: Callable = np.mean):
-    output = np.zeros(array.size+window+1)
+def sliding_func(
+    array: np.ndarray,
+    window: int,
+    closed: Literal["left", "right", "center"] = "center",
+    func: Callable = np.mean,
+):
+    output = np.zeros(array.size + window + 1)
     index = 0
-    for i in range(0,window):
-        output[index] = func(array[:i+1])
+    for i in range(0, window):
+        output[index] = func(array[: i + 1])
         index += 1
-    for i in range(0, array.size + 1-window):
+    for i in range(0, array.size + 1 - window):
         output[index] = func(array[i : i + window])
         index += 1
     for i in range(array.size - window, array.size):
         output[index] = func(array[i : array.size])
         index += 1
     if closed == "center":
-        output = output[window:array.size]
+        output = output[window : array.size]
     elif closed == "left":
-        output = output[:array.size]
+        output = output[: array.size]
     else:
         output = output[window:]
     return output
@@ -517,7 +525,7 @@ def create_window(
     fs: float | int,
 ):
     if window == "exponential_abi":
-        filtPts = int(5 * sigma * fs)*2
+        filtPts = int(5 * sigma * fs) * 2
         w = np.zeros(filtPts * 2)
         w[-filtPts:] = signal.windows.exponential(
             filtPts, center=0, tau=(1 / sigma), sym=False
@@ -556,7 +564,14 @@ def mutual_info(x, y, bins=20):
     return x_entropy + y_entropy - joint_entropy
 
 
-def bin_by(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float, func: Callable = np.mean):
+def bin_by(
+    phi: np.ndarray,
+    amp: np.ndarray,
+    steps: int,
+    min_value: float,
+    max_value: float,
+    func: Callable = np.mean,
+):
     """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
     for a good explanation and implementation.
 
@@ -576,8 +591,11 @@ def bin_by(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_v
             binned_data[i] = func(subset)
     return output_bins, binned_data
 
+
 @njit(cache=True)
-def bin_by_numba(phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float):
+def bin_by_numba(
+    phi: np.ndarray, amp: np.ndarray, steps: int, min_value: float, max_value: float
+):
     """See: https://mark-kramer.github.io/Case-Studies-Python/07.html
     for a good explanation and implementation.
 
