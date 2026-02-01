@@ -1648,6 +1648,37 @@ class SpkManager:
         fit = decay_fit.fit(lag_corrs, sttc_corrs)
         return lag_corrs, sttc_corrs, fit, decay_fit
 
+    def lziv_complexity(
+        self,
+        bin_size=1,
+        jitter=1,
+        start: int = 0,
+        end: int = 0,
+        accepted: bool = False,
+    ):
+        raster_binary = self.get_raster(
+            bin_size=bin_size,
+            jitter=jitter,
+            start=start,
+            end=end,
+            accepted=accepted,
+            dtype="bool",
+        )
+        packed = np.packbits(raster_binary, axis=0)
+        word_to_id = {}
+        sequence = []
+
+        for t in range(packed.shape[1]):
+            word = packed[:, t].tobytes()
+            if word not in word_to_id:
+                word_to_id[word] = len(word_to_id)
+            sequence.append(word_to_id[word])
+
+        sequence = np.array(sequence)
+
+        x = spkf.lziv_complexity(sequence, normalize=True)
+        return x
+
     def stpr(
         self,
         sigma: float,

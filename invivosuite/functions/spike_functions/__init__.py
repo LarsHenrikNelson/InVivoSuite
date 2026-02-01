@@ -11,3 +11,5 @@ from .spike_synchrony import synchronous_periods
 from .sttc_methods import *
 from .synthetic_spike_train import _fit_iei, gen_spike_train
 from .word_analysis import WordAnalyzer
+from .lziv import lziv_complexity
+from .seqnmf import seqNMF
