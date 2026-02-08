@@ -355,7 +355,7 @@ class SpkManager:
         end: int = 0,
         accepted: bool = False,
         dtype: Literal["int", "bool"] = "bool",
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Generate a raster plot of spike times. The raster can be binned and have jitter added
 
         Parameters
@@ -386,7 +386,7 @@ class SpkManager:
         n_bins = int(np.ceil(duration / bin_size))
 
         if accepted:
-            accepted_cids = set(self.cluster_ids[self.accepted_units])
+            accepted_cids = self.cluster_ids[self.accepted_units]
             truth_index = [
                 True if i in accepted_cids else False for i in self.spike_clusters
             ]
@@ -405,7 +405,7 @@ class SpkManager:
             bin_indices = np.clip(
                 (self.spike_times / bin_size).astype(int), 0, n_bins - 1
             )
-            accepted_cids = self.cluster_ids
+            accepted_cids = self.cluster_ids.copy()
 
         n_neurons = len(accepted_cids)
         raster = np.zeros((n_neurons, n_bins), dtype=np.uint8)
@@ -418,7 +418,7 @@ class SpkManager:
             kernel_width = 2 * int(np.ceil(jitter / bin_size)) + 1
             kernel = np.ones(kernel_width, dtype=np.float32)
             raster = ndimage.convolve1d(raster, kernel, axis=1, mode="constant")
-        return raster
+        return raster, accepted_cids
 
     def get_binned_spikes_channel(
         self,
@@ -427,7 +427,7 @@ class SpkManager:
         start: int = 0,
         end: int = 0,
         accepted: bool = False,
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if end == 0:
             temp_end = self.end - self.start
         length = (temp_end - start) // nperseg
@@ -1656,7 +1656,7 @@ class SpkManager:
         end: int = 0,
         accepted: bool = False,
     ):
-        raster_binary = self.get_raster(
+        raster_binary, _ = self.get_raster(
             bin_size=bin_size,
             jitter=jitter,
             start=start,
@@ -1683,10 +1683,12 @@ class SpkManager:
         self,
         sigma: float,
         bin_size: int = 1,
+        stpr_width: int = 500,
         accepted: bool = False,
+        fs: float | int = 40000,
         start: int = 0,
         end: int = 0,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Spike triggered population rate. For each unit grab the population spike rate that is within +/-bin_size of each spike.
         For each unit the summed binary data excluding the unit of interest is convolved with a gaussian of width sigma before
         the stPR is extracted.
@@ -1709,41 +1711,44 @@ class SpkManager:
         tuple[np.ndarray, np.ndarray, np.ndarray]
             stPRs, n_spikes per unit, Standard deviation of each stPR
         """
-        if end == 0:
-            temp = self.end - self.start
-        else:
-            temp = end - start
-        raster_binary = self.get_raster(
+        raster_binary, cluster_ids = self.get_raster(
             accepted=accepted, bin_size=bin_size, dtype="int", start=start, end=end
         )
         normalized_activity = raster_binary / raster_binary.sum(axis=1, keepdims=True)
-        width = 500
+        summed_activity = normalized_activity.sum(axis=0)
         timestamps = np.arange(raster_binary.shape[1])
-        longest = raster_binary.shape[1] - width
+        longest = raster_binary.shape[1] - stpr_width
         stprs = []
         n_spikes = []
+
+        sigma = sigma / bin_size
+        smoothed_output = np.empty(summed_activity.size, dtype=np.float64)
         for i in range(raster_binary.shape[0]):
-            window = signal_f.create_window(
-                "gaussian", sigma=sigma, fs=int(temp / bin_size)
-            )
-            summed_activity = np.delete(normalized_activity, i, axis=0).mean(axis=0)
-            smoothed = signal_f.convolve(summed_activity, window / window.sum())
+            temp = summed_activity - normalized_activity[i, :]
+            smoothed = ndimage.gaussian_filter1d(temp, sigma, output=smoothed_output)
             # hsum = signal.hilbert(smoothed)
             times = timestamps[raster_binary[i,] == 1]
             stpr = (
                 np.array(
                     [
-                        smoothed[i - width : i + width]
+                        smoothed[i - stpr_width : i + stpr_width]
                         for i in times
-                        if i < longest and i > width
+                        if i < longest and i > stpr_width
                     ]
                 ).mean(axis=0)
                 - summed_activity.mean()
             )
-            stprs.append(stpr)
-            n_spikes.append(times.sum())
+            if len(stpr) > 0:
+                stprs.append(stpr)
+                n_spikes.append(len(times))
+            else:
+                stprs.append(np.zeros(stpr_width * 2))
+                n_spikes.append(times.sum())
 
         stprs = np.array(stprs)
         stdev = np.sqrt((stprs**2).sum(axis=1))
+        amps = np.array(
+            [i[int(stpr_width - 1) : int(stpr_width + 1)].mean() for i in stprs]
+        )
         n_spikes = np.array(n_spikes)
-        return stprs, n_spikes, stdev
+        return stprs, n_spikes, amps, stdev, cluster_ids
