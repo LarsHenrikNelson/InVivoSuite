@@ -113,7 +113,6 @@ def seqNMF(
     Lambda=0.001,
     W_init=None,
     H_init=None,
-    plot_it=False,
     max_iter=100,
     tol=-np.inf,
     shift=True,
