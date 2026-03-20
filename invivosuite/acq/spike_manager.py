@@ -1603,9 +1603,9 @@ class SpkManager:
     def isttc(
         self,
         dt: Union[float, int] = 25,
-        lag: float = 50,
         start_lag: float | None = None,
         nlags: int = 50,
+        max_lag: float = 1000.0,
         sttc_limit: float = 1.0,
         start: int = 0,
         end: int = 0,
@@ -1628,17 +1628,17 @@ class SpkManager:
             cluster_times = self.get_cluster_spike_times(
                 i, output_type=output_type, fs=fs, start=start, end=end
             )
-            lags, corrs = spkf.sttc_autocorr(
+            lags, corrs = spkf._sttc_positive_lags(
                 cluster_times,
                 dt=dt,
-                lag=lag,
-                start_lag=start_lag,
                 nlags=nlags,
+                max_lag=max_lag,
                 start=sttc_start,
                 stop=sttc_end,
             )
-            sttc_corrs.append(corrs)
-            lag_corrs.append(lags)
+            mask = lags >= start_lag
+            sttc_corrs.append(corrs[mask])
+            lag_corrs.append(lags[mask])
         sttc_corrs = np.concatenate(sttc_corrs)
         lag_corrs = np.concatenate(lag_corrs)
         mask = (sttc_corrs <= sttc_limit) & (sttc_corrs >= -sttc_limit)
