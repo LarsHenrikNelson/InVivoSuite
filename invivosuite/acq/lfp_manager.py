@@ -143,6 +143,7 @@ class LFPManager:
         self,
         channel: int,
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
+        scaling: Literal["complex", "amplitude", "power", "psd", "asd"] = "complex",
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -196,9 +197,15 @@ class LFPManager:
                 norm=pxx_attrs["norm"],
             )
             sxx = pyf.cwt(array)
-            power (np.abs(sxx)**2).mean(axis=1)
-            bandwidth = 2.0 * freqs / sxx_attrs["gauss_sd"]
-            pxx = power / bandwidth[:, np.newaxis]  # µV²/Hz
+            if scaling == "psd":
+                sxx = pyf.psd(sxx)
+            elif scaling == "power":
+                sxx = pyf.power(sxx)
+            elif scaling == "amplitude":
+                sxx = pyf.amplitude(sxx)
+            elif scaling == "asd":
+                sxx = pyf.asd(sxx)
+            pxx = sxx.mean(axis=1)
         else:
             AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
