@@ -165,7 +165,6 @@ class LFPManager:
             end=end,
         )
         if pxx_type == "multitaper":
-            print(pxx_attrs)
             freqs, pxx, _ = multitaper(array, fs=fs, **pxx_attrs)
         elif pxx_type == "periodogram":
             freqs, pxx = signal.periodogram(array, fs=fs, **pxx_attrs)

@@ -8,3 +8,4 @@ from .cross_frequency_coupling import (
     cfc_pvalue,
     modulation_index,
 )
+from . import irasa
