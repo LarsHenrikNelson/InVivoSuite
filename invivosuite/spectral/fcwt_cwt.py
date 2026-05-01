@@ -162,3 +162,110 @@ class PyFCWT:
             cwt /= newsize
 
         return cwt
+
+    def _sigma_f(self) -> np.ndarray:
+        """Frequency-domain standard deviation of the wavelet at each
+        analysis frequency.
+
+        For a Morlet wavelet the time-domain Gaussian has
+        ``sigma_t = n_cycles / (2 * pi * fc)`` (frequency-adaptive) or
+        ``sigma_t = n_cycles / (2 * pi * sigma)`` (fixed).  The
+        corresponding frequency-domain std dev is
+        ``sigma_f = 1 / (2 * pi * sigma_t)``.
+
+        Returns
+        -------
+        np.ndarray
+            sigma_f for every frequency in ``self.frequencies.f``.
+        """
+        n_cycles = self.wavelet.n_cycles
+        if self.wavelet.sigma == -1:
+            # Frequency-adaptive: sigma_f = fc / n_cycles
+            return self.frequencies.f / n_cycles
+        else:
+            # Fixed sigma: sigma_f = sigma / n_cycles  (constant)
+            return np.full_like(
+                self.frequencies.f, self.wavelet.sigma / n_cycles
+            )
+
+    def enbw(self) -> np.ndarray:
+        """Equivalent noise bandwidth of the wavelet at each analysis
+        frequency.
+
+        For a Gaussian with std dev ``sigma_f`` the ENBW is
+        ``sigma_f * sqrt(pi)``.
+
+        Returns
+        -------
+        np.ndarray
+            ENBW in Hz, shape ``(n_freqs,)``.
+        """
+        return self._sigma_f() * np.sqrt(np.pi)
+
+    def amplitude(self, cwt_result: np.ndarray) -> np.ndarray:
+        """Amplitude spectrum from CWT coefficients: ``|W(f, t)|``.
+
+        Parameters
+        ----------
+        cwt_result : np.ndarray
+            CWT output, shape ``(n_freqs, n_times)``.
+
+        Returns
+        -------
+        np.ndarray
+            Amplitude in signal units, same shape as *cwt_result*.
+        """
+        return np.abs(cwt_result)
+
+    def power(self, cwt_result: np.ndarray) -> np.ndarray:
+        """Power spectrum from CWT coefficients: ``|W(f, t)|^2``.
+
+        Parameters
+        ----------
+        cwt_result : np.ndarray
+            CWT output, shape ``(n_freqs, n_times)``.
+
+        Returns
+        -------
+        np.ndarray
+            Power in signal_units^2, same shape as *cwt_result*.
+        """
+        return np.abs(cwt_result) ** 2
+
+    def psd(self, cwt_result: np.ndarray) -> np.ndarray:
+        """Power spectral density from CWT coefficients.
+
+        Normalises the power spectrum by the equivalent noise bandwidth
+        (ENBW) of the wavelet at each frequency so the result has
+        units of ``signal_units^2 / Hz``.
+
+        Parameters
+        ----------
+        cwt_result : np.ndarray
+            CWT output, shape ``(n_freqs, n_times)``.
+
+        Returns
+        -------
+        np.ndarray
+            PSD in signal_units^2 / Hz, same shape as *cwt_result*.
+        """
+        return self.power(cwt_result) / self.enbw()[:, np.newaxis]
+
+    def asd(self, cwt_result: np.ndarray) -> np.ndarray:
+        """Amplitude spectral density from CWT coefficients.
+
+        Square root of the PSD, equivalent to normalising the
+        amplitude by ``sqrt(ENBW)`` at each frequency.  Units are
+        ``signal_units / sqrt(Hz)``.
+
+        Parameters
+        ----------
+        cwt_result : np.ndarray
+            CWT output, shape ``(n_freqs, n_times)``.
+
+        Returns
+        -------
+        np.ndarray
+            ASD in signal_units / sqrt(Hz), same shape as *cwt_result*.
+        """
+        return self.amplitude(cwt_result) / np.sqrt(self.enbw())[:, np.newaxis]

@@ -208,6 +208,7 @@ class LFPManager:
         self,
         channel: int,
         sxx_type: Literal["cwt", "spectrogram"],
+        scaling: Literal["complex", "amplitude", "power", "psd", "asd"] = "complex",
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -256,6 +257,14 @@ class LFPManager:
                 norm=sxx_attrs["norm"],
             )
             sxx = pyf.cwt(array)
+            if scaling == "psd":
+                sxx = pyf.psd(sxx)
+            elif scaling == "power":
+                sxx = pyf.power(sxx)
+            elif scaling == "amplitude":
+                sxx = pyf.amplitude(sxx)
+            elif scaling == "asd":
+                sxx = pyf.asd(sxx)
         return freqs, sxx
 
     def hilbert(
