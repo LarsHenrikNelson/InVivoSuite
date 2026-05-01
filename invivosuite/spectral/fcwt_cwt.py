@@ -88,6 +88,11 @@ class PyFCWT:
             self.n_cdtype = np.complex64
         self.zero_pad = zero_pad
 
+        # Warmup: force Numba JIT compilation and parallel runtime
+        # initialization so the first real call doesn't return zeros.
+        _warmup = np.zeros(4, dtype=self.n_cdtype)
+        daughter_wavelet_multiplication(_warmup, _warmup.copy(), _warmup, 1.0, 1.0)
+
     def cwt(
         self,
         input_data: np.ndarray,
@@ -109,9 +114,10 @@ class PyFCWT:
         a = pyfftw.zeros_aligned(newsize, dtype=self.fftw_fdtype)
         b = pyfftw.zeros_aligned(newsize // 2 + 1, dtype=self.fftw_cdtype)
         Ihat = pyfftw.zeros_aligned(newsize, dtype=self.fftw_cdtype)
-        a[:size] = input_data
 
+        # Plan BEFORE filling a — FFTW_MEASURE destroys buffer contents.
         forward_fft = pyfftw.FFTW(a, b, threads=self.threads)
+        a[:size] = input_data
         forward_fft()
 
         Ihat[: newsize // 2 + 1] = b

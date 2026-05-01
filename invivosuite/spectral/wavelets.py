@@ -51,9 +51,9 @@ class Wavelet:
         a = pyfftw.zeros_aligned(size, dtype=dtype)
         b = pyfftw.zeros_aligned(size, dtype=dtype)
 
-        a[: wavelet.size] = wavelet
-
+        # Plan BEFORE filling a — FFTW_MEASURE destroys buffer contents.
         forward_fft = pyfftw.FFTW(a, b, threads=1)
+        a[: wavelet.size] = wavelet
         forward_fft()
         if self.imaginary:
             return b
