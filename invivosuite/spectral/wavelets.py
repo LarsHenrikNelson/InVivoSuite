@@ -46,10 +46,10 @@ class Wavelet:
         oscillation /= np.sqrt(0.5) * np.linalg.norm(oscillation, ord=2)
         return oscillation
 
-    def frequency(self, fc: float, size: int):
+    def frequency(self, fc: float, size: int, dtype: str = "complex128"):
         wavelet = self.time(fc)
-        a = pyfftw.zeros_aligned(size, dtype="complex128")
-        b = pyfftw.zeros_aligned(size, dtype="complex128")
+        a = pyfftw.zeros_aligned(size, dtype=dtype)
+        b = pyfftw.zeros_aligned(size, dtype=dtype)
 
         a[: wavelet.size] = wavelet
 

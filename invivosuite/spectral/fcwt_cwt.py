@@ -96,11 +96,11 @@ class PyFCWT:
         max_w_size = self.wavelet.length(self.frequencies.f[-1])
         newsize = pyfftw.next_fast_len(size + max_w_size - 1)
 
-        if self.mother is None:
-            self.mother = self.wavelet.frequency(self.frequencies.f[1], newsize)
+        if self.mother is None or self.mother.size != newsize:
+            self.mother = self.wavelet.frequency(
+                self.frequencies.f[0], newsize, dtype=self.fftw_cdtype
+            )
             self.mscale = self.frequencies.s[0]
-        if self.mother.dtype != self.n_cdtype:
-            self.mother.astype(self.n_cdtype)
 
         if input_data.dtype != self.n_fdtype:
             input_data = input_data.astype(self.n_fdtype)
@@ -129,10 +129,15 @@ class PyFCWT:
             c, d, direction="FFTW_BACKWARD", threads=self.threads
         )
 
-        cwt = np.zeros((self.frequencies.s.size, size), dtype=self.n_cdtype)
-        for index, s in enumerate(self.frequencies.s):
-            # if s == self.scales[-1]:
-            #     last_scale = True
+        mother_half_len = self.wavelet.length(self.frequencies.f[0]) // 2
+        n_scales = self.frequencies.s.size
+        cwt = np.zeros((n_scales, size), dtype=self.n_cdtype)
+        # Iterate from largest scale (lowest freq, smallest batchsize) to
+        # smallest scale (highest freq, largest batchsize) so that each
+        # iteration's batchsize >= the previous one, naturally overwriting
+        # all prior values in c without needing to zero the buffer.
+        for index in range(n_scales - 1, -1, -1):
+            s = self.frequencies.s[index]
             daughter_wavelet_multiplication(
                 input_fft=Ihat,
                 output=c,
@@ -145,8 +150,7 @@ class PyFCWT:
             if not self.wavelet.imaginary:
                 cwt[index, :] = d[:size]
             else:
-                temp = self.wavelet.length(self.frequencies.f[index]) // 2
-                cwt[index, :] = d[temp : size + temp]
+                cwt[index, :] = d[mother_half_len : size + mother_half_len]
 
         if self.norm:
             cwt /= newsize

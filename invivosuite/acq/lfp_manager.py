@@ -196,7 +196,9 @@ class LFPManager:
                 norm=pxx_attrs["norm"],
             )
             sxx = pyf.cwt(array)
-            pxx = np.abs(sxx).mean(axis=1)
+            power (np.abs(sxx)**2).mean(axis=1)
+            bandwidth = 2.0 * freqs / sxx_attrs["gauss_sd"]
+            pxx = power / bandwidth[:, np.newaxis]  # µV²/Hz
         else:
             AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
