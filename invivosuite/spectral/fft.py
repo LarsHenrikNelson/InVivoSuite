@@ -36,7 +36,7 @@ def r2c_rfft(
     threads: int = -1,
 ):
     if nfft == -1:
-        nfft = 1 << int(np.ceil(np.log2(data.size)))
+        nfft = pyfftw.next_fast_len(data.size)
     else:
         nfft = data.size
     if threads == -1:
@@ -59,7 +59,7 @@ def r2c_fft(
     threads: int = -1,
 ):
     if nfft == -1:
-        nfft = 1 << int(np.ceil(np.log2(data.size)))
+        nfft = pyfftw.next_fast_len(data.size)
     if threads == -1:
         threads = os.cpu_count() // 2
     input_array = pyfftw.zeros_aligned(nfft, dtype="float64")
@@ -87,7 +87,7 @@ def c2c_fft(
     threads: int = -1,
 ):
     if nfft == -1:
-        nfft = 1 << int(np.ceil(np.log2(data.size)))
+        nfft = pyfftw.next_fast_len(data.size)
     if threads == -1:
         threads = os.cpu_count() // 2
     input_array = pyfftw.zeros_aligned(nfft, dtype="complex128")

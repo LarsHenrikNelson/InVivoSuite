@@ -33,8 +33,12 @@ Windows = Literal[
 ]
 
 def downsample(array, sample_rate, resample_freq, up_sample):
+        if len(array.shape) > 1:
+            axis = 1
+        else:
+            axis = -1
         ratio = sample_rate // resample_freq
-        resampled = signal.resample_poly(array, up_sample, up_sample * ratio)
+        resampled = signal.resample_poly(array, up_sample, up_sample * ratio, axis=axis)
         return resampled
 
 

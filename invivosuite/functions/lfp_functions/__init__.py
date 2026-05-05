@@ -9,3 +9,4 @@ from .cross_frequency_coupling import (
     modulation_index,
 )
 from . import irasa
+from .bosc import bosc_oscillations

@@ -7,7 +7,7 @@ name = "invivosuite"
 description = "In vivo electrophysiology analysis package for analyzing LFPs and spikes from Kilosort."
 readme = "README.md"
 authors = [{ name = "Lars Henrik Nelson", email = "larshnelson@protonmail.com" }]
-version = "2024.07.25"
+version = "2026.05.05"
 keywords = ["electrophysiology", "analysis"]
 dependencies = [
     "h5py",

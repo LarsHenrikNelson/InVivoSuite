@@ -282,7 +282,7 @@ wheels = [
 
 [[package]]
 name = "invivosuite"
-version = "2024.7.25"
+version = "2026.5.5"
 source = { editable = "." }
 dependencies = [
     { name = "h5py" },

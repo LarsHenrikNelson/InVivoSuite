@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Literal, Union, Iterable
+from typing import Literal, Union, Iterable, Callable
 
 import h5py
 import numpy as np
@@ -334,6 +334,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         acq_type: Literal["spike", "lfp", "wideband"],
         channels: Union[Iterable[int], None] = None,
+        average: None | Callable = None,
         ref_type: Literal["cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -370,7 +371,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if map_channel:
             channels = channel_map[channels - data[0]]
             multi_acqs = multi_acqs[channels]
-
+        if average is not None:
+            multi_acqs = average(multi_acqs.astype(float), axis=0)
+        if acq_type == "wideband":
+            return multi_acqs
         filter_dict = self.get_filter(acq_type)
         sample_rate = self.get_file_dataset("sample_rate", rows=int(channels[0]))
         multi_acqs = filter_array(
@@ -389,6 +393,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             pass
         #     W = self.get_grp_dataset("whitening_matrix", probe)
         #     multi_acq = W[start_chan:end_chan, start_chan:end_chan] @ multi_acq
+        if filter_dict["sample_rate"] != sample_rate:
+            multi_acqs = downsample(
+                multi_acqs, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
+            )
         return multi_acqs
 
     def get_groups(self):
