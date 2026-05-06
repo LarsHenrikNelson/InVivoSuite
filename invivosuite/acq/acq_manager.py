@@ -421,7 +421,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         else:
             end = self.end
 
-        self.callback(f"Getting acquisitions from {start}-{end}")
 
         data = self.get_grp_dataset("probes", probe)
         if channels is None:
@@ -435,6 +434,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             chunk_end = min(chunk_start + chunk_size, acq.size)
 
             with h5py.File(self.file_path, "r+") as f:
+                self.callback(f"Getting acquisitions from {chunk_start}-{chunk_end}")
                 multi_acqs = f["acqs"][channels, chunk_start:chunk_end] * f["coeffs"][channels].reshape(
                     -1, 1
                 ) - f["means"][channels].reshape(-1, 1)
