@@ -1,12 +1,11 @@
+from . import bosc, irasa
 from .burst_finding import (
     burst_baseline_periods,
     burst_stats,
     find_bursts,
 )
-from .phase_discontinuity import phase_discontinuity_index
 from .cross_frequency_coupling import (
     cfc_pvalue,
     modulation_index,
 )
-from . import irasa
-from .bosc import bosc_oscillations
+from .phase_discontinuity import phase_discontinuity_index

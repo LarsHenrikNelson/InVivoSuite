@@ -130,7 +130,7 @@ def _sttc_positive_lags(
         # timestamps1 shifted by +lag: filter to [start+lag, stop]
         idx1_lo = np.searchsorted(timestamps1, start + lag, side="left")
         idx1_hi = np.searchsorted(timestamps1, stop, side="right")
-        a = timestamps1[idx1_lo:indx1_hi] - lag - start
+        a = timestamps1[idx1_lo:idx1_hi] - lag - start
 
         # timestamps2: filter to [start, stop - lag]
         idx2_lo = np.searchsorted(timestamps2, start, side="left")

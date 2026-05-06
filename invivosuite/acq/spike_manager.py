@@ -1030,7 +1030,7 @@ class SpkManager:
                 f"Starting chunk {index + 1} of {n_chunks} starting at {i} and ending at {i + chunk_size}."
             )
             chunk_start = max(0, i - waveform_length)
-            recording_chunk = self.get_multichans(
+            recording_chunk = self.multichan_acq(
                 acq_type=acq_type,
                 ref_probe=ref_probe,
                 ref_type=ref_type,
@@ -1057,7 +1057,7 @@ class SpkManager:
         if leftover > 0:
             i = end - leftover
             self.callback(f"Starting chunk {index + 1} at sample {i}.")
-            recording_chunk = self.get_multichans(
+            recording_chunk = self.multichan_acq(
                 acq_type=acq_type,
                 ref_probe=ref_probe,
                 ref_type=ref_type,

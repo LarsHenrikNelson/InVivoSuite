@@ -239,7 +239,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         W = np.zeros((total_chans, total_chans))
         if neighbors != total_chans:
             for channel in range(probe_chans[1]):
-                acquisitions = self.get_multichans(
+                acquisitions = self.multichan_acq(
                     "spike",
                     channel=channel,
                     nchans=neighbors,
@@ -330,7 +330,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             )
         return acq
 
-    def get_multichans(
+    def multichan_acq(
         self,
         acq_type: Literal["spike", "lfp", "wideband"],
         channels: Union[Iterable[int], None] = None,
@@ -398,6 +398,76 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 multi_acqs, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
             )
         return multi_acqs
+
+    def avg_acq(
+        self,
+        acq_type: Literal["spike", "lfp", "wideband"],
+        channels: np.ndarray | list | None = None,
+        average: Callable = np.mean,
+        ref_type: Literal["cmr", "car", "none"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        chunk_size=0,
+        start: int = 0,
+        end: int = 0,
+    ):
+        if start > 0:
+            start = self.start + start
+        else:
+            start = self.start
+        if end > 0:
+            end = self.start + end
+        else:
+            end = self.end
+
+        self.callback(f"Getting acquisitions from {start}-{end}")
+
+        data = self.get_grp_dataset("probes", probe)
+        if channels is None:
+            channels = np.arange(data[0], data[1])
+
+        channel_map = self.get_grp_dataset("channel_maps", probe)
+
+        acq = np.zeros(int(end-start))
+
+        for chunk_start in range(0, acq.size, chunk_size):
+            chunk_end = min(chunk_start + chunk_size, acq.size)
+
+            with h5py.File(self.file_path, "r+") as f:
+                multi_acqs = f["acqs"][channels, chunk_start:chunk_end] * f["coeffs"][channels].reshape(
+                    -1, 1
+                ) - f["means"][channels].reshape(-1, 1)
+
+                if ref_type != "none":
+                    multi_acqs = multi_acqs - f[ref_type][ref_probe][start:end]
+
+            if map_channel:
+                temp_channels = channel_map[channels - data[0]]
+                multi_acqs = multi_acqs[temp_channels]
+            multi_acqs = average(multi_acqs.astype(float), axis=0)
+            acq[chunk_start:chunk_end] = multi_acqs
+        if acq_type == "wideband":
+            return acq
+        filter_dict = self.get_filter(acq_type)
+        sample_rate = self.get_file_dataset("sample_rate", rows=int(channels[0]))
+        acq = filter_array(
+            acq,
+            sample_rate=sample_rate,
+            filter_type=filter_dict["filter_type"],
+            order=filter_dict["order"],
+            highpass=filter_dict["highpass"],
+            high_width=filter_dict["high_width"],
+            lowpass=filter_dict["lowpass"],
+            low_width=filter_dict["low_width"],
+            window=filter_dict["window"],
+        )
+
+        if filter_dict["sample_rate"] != sample_rate:
+            acq = downsample(
+                acq, sample_rate, filter_dict["sample_rate"], filter_dict["up_sample"]
+            )
+        return acq
 
     def get_groups(self):
         with h5py.File(self.file_path, "r+") as f:

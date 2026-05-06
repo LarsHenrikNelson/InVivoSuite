@@ -5,6 +5,7 @@ import numpy as np
 from scipy import signal
 
 from ..functions import lfp_functions, signal_functions
+from ..functions.lfp_functions import bosc
 from ..functions.filter_functions import Filters, Windows, downsample, filter_array
 from ..spectral import Frequencies, PyFCWT, Wavelet, get_freq_window, multitaper
 
@@ -273,6 +274,27 @@ class LFPManager:
             elif scaling == "asd":
                 sxx = pyf.asd(sxx)
         return freqs, sxx
+
+    def bosc_oscillation(
+        self,
+        channel: int,
+        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        threshold_type: bosc.Ratio | bosc.Threshold | None = None,
+        ref_type: Literal["none", "cmr", "car"] = "cmr",
+        ref_probe: str = "all",
+        map_channel: bool = False,
+        probe: str = "all",
+        start: int = 0,
+        end: int = 0,
+    ):
+        freqs, sxx = self.sxx(
+            channel, "cwt", "psd", ref_type, ref_probe, map_channel, probe, start, end
+        )
+        is_oscillation = bosc.bosc_oscillations(sxx, sxx.mean(axis=1), threshold_type)
+        band_bool = np.zeros((len(freq_dict), is_oscillation.shape[1]))
+        for index, values in enumerate(freq_dict.values()):
+            mask = (freqs >= values[0]) & (freqs <= values[1])
+            band_bool[index, :] = np.any(is_oscillation[mask, :], axis=0)
 
     def hilbert(
         self,

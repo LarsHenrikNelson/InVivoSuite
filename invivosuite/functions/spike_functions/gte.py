@@ -1,7 +1,9 @@
 def gen_countinglist(proof_element, xy, x1x, x):
     not_in = 0
     t = 1
-    while (t<=len())
+    while t <= len(proof_element):
+        pass
+
 
 def gen_transfer_entropy(binned_spk_trains):
     num_cols = binned_spk_trains.shape[1]
@@ -16,7 +18,6 @@ def gen_transfer_entropy(binned_spk_trains):
                 words_k_x = 0
                 words_k_y1 = 0
                 words_k_x1 = binned_spk_trains(z, k + s)
-
 
                 # reverse
                 wordsr_k_x = 0

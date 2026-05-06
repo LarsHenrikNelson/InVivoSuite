@@ -40,3 +40,8 @@ Homepage = "https://github.com/LarsHenrikNelson/InVivoSuite"
 
 [tool.ruff.lint]
 ignore = ["F401", "F403"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
