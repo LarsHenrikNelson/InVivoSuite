@@ -12,7 +12,7 @@ from ..functions.spike_lfp_functions.spike_phase import (
     extract_spike_phase_data,
 )
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
-from ..spectral import Frequencies, PyFCWT, Wavelet
+from pyfcwt import Frequencies, PyFCWT, Wavelet
 from ..utils import concatenate_dicts, expand_data
 
 

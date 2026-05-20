@@ -7,7 +7,8 @@ from scipy import signal
 from ..functions import lfp_functions, signal_functions
 from ..functions.lfp_functions import bosc
 from ..functions.filter_functions import Filters, Windows, downsample, filter_array
-from ..spectral import Frequencies, PyFCWT, Wavelet, get_freq_window, multitaper
+from ..spectral import get_freq_window, multitaper
+from pyfcwt import Frequencies, PyFCWT, Wavelet
 
 
 class LFPManager:
