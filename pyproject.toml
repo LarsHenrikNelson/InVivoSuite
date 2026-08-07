@@ -17,12 +17,13 @@ dependencies = [
     "networkx",
     "numba",
     "numpy",
+    "pyfcwt>=0.1.1",
     "pyFFTW",
     "PyWavelets",
     "scikit-learn",
     "scipy",
     "Send2Trash",
-    "statsmodels"
+    "statsmodels",
 ]
 requires-python = ">=3.10"
 license = {text = 'GNU General Public License v3 (GPLv3)'}
