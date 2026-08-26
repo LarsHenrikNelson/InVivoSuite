@@ -942,10 +942,13 @@ class SpkManager:
     ):
         # Get only the current spikes
         current_spikes = np.where((spike_times < end) & (spike_times > start))[0]
-        self.callback(f"Current spikes: {current_spikes[0]}-{current_spikes[-1]}")
-        self.callback(
-            f"Current spike times: {spike_times[current_spikes[0]]}-{spike_times[current_spikes[-1]]}"
-        )
+        if len(current_spikes) > 0:
+            self.callback(f"Current spikes: {current_spikes[0]}-{current_spikes[-1]}")
+            self.callback(
+                f"Current spike times: {spike_times[current_spikes[0]]}-{spike_times[current_spikes[-1]]}"
+            )
+        else:
+            self.callback("No spikes in chunk")
         # Sort the spikes by amplitude
         extract_indexes = np.argsort(template_amplitudes[current_spikes])
 
