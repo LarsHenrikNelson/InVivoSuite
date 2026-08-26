@@ -2,7 +2,12 @@ from typing import Union
 
 import numpy as np
 
-__all__ = ["sfa_local_var", "sfa_divisor", "sfa_abi", "sfa_rlocal_var"]
+__all__ = [
+    "sfa_abi",
+    "sfa_divisor",
+    "sfa_local_var",
+    "sfa_rlocal_var",
+]
 
 
 def sfa_local_var(isi: np.ndarray) -> float:
@@ -17,7 +22,7 @@ def sfa_local_var(isi: np.ndarray) -> float:
     None.
 
     """
-    if len(isi) < 2 or isi is np.nan:
+    if len(isi) < 2 or np.isnan(isi):
         return np.nan
     isi_shift = isi[1:]
     isi_cut = isi[:-1]
@@ -29,7 +34,7 @@ def sfa_local_var(isi: np.ndarray) -> float:
     return output
 
 
-def sfa_rlocal_var(isi: np.ndarray, R: Union[float, int]) -> float:
+def sfa_rlocal_var(isi: np.ndarray, R: float) -> float:
     """
     This function calculates the revised local variance in spike frequency
     accomadation that was drawn from the paper:
@@ -42,7 +47,7 @@ def sfa_rlocal_var(isi: np.ndarray, R: Union[float, int]) -> float:
     None.
 
     """
-    if len(isi) <= 3 or isi is np.nan:
+    if len(isi) <= 3 or np.isnan(isi):
         return np.nan
     isi_plus = isi[1:] + isi[:1]
     isi_mult = isi[1:] * isi[:1]
@@ -58,7 +63,7 @@ def sfa_rlocal_var(isi: np.ndarray, R: Union[float, int]) -> float:
     return multiplier * np.sum(intermediate)
 
 
-def sfa_divisor(isi: list[np.ndarray]) -> np.ndarray[float]:
+def sfa_divisor(isi: np.ndarray) -> float:
     """
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
@@ -72,7 +77,7 @@ def sfa_divisor(isi: list[np.ndarray]) -> np.ndarray[float]:
         return 0.0
 
 
-def sfa_abi(isi: list[np.ndarray]) -> np.ndarray[float]:
+def sfa_abi(isi: np.ndarray) -> float:
     """
     This function calculates the spike frequency adaptation. A positive
     number means that the spikes are speeding up and a negative number

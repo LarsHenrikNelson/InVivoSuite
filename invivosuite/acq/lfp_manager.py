@@ -1,17 +1,19 @@
 import os
-from typing import Iterable, Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
+from pyfcwt import Frequencies, PyFCWT, Wavelet
 from scipy import signal
 
 from ..functions import lfp_functions, signal_functions
-from ..functions.lfp_functions import bosc
 from ..functions.filter_functions import Filters, Windows, downsample, filter_array
+from ..functions.lfp_functions import bosc
+from ..functions.lfp_functions.burst_finding import kde_baseline
 from ..spectral import get_freq_window, multitaper
-from pyfcwt import Frequencies, PyFCWT, Wavelet
+from .acq_manager import AcqManager
 
 
-class LFPManager:
+class LFPManager(AcqManager):
     def set_cwt(
         self,
         f0: int = 1,
@@ -76,12 +78,12 @@ class LFPManager:
     def set_multitaper(
         self,
         NW: float = 2.5,
-        BW: Union[float, None] = None,
+        BW: float | None = None,
         adaptive: bool = False,
         jackknife: bool = True,
         low_bias: bool = True,
         sides: str = "default",
-        NFFT: Union[int, None] = None,
+        NFFT: int | None = None,
     ):
         self.set_spectral_settings(
             "multitaper",
@@ -99,7 +101,7 @@ class LFPManager:
         nperseg: int = 2048,
         noverlap: int = 0,
         nfft: int = 2048,
-        window: Union[str, tuple[str, float]] = ("tukey", 0.25),
+        window: str | tuple[str, float] = ("tukey", 0.25),
         scaling: str = "density",
     ):
         self.set_spectral_settings(
@@ -128,7 +130,7 @@ class LFPManager:
     def get_spectral_settings(self, pxx_type: str):
         pxx_dict = self.get_grp_attrs(pxx_type)
         window_keys = [
-            i.split("_")[1] for i in pxx_dict.keys() if i.split("_")[0] == "window"
+            i.split("_")[1] for i in pxx_dict if i.split("_")[0] == "window"
         ]
         if len(window_keys) > 0:
             pxx_dict["window"] = tuple(
@@ -209,7 +211,7 @@ class LFPManager:
                 sxx = pyf.asd(sxx)
             pxx = sxx.mean(axis=1)
         else:
-            AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
+            raise AttributeError("pxx_type must be cwt, multitaper, periodogram, or welch")
             return None
         return freqs, pxx
 
@@ -279,7 +281,7 @@ class LFPManager:
     def bosc_oscillation(
         self,
         channel: int,
-        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        freq_dict: dict[str, tuple[int, int] | tuple[float, float]],
         threshold_type: bosc.Ratio | bosc.Threshold | None = None,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -305,13 +307,13 @@ class LFPManager:
         map_channel: bool = False,
         probe: str = "all",
         filter_type: Filters = "butterworth_zero",
-        order: Union[None, int] = 4,
-        highpass: Union[int, float, None] = None,
-        high_width: Union[int, float, None] = None,
-        lowpass: Union[int, float, None] = None,
-        low_width: Union[int, float, None] = None,
+        order: int | None = 4,
+        highpass: float | None = None,
+        high_width: float | None = None,
+        lowpass: float | None = None,
+        low_width: float | None = None,
         window: Windows = "hann",
-        polyorder: Union[int, None] = 0,
+        polyorder: int | None = 0,
         resample_freq: float = 1000.0,
         up_sample=3,
         start: int = 0,
@@ -351,7 +353,7 @@ class LFPManager:
 
     def all_pxx(
         self,
-        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        freq_dict: dict[str, tuple[int, int] | tuple[float, float]],
         pxx_type: Literal["cwt", "periodogram", "multitaper", "welch"],
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -366,7 +368,7 @@ class LFPManager:
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
-        output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
+        output = {key: np.zeros(end_chan) for key in freq_dict}
         output["channels"] = np.arange(start_chan, end_chan)
         for index, channel in enumerate(output["channels"]):
             self.callback(
@@ -396,7 +398,7 @@ class LFPManager:
 
     def calc_all_pdi(
         self,
-        freq_dict: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        freq_dict: dict[str, tuple[int, int] | tuple[float, float]],
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -409,7 +411,7 @@ class LFPManager:
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
-        output = {key: np.zeros(end_chan) for key in freq_dict.keys()}
+        output = {key: np.zeros(end_chan) for key in freq_dict}
         output["channels"] = np.arange(start_chan, end_chan)
         for index, channel in enumerate(output["channels"]):
             self.callback(
@@ -437,12 +439,12 @@ class LFPManager:
 
     def get_short_time_energy(
         self,
-        channel: Union[None, int] = None,
+        channel: int,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
-        window: str = "hamming",
+        window: signal_functions.Windows = "hamming",
         wlen: float = 0.2,
         start: int = 0,
         end: int = 0,
@@ -453,7 +455,7 @@ class LFPManager:
         Args:
             acq (Union[None, np.ndarray], optional): Numpy array containing the acq.
             Defaults to None.
-            channel (Union[None, int], optional): Acquistion number must be supplied as
+            channel (int | None, optional): Acquistion number must be supplied as
             a zero-indexed (e.g. 1 is 0, 2 is 1, etc). Defaults to None.
             window (str, optional): _description_. Defaults to "hamming".
             wlen (float, optional): _description_. Defaults to 0.2.
@@ -486,10 +488,10 @@ class LFPManager:
     def get_ste_baseline(
         self,
         ste: np.ndarray,
-        tol: Union[float, None] = None,
-        method: Union[Literal["spline", "fixed", "polynomial"], None] = None,
-        deg: Union[int, None] = None,
-        threshold: Union[float, None] = None,
+        tol: float | None = None,
+        method: Literal["spline", "fixed", "polynomial"] | None = None,
+        deg: int | None = None,
+        threshold: float | None = None,
     ):
         if tol is None:
             tol = self.get_grp_attr("lfp_bursts", "tol")
@@ -499,7 +501,7 @@ class LFPManager:
             deg = self.get_grp_attr("lfp_bursts", "deg")
         if threshold is None:
             threshold = self.get_grp_attr("lfp_bursts", "threshold")
-        baseline = signal_functions.kde_baseline(
+        baseline = kde_baseline(
             ste, method=method, tol=tol, deg=deg, threshold=threshold
         )
         return baseline
@@ -512,14 +514,14 @@ class LFPManager:
         min_burst_int: float = 0.2,
         minimum_peaks: int = 5,
         wlen: float = 0.2,
-        threshold: Union[float, int] = 10,
-        pre: Union[float, int] = 3.0,
-        post: Union[float, int] = 3.0,
-        order: Union[float, int] = 0.1,
+        threshold: float = 10,
+        pre: float = 3.0,
+        post: float = 3.0,
+        order: float = 0.1,
         method: Literal["spline", "fixed", "polynomial"] = "spline",
         tol: float = 0.001,
         deg: int = 90,
-        cmr: bool = False,
+        ref_type: Literal["cmr", "car", "none"] = "cmr",
         start: int = 0,
         end: int = 0,
     ):
@@ -542,7 +544,7 @@ class LFPManager:
             "method": method,
             "tol": tol,
             "deg": deg,
-            "cmr": cmr,
+            "cmr": ref_type,
         }
         for key, value in input_dict.items():
             if value is None:
@@ -552,12 +554,12 @@ class LFPManager:
         fs = self.get_grp_attr("lfp", "sample_rate")
         probes = self.probes
         for region in probes:
-            for i in range(0, 64):
+            for i in range(64):
                 acq_i = self.acq(
                     i,
                     "lfp",
-                    cmr=cmr,
-                    cmr_probe=region,
+                    ref_type=ref_type,
+                    ref_probe=region,
                     map_channel=False,
                     probe=region,
                     start=start,
@@ -611,13 +613,12 @@ class LFPManager:
         fs_raw = self.get_file_dataset("sample_rate", rows=channel)
         size = int(size / (fs_raw / fs_lfp))
         burst_baseline = lfp_functions.burst_baseline_periods(bursts, size)
-        self.close()
         return burst_baseline
 
     def lfp_burst_stats_channel(
         self,
         channel: int,
-        bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        bands: dict[str, tuple[int, int] | tuple[float, float]],
         calc_average: bool = True,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -628,7 +629,7 @@ class LFPManager:
     ):
         b_stats = {"channel": channel}
         if map_channel:
-            channel = self.get_mapped_channel(probe, channel)
+            channel = self.get_mapped_channel(probe=probe, channel=channel)
         b_stats["mapped_channel"] = channel
         acq = self.acq(
             channel,
@@ -665,7 +666,7 @@ class LFPManager:
 
     def lfp_burst_stats(
         self,
-        bands: dict[str, Union[tuple[int, int], tuple[float, float]]],
+        bands: dict[str, tuple[int, int] | tuple[float, float]],
         calc_average: bool = True,
         map_channel: bool = False,
         probe: str = "none",
@@ -688,7 +689,7 @@ class LFPManager:
 
     def get_cwt_freq_bands(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         channel: int,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -717,7 +718,7 @@ class LFPManager:
 
     def get_hilbert_freq_bands(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         channel: int,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -746,7 +747,7 @@ class LFPManager:
     def get_sxx_freq_bands(
         self,
         output_type: Literal["phase", "power", "frequency"],
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         sxx_type: Literal["cwt", "hilbert"],
         channel: int,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
@@ -793,7 +794,7 @@ class LFPManager:
 
     def phase_changes(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         sxx_type: Literal["cwt", "hilbert"],
         channel: int,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
@@ -812,18 +813,18 @@ class LFPManager:
         chans = self.get_grp_dataset("probes", probe)
         start_chan = chans[0] - chans[0]
         end_chan = chans[1] - chans[0]
-        output = {key: np.zeros(end_chan) for key in freq_bands.keys()}
+        output = {key: np.zeros(end_chan) for key in freq_bands}
         output["channels"] = np.arange(start_chan, end_chan)
-        for index, channel in enumerate(output["channels"]):
+        for index, ci in enumerate(output["channels"]):
             self.callback(
-                f"Extracting phase data for channel {channel} on probe {probe}."
+                f"Extracting phase data for channel {ci} on probe {probe}."
             )
 
             phase_dict = self.get_sxx_freq_bands(
                 output_type="phase",
                 freq_bands=freq_bands,
                 sxx_type=sxx_type,
-                channel=channel,
+                channel=ci,
                 ref_type=ref_type,
                 ref_probe=ref_probe,
                 map_channel=map_channel,

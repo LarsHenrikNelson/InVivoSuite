@@ -135,7 +135,7 @@ def bursts_len(bursts: list[np.ndarray]) -> np.ndarray[float]:
     return output
 
 
-def get_burst_data(bursts: list[np.ndarray], R: float) -> tuple[dict, dict]:
+def get_burst_data(bursts: list[np.ndarray], R: float = 0.005) -> tuple[dict, dict]:
     iei_bursts = [np.diff(i) for i in bursts]
     props_dict = {}
     props_dict["intra_burst_iei"] = intra_burst_iei(bursts)

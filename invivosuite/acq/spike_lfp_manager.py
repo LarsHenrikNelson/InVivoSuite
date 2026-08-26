@@ -3,6 +3,7 @@ from typing import Literal, Optional
 
 import numpy as np
 from joblib import Parallel, delayed
+from pyfcwt import Frequencies, PyFCWT, Wavelet
 
 from ..functions.circular_stats import periodic_mean, periodic_mean_std, ppc_dot_product
 from ..functions.filter_functions import downsample
@@ -12,25 +13,26 @@ from ..functions.spike_lfp_functions.spike_phase import (
     extract_spike_phase_data,
 )
 from ..functions.spike_lfp_functions.spike_power import spike_triggered_lfp
-from pyfcwt import Frequencies, PyFCWT, Wavelet
 from ..utils import concatenate_dicts, expand_data
+from .lfp_manager import LFPManager
+from .spike_manager import SpkManager
 
 
-class SpkLFPManager:
+class SpkLFPManager(LFPManager, SpkManager):
     def get_cluster_spike_phase(
         self,
         cluster_id: int,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         sxx_type: Literal["cwt", "hilbert"],
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel=True,
         probe: str = "all",
         nperseg: int = 40,
-        center: Optional[int] = None,
+        center: int | None = None,
         start: int = 0,
         end: int = 0,
-    ) -> tuple[dict]:
+    ) -> tuple[dict, dict]:
         chan = self.get_cluster_channel(cluster_id, center=center)
         band_dict = self.get_sxx_freq_bands(
             sxx_type=sxx_type,
@@ -50,7 +52,7 @@ class SpkLFPManager:
 
     def spike_phase(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         sxx_type: Literal["cwt", "hilbert"],
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -59,7 +61,7 @@ class SpkLFPManager:
         nperseg: int = 40,
         start: int = 0,
         end: int = 0,
-    ) -> dict[str, np.ndarray]:
+    ) -> tuple[dict[str, np.ndarray], dict]:
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []
@@ -93,7 +95,7 @@ class SpkLFPManager:
 
     def cwt_spike_phase(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         nperseg: int = 40,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
@@ -101,7 +103,7 @@ class SpkLFPManager:
         probe: str = "all",
         start: int = 0,
         end: int = 0,
-    ) -> dict[str, np.ndarray]:
+    ) -> tuple[list, list]:
         sxx_attrs = self.get_grp_attrs("cwt")
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
@@ -181,7 +183,7 @@ class SpkLFPManager:
         b_spks = self.get_binned_spike_cluster(cluster_id, nperseg=nperseg)
         output_dict = {}
         spk_indexes = np.where(b_spks > 0)[0]
-        output_dict["cluster_id"] = [cluster_id] * spk_indexes.size
+        output_dict["cluster_id"] = np.full(spk_indexes.size, cluster_id)
         for b_name, power in power_dict.items():
             temp = spike_triggered_lfp(spk_indexes, power, window)
             temp = expand_data(temp, b_spks[spk_indexes])
@@ -191,7 +193,7 @@ class SpkLFPManager:
 
     def spike_lfp(
         self,
-        freq_bands: dict[str, Iterable],
+        freq_bands: dict[str, list | np.ndarray | tuple],
         sxx_type: Literal["cwt", "hilbert"] = "cwt",
         output_type: Literal["power", "frequency"] = "frequency",
         ref_type: Literal["none", "cmr", "car"] = "cmr",
@@ -201,8 +203,8 @@ class SpkLFPManager:
         nperseg: int = 40,
         window: int = 100,
         start: int = 0,
-        end: int = 0,
-    ) -> dict[str, np.ndarray]:
+        end: int = 0
+    ) -> tuple[dict[str, np.ndarray], dict]:
         chan_dict = self.get_channel_clusters()
         chans = sorted(list(chan_dict.keys()))
         output_data = []
@@ -225,14 +227,14 @@ class SpkLFPManager:
                 output = self.extract_spike_power_data(
                     power_dict=band_dict, cluster_id=cid, nperseg=nperseg, window=window
                 )
-                output["channel"] = [chan] * output["count"].size
-                output["cluster_id"] = [cid] * output["count"].size
+                output["channel"] = np.full(output["count"].size, [chan])
+                output["cluster_id"] = np.full(output["count"].size, [cid])
                 output_data.append(output)
         output_data = concatenate_dicts(output_data)
         mean_data = self.lfp_mean_per_cluster(output_data, list(freq_bands.keys()))
         return output_data, mean_data
 
-    def lfp_mean_per_cluster(self, input, freq_bands):
+    def lfp_mean_per_cluster(self, input, freq_bands) -> dict:
         cid = np.unique(input["cluster_id"])
         output_dict = {}
         for band in freq_bands:

@@ -1,25 +1,25 @@
 import os
+from collections.abc import Callable
+from multiprocessing import Value
 from pathlib import Path
-from typing import Literal, Union, Iterable, Callable
+from typing import Literal
 
 import h5py
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy import signal
 
 from ..functions.filter_functions import (
     Filters,
     Windows,
+    downsample,
     filter_array,
     iirnotch_zero,
-    downsample,
 )
-from .lfp_manager import LFPManager
-from .spike_manager import SpkManager
-from .spike_lfp_manager import SpkLFPManager
 from ..functions.signal_functions import envelopes_idx, whitening_matrix
 
-
-class AcqManager(SpkManager, LFPManager, SpkLFPManager):
+RefType = Literal["cmr", "car", "none"]
+class AcqManager:
     filters = Filters
     windows = Windows
 
@@ -59,11 +59,6 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             self.set_grp_dataset("ai", "coeffs", ai[2])
             self.set_grp_dataset("ai", "units", ai[3])
             self.set_grp_dataset("ai", "timestamps", ai[4])
-        self.close()
-
-    def load_kilosort(self, file_directory, load_type: str = "r+"):
-        self.ks_directory = Path(file_directory)
-        self.load_ks_data(load_type=load_type)
 
     @property
     def n_chans(self):
@@ -85,7 +80,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
             shape = f["acqs"].shape
         return shape
 
-    def index_to_time(self, index, fs, output_type: Literal["samples", "ms", "sec"]):
+    def index_to_time(self, index, fs, output_type: Literal["sample", "ms", "sec"]):
         if output_type == "samples":
             return index
         if output_type == "ms":
@@ -109,13 +104,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         acq_type: Literal["spike", "lfp"],
         filter_type: Filters = "butterworth_zero",
         order: int | None = None,
-        highpass: int | float | None = None,
-        high_width: int | float | None = None,
-        lowpass: int | float | None = None,
-        low_width: int | float | None = None,
+        highpass: float | None = None,
+        high_width: float | None = None,
+        lowpass: float | None = None,
+        low_width: float | None = None,
         window: Windows = "hann",
         polyorder: int | None = 0,
-        sample_rate: float | int = 40000,
+        sample_rate: float = 40000,
         up_sample=3,
         notch_filter: bool = False,
         notch_freq: float = 60.0,
@@ -184,7 +179,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if probe == "all":
             chans = (0, self.n_chans)
         else:
-            chans = self.get_grp_dataset("probes", probe)
+            chans = tuple(self.get_grp_dataset("probes", probe))
         if bin_size != 0:
             cmr = np.zeros(end - start)
             means = np.zeros((chans[1] - chans[0], 1))
@@ -238,11 +233,10 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         end = self.get_file_attr("end")
         W = np.zeros((total_chans, total_chans))
         if neighbors != total_chans:
-            for channel in range(probe_chans[1]):
+            for channel in np.arange(probe_chans[1]):
                 acquisitions = self.multichan_acq(
                     "spike",
-                    channel=channel,
-                    nchans=neighbors,
+                    channels=channel,
                     ref_probe=ref_probe,
                     ref_type=ref_type,
                     map_channel=map_channel,
@@ -333,9 +327,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def multichan_acq(
         self,
         acq_type: Literal["spike", "lfp", "wideband"],
-        channels: Union[Iterable[int], None] = None,
+        channels: ArrayLike | int | None = None,
         average: None | Callable = None,
-        ref_type: Literal["cmr", "car"] = "cmr",
+        ref_type: RefType = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -357,6 +351,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         data = self.get_grp_dataset("probes", probe)
         if channels is None:
             channels = np.arange(data[0], data[1])
+        elif isinstance(channels, int):
+            channels = np.array([channels])
 
         channel_map = self.get_grp_dataset("channel_maps", probe)
 
@@ -376,7 +372,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         if acq_type == "wideband":
             return multi_acqs
         filter_dict = self.get_filter(acq_type)
-        sample_rate = self.get_file_dataset("sample_rate", rows=int(channels[0]))
+        sample_rate = self.get_file_dataset("sample_rate", rows=0)
         multi_acqs = filter_array(
             multi_acqs,
             sample_rate=sample_rate,
@@ -404,7 +400,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         acq_type: Literal["spike", "lfp", "wideband"],
         channels: np.ndarray | list | None = None,
         average: Callable = np.mean,
-        ref_type: Literal["cmr", "car", "none"] = "cmr",
+        ref_type: RefType = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
         probe: str = "all",
@@ -520,9 +516,9 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         grp,
         dataset,
-        rows: int | tuple[int, int] | list[int, int] | None = None,
-        columns: int | tuple[int, int] | list[int, int] | None = None,
-    ):
+        rows: int | tuple[int, int] | None = None,
+        columns: int | tuple[int, int] | None = None,
+    ) -> np.ndarray:
         with h5py.File(self.file_path, "r+") as f:
             if grp in f:
                 if dataset in f[grp]:
@@ -556,8 +552,8 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
     def get_file_dataset(
         self,
         dataset: str,
-        rows: int | tuple[int, int] | list[int, int] | None = None,
-        columns: int | tuple[int, int] | list[int, int] | None = None,
+        rows: int | tuple[int, int] | None = None,
+        columns: int | tuple[int, int] | None = None,
     ):
         with h5py.File(self.file_path, "r+") as f:
             if dataset in f:
@@ -570,17 +566,17 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self,
         grp,
         dataset: str,
-        rows: int | tuple[int, int] | list[int, int] | None = None,
-        columns: int | tuple[int, int] | list[int, int] | None = None,
+        rows: int | tuple[int, int] | None = None,
+        columns: int | tuple[int, int] | None = None,
     ):
         if rows is None and columns is None:
             file_dataset = grp[dataset][()]
-        elif columns is None:
+        elif columns is None and isinstance(rows, tuple):
             if isinstance(rows, int):
                 file_dataset = grp[dataset][rows]
             else:
                 file_dataset = grp[dataset][rows[0] : rows[1]]
-        elif rows is None:
+        elif rows is None and isinstance(columns, tuple):
             if isinstance(columns, int):
                 file_dataset = grp[dataset][:, columns]
             else:
@@ -588,12 +584,14 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         else:
             if isinstance(columns, int) and isinstance(rows, int):
                 file_dataset = grp[dataset][rows, columns]
-            elif isinstance(columns, int) and not isinstance(rows, int):
+            elif isinstance(columns, int) and isinstance(rows, tuple):
                 file_dataset = grp[dataset][rows[0] : rows[1], columns]
-            elif not isinstance(columns, int) and isinstance(rows, int):
+            elif isinstance(columns, tuple) and isinstance(rows, int):
                 file_dataset = grp[dataset][rows, columns[0] : columns[1]]
-            else:
+            elif isinstance(columns, tuple) and isinstance(rows, tuple):
                 file_dataset = grp[dataset][rows[0] : rows[1], columns[0] : columns[1]]
+            else:
+                raise ValueError("Rows and columns not an accepted data type.")
         return file_dataset
 
     def get_grp_attrs(self, grp_name: str):
@@ -606,12 +604,12 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
                 raise KeyError(f"{grp_name} settings do not exist in file. Use set_pxx")
 
     def set_channel_map_from_file(
-        self, map_path: Union[str, Path], probe: str = "None"
+        self, map_path: str | Path, probe: str = "None"
     ):
         """Set the probe channel map from a .csv or .txt file. Excel files are not accepted. The channel map must be a single row or column of numbers.
 
         Args:
-            map_path (Union[str, Path]): File name to read.
+            map_path (str | Path): File name to read.
             probe (str, optional): Name of the probe. Defaults to "None".
 
         Raises:
@@ -642,23 +640,23 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         self.set_grp_dataset("channel_maps", probe, data=chan_map)
 
     def set_channel_map(
-        self, chan_map: Union[str, Path, np.ndarray], probe: str = "None"
+        self, chan_map: str | Path | np.ndarray, probe: str = "None"
     ):
         """Set the probe channel map from a .csv or .txt file. Excel files are not accepted. The channel map must be a single row or column of numbers.
 
         Args:
-            chan_map (Union[str, Path, np.ndarray]): Filename, Path or np.ndarray containing channel map.
+            chan_map (str | Path | np.ndarray): Filename, Path or np.ndarray containing channel map.
             probe (str, optional): Name of the probe. Defaults to "None".
 
         Raises:
             ValueError: _description_
         """
-        if isinstance(chan_map, str) or isinstance(chan_map, Path):
+        if isinstance(chan_map, (str, Path)):
             self.set_channel_map_from_file(chan_map, probe)
         elif isinstance(chan_map, np.ndarray):
             self.set_channel_map_from_array(chan_map, probe)
         else:
-            raise ValueError(f"{chan_map} chan_map must be str, Path or np.ndarray")
+            raise TypeError(f"{chan_map} chan_map must be str, Path or np.ndarray")
 
     def get_mapped_channel(
         self, channel: int, probe: str = "none", map_channel: bool = False
@@ -676,48 +674,16 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     def save_kilosort_bin(
         self,
-        rows: int | tuple[int, int] | list[int, int] | None = None,
-        columns: int | tuple[int, int] | list[int, int] | None = None,
         probe: str | None = None,
         chunk_size: int | None = None,
         save_path: str | Path = "",
     ):
         if probe is None:
-            if rows is None:
-                rows = (0, self.shape[1])
-            if columns is None:
-                start = self.start
-                end = self.end
-                columns = (start, end)
-            else:
-                if columns[0] > 0:
-                    start = self.start + start
-                else:
-                    start = self.start
-                if columns[1] > 0:
-                    end = self.start + end
-                else:
-                    end = self.end
-                columns = (start, end)
+            rows = (0, self.shape[1])
+            columns = (self.start, self.end)
         else:
-            if columns is None:
-                start = self.start
-                end = self.end
-                columns = (start, end)
-            else:
-                if columns[0] > 0:
-                    start = self.start + start
-                else:
-                    start = self.start
-                if columns[1] > 0:
-                    end = self.start + end
-                else:
-                    end = self.end
-                columns = (start, end)
-            if rows is None and probe is None:
-                rows = (0, self.shape[1])
-            elif probe is not None:
-                rows = self.get_grp_dataset("probes", probe)
+            columns = (self.start, self.end)
+            rows = tuple(self.get_grp_dataset("probes", probe))
         if save_path == "":
             save_path = Path(self.file_path).with_suffix(".bin")
         else:
@@ -768,14 +734,14 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         with h5py.File(self.file_path, "r+") as f:
             len_of_rec = f["acqs"].shape[1]
         if end > len_of_rec:
-            self.close()
+
             raise ValueError(
                 f"{end} is longer than the length of the recording ({len_of_rec})"
             )
         self.set_file_attr("end", end)
 
-    def set_probe(self, probe: str, array: np.array):
+    def set_probe(self, probe: str, array: np.ndarray | list):
         self.set_grp_dataset("probes", probe, array)
 
-    def set_callback(self, callback: callable):
+    def set_callback(self, callback: Callable):
         self.callback = callback
