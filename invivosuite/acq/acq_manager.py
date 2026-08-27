@@ -571,26 +571,25 @@ class AcqManager:
     ):
         if rows is None and columns is None:
             file_dataset = grp[dataset][()]
-        elif columns is None and isinstance(rows, tuple):
+        elif columns is None and isinstance(rows, (int, tuple)):
             if isinstance(rows, int):
                 file_dataset = grp[dataset][rows]
             else:
                 file_dataset = grp[dataset][rows[0] : rows[1]]
-        elif rows is None and isinstance(columns, tuple):
+        elif rows is None and isinstance(columns, (tuple, int)):
             if isinstance(columns, int):
                 file_dataset = grp[dataset][:, columns]
             else:
                 file_dataset = grp[dataset][:, columns[0] : columns[1]]
-        else:
-            if isinstance(columns, int) and isinstance(rows, int):
+        elif isinstance(columns, int) and isinstance(rows, int):
                 file_dataset = grp[dataset][rows, columns]
-            elif isinstance(columns, int) and isinstance(rows, tuple):
+        elif isinstance(columns, int) and isinstance(rows, tuple):
                 file_dataset = grp[dataset][rows[0] : rows[1], columns]
-            elif isinstance(columns, tuple) and isinstance(rows, int):
+        elif isinstance(columns, tuple) and isinstance(rows, int):
                 file_dataset = grp[dataset][rows, columns[0] : columns[1]]
-            elif isinstance(columns, tuple) and isinstance(rows, tuple):
+        elif isinstance(columns, tuple) and isinstance(rows, tuple):
                 file_dataset = grp[dataset][rows[0] : rows[1], columns[0] : columns[1]]
-            else:
+        else:
                 raise ValueError("Rows and columns not an accepted data type.")
         return file_dataset
 
