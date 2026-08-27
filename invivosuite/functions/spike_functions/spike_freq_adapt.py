@@ -22,7 +22,7 @@ def sfa_local_var(isi: np.ndarray) -> float:
     None.
 
     """
-    if len(isi) < 2 or np.isnan(isi):
+    if len(isi) < 2 or np.isnan(isi).any():
         return np.nan
     isi_shift = isi[1:]
     isi_cut = isi[:-1]
@@ -47,7 +47,7 @@ def sfa_rlocal_var(isi: np.ndarray, R: float) -> float:
     None.
 
     """
-    if len(isi) <= 3 or np.isnan(isi):
+    if len(isi) <= 3 or np.isnan(isi).any():
         return np.nan
     isi_plus = isi[1:] + isi[:1]
     isi_mult = isi[1:] * isi[:1]
@@ -68,7 +68,7 @@ def sfa_divisor(isi: np.ndarray) -> float:
     The idea for the function was initially inspired by a program called
     Easy Electropysiology (https://github.com/easy-electrophysiology).
     """
-    if len(isi) > 1 or not np.isnan(isi):
+    if len(isi) > 1 or not np.isnan(isi).any():
         if isi[-1] > 0:
             return isi[0] / isi[-1]
         else:
