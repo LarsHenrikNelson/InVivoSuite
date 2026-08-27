@@ -19,6 +19,7 @@ OUTPUT_TYPE = Literal["sec", "ms", "sample"]
 Callback = Callable[[str], None]
 LoadType = Literal["r+", "r", "w+", "c", "memory"]
 
+
 class SpkManager(AcqManager):
     def load_ks_data(self, load_type: LoadType = "r+"):
         self._load_sparse_templates(load_type=load_type)
@@ -31,8 +32,8 @@ class SpkManager(AcqManager):
         self._load_celltypes()
 
     def load_kilosort(self, file_directory, load_type: LoadType = "r+"):
-            self.ks_directory = Path(file_directory)
-            self.load_ks_data(load_type=load_type)
+        self.ks_directory = Path(file_directory)
+        self.load_ks_data(load_type=load_type)
 
     def _load_amplitudes(self, load_type: LoadType = "r+"):
         if load_type == "memory":
@@ -133,7 +134,9 @@ class SpkManager(AcqManager):
     def _load_celltypes(self):
         temp_path = self.ks_directory / "celltype.csv"
         if temp_path.exists():
-            self.celltypes: np.ndarray = np.loadtxt(temp_path, delimiter="\t", dtype=str)
+            self.celltypes: np.ndarray = np.loadtxt(
+                temp_path, delimiter="\t", dtype=str
+            )
         else:
             self.celltypes: list[None] = [None] * self.cluster_ids.size
 
@@ -400,9 +403,7 @@ class SpkManager(AcqManager):
 
         if accepted:
             accepted_cids = self.cluster_ids[self.accepted_units]
-            truth_index = [
-                i in accepted_cids for i in self.spike_clusters
-            ]
+            truth_index = [i in accepted_cids for i in self.spike_clusters]
             id_to_row = {
                 uid: i for i, uid in enumerate(self.cluster_ids[self.accepted_units])
             }
@@ -459,7 +460,7 @@ class SpkManager(AcqManager):
 
     def get_continuous_spikes_channel(
         self,
-        channel: int | None  = None,
+        channel: int | None = None,
         nperseg: int = 1,
         fs: float = 40000.0,
         window: spkf.Windows = "boxcar",
@@ -1358,7 +1359,7 @@ class SpkManager(AcqManager):
 
     def compute_sttc(
         self,
-        dt: float = 25,
+        dt: float = 25.0,
         start: int = 0,
         end: int = 0,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
@@ -1368,6 +1369,8 @@ class SpkManager(AcqManager):
     ):
         if end == 0:
             temp = self.end - self.start
+        else:
+            temp = end - self.start
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
         sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
@@ -1379,7 +1382,6 @@ class SpkManager(AcqManager):
             num2dt_array = np.zeros(size, dtype=int)
             num1_2_array = np.zeros(size, dtype=int)
             num2_1_array = np.zeros(size, dtype=int)
-
 
         # Cache all the clusters so we don't have to call this more than once for each cluster.
         # Could probably make this a little bit faster but maybe not worth it.
@@ -1404,7 +1406,6 @@ class SpkManager(AcqManager):
                     f"Analyzing sttc for cluster {clust_id1} and {clust_id2}."
                 )
                 indexes2 = cluster_dict[clust_id2]
-
 
                 if sttc_version == "ivs":
                     sttc_index, num1dt, num1_2, num2dt, num2_1 = spkf.sttc(
@@ -1451,7 +1452,7 @@ class SpkManager(AcqManager):
 
     def compute_correlation(
         self,
-        dt: float = 200,
+        dt: float = 200.0,
         start: int = 0,
         end: int = 0,
         output_type: OUTPUT_TYPE = "sample",
@@ -1532,11 +1533,11 @@ class SpkManager(AcqManager):
             )
         else:
             raster_binary, _ = self.get_raster(
-            start=start,
-            end=end,
-            accepted=accepted,
-            dtype="bool",
-        )
+                start=start,
+                end=end,
+                accepted=accepted,
+                dtype="bool",
+            )
 
         self.callback("Computing synchronous periods.")
         output = spkf.synchronous_periods(
@@ -1579,11 +1580,11 @@ class SpkManager(AcqManager):
             )
         else:
             raster_binary, _ = self.get_raster(
-            start=start,
-            end=end,
-            accepted=accepted,
-            dtype="bool",
-        )
+                start=start,
+                end=end,
+                accepted=accepted,
+                dtype="bool",
+            )
         # Might need to normalized to total number of cells as well.
         pyr = raster_binary[cluster_celltypes == "Pyramidal", :].sum(axis=0)
         inter = raster_binary[cluster_celltypes == "Interneuron", :].sum(axis=0)
