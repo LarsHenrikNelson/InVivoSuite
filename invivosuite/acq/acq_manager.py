@@ -81,7 +81,7 @@ class AcqManager:
         return shape
 
     def index_to_time(self, index, fs, output_type: Literal["sample", "ms", "sec"]):
-        if output_type == "samples":
+        if output_type in ("sample", "samples"):
             return index
         if output_type == "ms":
             return index / (fs / 1000)
