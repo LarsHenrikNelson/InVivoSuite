@@ -9,6 +9,8 @@ __all__ = [
 def create_binary_spikes(spikes: np.ndarray, size: int, dt: int = 0):
     if len(spikes) > 0:
         u = np.unique(spikes)
+        # Negative indices would silently wrap to the end of the array.
+        u = u[(u >= 0) & (u < size)]
         binary_spikes = np.zeros(shape=(size,), dtype=np.int16)
         binary_spikes[u] = 1
         return binary_spikes
