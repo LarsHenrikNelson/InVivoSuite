@@ -319,7 +319,7 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
         )
         if filter_dict["notch_filter"]:
             acq = iirnotch_zero(
-                array,
+                acq,
                 freq=filter_dict["notch_freq"],
                 q=filter_dict["notch_q"],
                 fs=sample_rate,
@@ -779,3 +779,13 @@ class AcqManager(SpkManager, LFPManager, SpkLFPManager):
 
     def set_callback(self, callback: callable):
         self.callback = callback
+
+    def close(self):
+        """No-op retained for API compatibility.
+
+        All HDF5 access opens the file through context managers which flush
+        and close on exit, so there is nothing to release explicitly. Call
+        sites such as ``create_hdf5_file`` and ``get_burst_baseline`` call
+        this method, historically expecting an explicit close.
+        """
+
