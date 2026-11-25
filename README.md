@@ -13,7 +13,7 @@ tests):
   subtraction across template-covered channels plus scipy/PCHIP/spatial gap
   repair) - a prerequisite for gamma-band analyses, since spike power bleeds
   far below the spike band;
-- and the wired-together spike-free CSD pipeline on `AcqManager`:
+- and the wired-together spike-free CSD pipeline on `SpkLFPManager`:
   `remove_spikes_wideband()` -> `get_clean_lfp()` -> `csd()` ->
   `csd_spike_phase()`, producing spike-phase coupling estimates from the
   decontaminated current-source density.

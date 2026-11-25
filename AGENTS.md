@@ -14,16 +14,23 @@ It intentionally avoids `neo`/`quantities` unit arrays — everything is plain N
 
 ## Repository map
 
-- `invivosuite/acq/` — the `AcqManager` data-access layer.
-  - `acq_manager.py` — `AcqManager(SpkManager, LFPManager, SpkLFPManager)` (mixin
-    composition; every manager method is available on `AcqManager`).
-  - `spike_manager.py` (`SpkManager`) — loads Kilosort outputs from a KS directory
+- `invivosuite/acq/` — the manager/data-access layer, organized as an
+  inheritance hierarchy (the manager classes are no longer base-less mixins of a
+  composed class — see git history around the "analysis classes separate" refactor):
+  - `acq_manager.py` — `AcqManager`, the **base class**: HDF5 file creation and
+    plumbing (`set/get_file_*`, `set/get_grp_*`), `acq`/`multichan_acq`/`avg_acq`,
+    `set_filter`, `compute_virtual_ref`, channel maps, probes, analysis window.
+  - `spike_manager.py` — `SpkManager(AcqManager)`: loads Kilosort outputs from a KS directory
     (`spike_times.npy`, `spike_clusters.npy`, `spike_templates.npy`, `templates.npy`,
     `amplitudes.npy`; `accepted_units.npy` and `celltype.csv` auto-created).
-  - `lfp_manager.py` (`LFPManager`) — spectral settings (`set_cwt`, `set_welch`, ...) and
-    LFP analyses. Settings are stored as HDF5 group attrs and read back with
-    `get_spectral_settings`.
-  - `spike_lfp_manager.py` (`SpkLFPManager`) — spike–LFP analyses (spike phase/power).
+  - `lfp_manager.py` — `LFPManager(AcqManager)`: spectral settings (`set_cwt`,
+    `set_welch`, ...) and LFP analyses. Settings are stored as HDF5 group attrs
+    and read back with `get_spectral_settings`.
+  - `spike_lfp_manager.py` — `SpkLFPManager(LFPManager, SpkManager)`: spike–LFP
+    analyses (spike phase/power) and the spike-free CSD pipeline (spike removal,
+    `csd`, `csd_spike_phase`). **This is the full-stack class: instantiate
+    `SpkLFPManager` when you need everything** — the base `AcqManager` no longer
+    exposes the analysis methods.
   - `load_ad.py` — PL2/HDF5 loaders. The `pypl2` DLL imports are lazy so the package
     imports on machines without the Plexon DLL.
 - `invivosuite/functions/` — pure NumPy algorithm modules (usable without any manager):
@@ -57,7 +64,9 @@ It intentionally avoids `neo`/`quantities` unit arrays — everything is plain N
 
 - Array orientation: `(n_chans, n_samples)` everywhere; time along axis 1.
 - Spike times are sample indices into `acqs` (sample-rate of the wideband data).
- (Matlab 1-indexing is corrected by subtracting 1 at load.)
+  Matlab Kilosort output is 1-based: `load_kilosort(..., matlab_indexing=True)`
+  subtracts 1 at load. The default (`matlab_indexing=False`, no correction) is
+  correct for Kilosort 4, whose spike times are already 0-based.
 - Binned-time convention for spike-phase methods: `spike_times // nperseg` bins
   spikes into downsampled LFP time bins (wideband fs / nperseg = LFP fs).
 - Referencing: `ref_type` in {"none", "cmr" (median), "car" (mean)}. CMR/CAR traces
@@ -74,8 +83,10 @@ It intentionally avoids `neo`/`quantities` unit arrays — everything is plain N
 ## Testing
 
 - `tests/conftest.py` builds a small synthetic HDF5 recording + fake Kilosort
-  directory (fixtures `synthetic_manager` / `synthetic_path`), so `AcqManager` can be
-  exercised without real data. Reuse these fixtures rather than mocking HDF5.
+  directory (fixtures `synthetic_manager` / `synthetic_path`), so the manager
+  classes can be exercised without real data (`synthetic_manager` is a
+  `SpkLFPManager` — the full stack; `synthetic_path` uses the base `AcqManager`
+  to build files). Reuse these fixtures rather than mocking HDF5.
 - Add regression tests alongside bug fixes (e.g. `tests/test_filters.py` guards the
   IIR-notch coefficient order).
 

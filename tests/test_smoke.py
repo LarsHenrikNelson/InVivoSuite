@@ -1,9 +1,11 @@
-"""Smoke tests for the synthetic fixture and core AcqManager plumbing."""
+"""Smoke tests for the synthetic fixture and core manager plumbing.
+(The `synthetic_manager` fixture is a `SpkLFPManager`, the full-stack subclass
+of the base `AcqManager` data-access class.)
+"""
 
 import numpy as np
 
 import invivosuite
-from invivosuite.acq import AcqManager
 
 from .conftest import (
     CLUSTER0_CHAN,

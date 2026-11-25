@@ -25,7 +25,6 @@ class AcqManager:
 
     def __init__(self, file_path: str | Path):
         self.file_path = file_path
-        self._set_cwt = False
         self.callback = print
 
     def create_hdf5_file(

@@ -8,7 +8,7 @@ can be tested without real recordings. Generation lives in
 import numpy as np
 import pytest
 
-from invivosuite.acq import AcqManager
+from invivosuite.acq import AcqManager, SpkLFPManager
 from invivosuite.functions.simulation.laminar_sim import build_laminar_recording
 
 FS = 40_000
@@ -71,7 +71,9 @@ def synthetic_path(tmp_path, synthetic_dataset):
     # Identity channel map: multichan_acq reads it even when map_channel=False.
     manager.set_channel_map(np.arange(N_CHANS), probe="all")
     # Kilosort files. NOTE: spike_times are stored 1-indexed (Matlab style);
-    # SpkManager subtracts 1 at load time.
+    # SpkManager subtracts 1 at load time when `matlab_indexing=True` (opted
+    # into in the synthetic_manager fixture below; the default False is correct
+    # for Kilosort 4, whose spike times are already 0-based).
     np.save(ks_dir / "spike_times.npy", (spike_times + 1).astype(np.int64))
     np.save(ks_dir / "spike_clusters.npy", spike_clusters)
     np.save(ks_dir / "spike_templates.npy", spike_clusters)  # 1 template per cluster map
@@ -82,9 +84,10 @@ def synthetic_path(tmp_path, synthetic_dataset):
 
 @pytest.fixture
 def synthetic_manager(tmp_path, synthetic_path):
-    """Loaded AcqManager with LFP filter settings and virtual references ready."""
+    """Loaded SpkLFPManager (the full spike + LFP analysis stack) with filter
+    settings and virtual references ready."""
     hdf5_path, ks_dir = synthetic_path
-    manager = AcqManager(hdf5_path)
+    manager = SpkLFPManager(hdf5_path)
     manager.set_filter(
         "lfp",
         filter_type="butterworth_zero",
@@ -106,6 +109,8 @@ def synthetic_manager(tmp_path, synthetic_path):
     manager.set_cwt(f0=4, f1=120, fn=60, scaling="log")
     # Default CSD geometry: a linear probe with 50 um contacts.
     manager.set_csd_geometry(np.arange(N_CHANS) * 50.0, probe="all")
-    manager.load_kilosort(ks_dir)
+    # The fixture stores Matlab-style 1-indexed spike times (see synthetic_path),
+    # so opt in to the 1-based -> 0-based correction at load.
+    manager.load_kilosort(ks_dir, matlab_indexing=True)
     manager.set_callback(lambda msg: None)
     return manager
