@@ -102,5 +102,10 @@ def synthetic_manager(tmp_path, synthetic_path):
     )
     manager.compute_virtual_ref("cmr", probe="all")
     manager.compute_virtual_ref("car", probe="all")
+    # CWT settings for the spike-phase machinery (fs supplied at use time).
+    manager.set_cwt(f0=4, f1=120, fn=60, scaling="log")
+    # Default CSD geometry: a linear probe with 50 um contacts.
+    manager.set_csd_geometry(np.arange(N_CHANS) * 50.0, probe="all")
     manager.load_kilosort(ks_dir)
+    manager.set_callback(lambda msg: None)
     return manager
