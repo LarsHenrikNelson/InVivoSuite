@@ -1,142 +1,50 @@
+"""Utility functions for kCSD: source placement, validation, analytic
+ground-truth CSD profiles, and a forward-model LFP generator for testing.
+
+Ported from Elephant's ``current_source_density_src/utility_functions.py``
+(BSD-3-Clause; Czerwinski & Chintaluri, Nencki Institute) with the quantities
+machinery removed. `generate_lfp` is the plain-NumPy counterpart of
+Elephant's forward-modelling helper: it produces potentials for user-supplied
+CSD profiles (with, here, an `h` consistent with the kCSD forward model).
 """
-These are some useful functions used in CSD methods,
-They include CSD source profiles to be used as ground truths,
-placement of electrodes in 1D, 2D and 3D., etc
-These scripts are based on Grzegorz Parka's,
-Google Summer of Code 2014, INFC/pykCSD
-This was written by :
-Michal Czerwinski, Chaitanya Chintaluri
-Laboratory of Neuroinformatics,
-Nencki Institute of Experimental Biology, Warsaw.
-"""
+
 import numpy as np
+from scipy.integrate import simpson
 
-# import quantities as pqzs
-from numba import njit
-
-# def patch_quantities():
-#     """patch quantities with the SI unit Siemens if it does not exist"""
-#     for symbol, prefix, definition, u_symbol in zip(
-#         ["siemens", "S", "mS", "uS", "nS", "pS"],
-#         ["", "", "milli", "micro", "nano", "pico"],
-#         [pq.A / pq.V, pq.A / pq.V, "S", "mS", "uS", "nS"],
-#         [None, None, None, None, "µS", None],
-#     ):
-#         if type(definition) is str:
-#             definition = lastdefinition / 1000
-#         if not hasattr(pq, symbol):
-#             setattr(
-#                 pq,
-#                 symbol,
-#                 pq.UnitQuantity(
-#                     prefix + "siemens", definition, symbol=symbol, u_symbol=u_symbol
-#                 ),
-#             )
-#         lastdefinition = definition
-#     return
+__all__ = [
+    "contains_duplicated_electrodes",
+    "distribute_srcs_1D",
+    "distribute_srcs_2D",
+    "gauss_1d_dipole",
+    "gauss_2d_dipole",
+    "generate_lfp",
+    "small_source_2d",
+]
 
 
-@njit()
 def contains_duplicated_electrodes(elec_pos):
-    """Checks for duplicate electrodes
-    Parameters
-    ----------
-    elec_pos : np.array
-    Returns
-    -------
-    has_duplicated_elec : Boolean
-    """
-    unique_elec_pos = set(map(tuple, elec_pos))
-    has_duplicated_elec = len(unique_elec_pos) < len(elec_pos)
-    return has_duplicated_elec
+    """Checks for duplicate electrode positions."""
+    unique_elec_pos = set(map(tuple, np.asarray(elec_pos)))
+    return len(unique_elec_pos) < len(elec_pos)
 
 
 def distribute_srcs_1D(X, n_src, ext_x, R_init):
-    """Distribute sources in 1D equally spaced
-    Parameters
-    ----------
-    X : np.arrays
-        points at which CSD will be estimated
-    n_src : int
-        number of sources to be included in the model
-    ext_x : floats
-        how much should the sources extend the area X
-    R_init : float
-        Same as R in 1D case
-    Returns
-    -------
-    X_src : np.arrays
-        positions of the sources
-    R : float
-        effective radius of the basis element
-    """
-    X_src = np.mgrid[(np.min(X) - ext_x) : (np.max(X) + ext_x) : complex(0, n_src)]
+    """Distribute `n_src` sources equally spaced over the extent of X,
+    extended by `ext_x` on both sides. Returns (X_src, R)."""
+    X_src = np.mgrid[
+        (np.min(X) - ext_x) : (np.max(X) + ext_x) : complex(0, n_src)
+    ]
     R = R_init
     return X_src, R
 
 
-@njit()
-def distribute_srcs_2D(X, Y, n_src, ext_x, ext_y, R_init):
-    """Distribute n_src's in the given area evenly
-    Parameters
-    ----------
-    X, Y : np.arrays
-        points at which CSD will be estimated
-    n_src : int
-        demanded number of sources to be included in the model
-    ext_x, ext_y : floats
-        how should the sources extend the area X, Y
-    R_init : float
-        demanded radius of the basis element
-    Returns
-    -------
-    X_src, Y_src : np.arrays
-        positions of the sources
-    nx, ny : ints
-        number of sources in directions x,y
-        new n_src = nx * ny may not be equal to the demanded number of sources
-    R : float
-        effective radius of the basis element
-    """
-    Lx = np.max(X) - np.min(X)
-    Ly = np.max(Y) - np.min(Y)
-    Lx_n = Lx + (2 * ext_x)
-    Ly_n = Ly + (2 * ext_y)
-    [nx, ny, Lx_nn, Ly_nn, ds] = get_src_params_2D(Lx_n, Ly_n, n_src)
-    ext_x_n = (Lx_nn - Lx) / 2
-    ext_y_n = (Ly_nn - Ly) / 2
-    X_src, Y_src = np.mgrid[
-        (np.min(X) - ext_x_n) : (np.max(X) + ext_x_n) : complex(0, nx),
-        (np.min(Y) - ext_y_n) : (np.max(Y) + ext_y_n) : complex(0, ny),
-    ]
-    # d = round(R_init / ds)
-    R = R_init  # R = d * ds
-    return X_src, Y_src, R
-
-
-@njit()
 def get_src_params_2D(Lx, Ly, n_src):
-    """Distribute n_src sources evenly in a rectangle of size Lx * Ly
-    Parameters
-    ----------
-    Lx, Ly : floats
-        lengths in the directions x, y of the area,
-        the sources should be placed
-    n_src : int
-        demanded number of sources
-    Returns
-    -------
-    nx, ny : ints
-        number of sources in directions x, y
-        new n_src = nx * ny may not be equal to the demanded number of sources
-    Lx_n, Ly_n : floats
-        updated lengths in the directions x, y
-    ds : float
-        spacing between the sources
-    """
+    """Distribute n_src sources evenly in a rectangle of size Lx * Ly."""
     coeff = [Ly, Lx - Ly, -Lx * n_src]
     rts = np.roots(coeff)
-    r = [r for r in rts if type(r) is not complex and r > 0]
+    r = [root.real for root in rts if abs(root.imag) < 1e-12 and root.real > 0]
+    if len(r) == 0:
+        raise ValueError("Could not place 2D sources for this geometry")
     nx = r[0]
     ny = n_src / nx
     ds = Lx / (nx - 1)
@@ -144,250 +52,133 @@ def get_src_params_2D(Lx, Ly, n_src):
     ny = np.floor(ny) + 1
     Lx_n = (nx - 1) * ds
     Ly_n = (ny - 1) * ds
-    return (nx, ny, Lx_n, Ly_n, ds)
+    return nx, ny, Lx_n, Ly_n, ds
 
 
-@njit()
-def distribute_srcs_3D(X, Y, Z, n_src, ext_x, ext_y, ext_z, R_init):
-    """Distribute n_src sources evenly in a rectangle of size Lx * Ly * Lz
-    Parameters
-    ----------
-    X, Y, Z : np.arrays
-        points at which CSD will be estimated
-    n_src : int
-        desired number of sources we want to include in the model
-    ext_x, ext_y, ext_z : floats
-        how should the sources extend over the area X,Y,Z
-    R_init : float
-        demanded radius of the basis element
-    Returns
-    -------
-    X_src, Y_src, Z_src : np.arrays
-        positions of the sources in 3D space
-    nx, ny, nz : ints
-        number of sources in directions x,y,z
-        new n_src = nx * ny * nz may not be equal to the demanded number of
-        sources
-    R : float
-        updated radius of the basis element
-    """
+def distribute_srcs_2D(X, Y, n_src, ext_x, ext_y, R_init):
+    """Distribute n_src sources evenly over the (X, Y) extent; the achieved
+    number nx * ny may differ from the request. Returns (X_src, Y_src, R)."""
     Lx = np.max(X) - np.min(X)
     Ly = np.max(Y) - np.min(Y)
-    Lz = np.max(Z) - np.min(Z)
-    Lx_n = Lx + 2 * ext_x
-    Ly_n = Ly + 2 * ext_y
-    Lz_n = Lz + 2 * ext_z
-    (nx, ny, nz, Lx_nn, Ly_nn, Lz_nn, ds) = get_src_params_3D(Lx_n, Ly_n, Lz_n, n_src)
+    Lx_n = Lx + (2 * ext_x)
+    Ly_n = Ly + (2 * ext_y)
+    nx, ny, Lx_nn, Ly_nn, _ = get_src_params_2D(Lx_n, Ly_n, n_src)
     ext_x_n = (Lx_nn - Lx) / 2
     ext_y_n = (Ly_nn - Ly) / 2
-    ext_z_n = (Lz_nn - Lz) / 2
-    X_src, Y_src, Z_src = np.mgrid[
+    X_src, Y_src = np.mgrid[
         (np.min(X) - ext_x_n) : (np.max(X) + ext_x_n) : complex(0, nx),
         (np.min(Y) - ext_y_n) : (np.max(Y) + ext_y_n) : complex(0, ny),
-        (np.min(Z) - ext_z_n) : (np.max(Z) + ext_z_n) : complex(0, nz),
     ]
-    # d = np.round(R_init / ds)
     R = R_init
-    return (X_src, Y_src, Z_src, R)
+    return X_src, Y_src, R
 
 
-@njit()
-def get_src_params_3D(Lx, Ly, Lz, n_src):
-    """Helps to evenly distribute n_src sources in a cuboid of size Lx * Ly * Lz
-    Parameters
-    ----------
-    Lx, Ly, Lz : floats
-        lengths in the directions x, y, z of the area,
-        the sources should be placed
-    n_src : int
-        demanded number of sources to be included in the model
-    Returns
-    -------
-    nx, ny, nz : ints
-        number of sources in directions x, y, z
-        new n_src = nx * ny * nz may not be equal to the demanded number of
-        sources
-    Lx_n, Ly_n, Lz_n : floats
-        updated lengths in the directions x, y, z
-    ds : float
-        spacing between the sources (grid nodes)
-    """
-    V = Lx * Ly * Lz
-    V_unit = V / n_src
-    L_unit = V_unit ** (1.0 / 3.0)
-    nx = np.ceil(Lx / L_unit)
-    ny = np.ceil(Ly / L_unit)
-    nz = np.ceil(Lz / L_unit)
-    ds = Lx / (nx - 1)
-    Lx_n = (nx - 1) * ds
-    Ly_n = (ny - 1) * ds
-    Lz_n = (nz - 1) * ds
-    return (nx, ny, nz, Lx_n, Ly_n, Lz_n, ds)
+# --- Ground-truth CSD profiles (for testing; from the upstream toolbox) ---
 
-
-def generate_electrodes(
-    dim, xlims=[0.1, 0.9], ylims=[0.1, 0.9], zlims=[0.1, 0.9], res=5
-):
-    """Generates electrodes, helpful for FWD funtion.
-    Parameters
-    ----------
-    dim : int
-        Dimensionality of the electrodes, 1,2 or 3
-    xlims : [start, end]
-        Spatial limits of the electrodes
-    ylims : [start, end]
-        Spatial limits of the electrodes
-    zlims : [start, end]
-        Spatial limits of the electrodes
-    res : int
-        How many electrodes in each dimension
-    Returns
-    -------
-    ele_x, ele_y, ele_z : flattened np.array of the electrode pos
-    """
-    if dim == 1:
-        ele_x = np.mgrid[xlims[0] : xlims[1] : complex(0, res)]
-        ele_x = ele_x.flatten()
-        return ele_x
-    elif dim == 2:
-        ele_x, ele_y = np.mgrid[
-            xlims[0] : xlims[1] : complex(0, res), ylims[0] : ylims[1] : complex(0, res)
-        ]
-        ele_x = ele_x.flatten()
-        ele_y = ele_y.flatten()
-        return ele_x, ele_y
-    elif dim == 3:
-        ele_x, ele_y, ele_z = np.mgrid[
-            xlims[0] : xlims[1] : complex(0, res),
-            ylims[0] : ylims[1] : complex(0, res),
-            zlims[0] : zlims[1] : complex(0, res),
-        ]
-        ele_x = ele_x.flatten()
-        ele_y = ele_y.flatten()
-        ele_z = ele_z.flatten()
-        return ele_x, ele_y, ele_z
-
-
-@njit()
 def gauss_1d_dipole(x):
-    """1D Gaussian dipole source is placed between 0 and 1
-    to be used to test the CSD
-    Parameters
-    ----------
-    x : np.array
-        Spatial pts. at which the true csd is evaluated
-    Returns
-    -------
-    f : np.array
-        The value of the csd at the requested points
-    """
+    """1D gaussian dipole CSD profile on (0, 1): source at 0.7, sink at 0.3."""
     src = 0.5 * np.exp(-((x - 0.7) ** 2) / (2.0 * 0.3)) * (2 * np.pi * 0.3) ** -0.5
     snk = -0.5 * np.exp(-((x - 0.3) ** 2) / (2.0 * 0.3)) * (2 * np.pi * 0.3) ** -0.5
-    f = src + snk
-    return f
+    return src + snk
 
 
-@njit()
-def large_source_2D(x, y):
-    """2D Gaussian large source profile - to use to test csd
-    Parameters
-    ----------
-    x : np.array
-        Spatial x pts. at which the true csd is evaluated
-    y : np.array
-        Spatial y pts. at which the true csd is evaluated
-    Returns
-    -------
-    f : np.array
-        The value of the csd at the requested points
-    """
-    zz = [0.4, -0.3, -0.1, 0.6]
-    zs = [0.2, 0.3, 0.4, 0.2]
-    f1 = (
-        0.5965
-        * np.exp((-1 * (x - 0.1350) ** 2 - (y - 0.8628) ** 2) / 0.4464)
-        * np.exp(-((-zz[0]) ** 2) / zs[0])
-        / np.exp(-((zz[0]) ** 2) / zs[0])
-    )
-    f2 = (
-        -0.9269
-        * np.exp((-2 * (x - 0.1848) ** 2 - (y - 0.0897) ** 2) / 0.2046)
-        * np.exp(-((-zz[1]) ** 2) / zs[1])
-        / np.exp(-((zz[1]) ** 2) / zs[1])
-    )
-    f3 = (
-        0.5910
-        * np.exp((-3 * (x - 1.3189) ** 2 - (y - 0.3522) ** 2) / 0.2129)
-        * np.exp(-((-zz[2]) ** 2) / zs[2])
-        / np.exp(-((zz[2]) ** 2) / zs[2])
-    )
-    f4 = (
-        -0.1963
-        * np.exp((-4 * (x - 1.3386) ** 2 - (y - 0.5297) ** 2) / 0.2507)
-        * np.exp(-((-zz[3]) ** 2) / zs[3])
-        / np.exp(-((zz[3]) ** 2) / zs[3])
-    )
-    f = f1 + f2 + f3 + f4
-    return f
+def gauss_2d_dipole(x, y):
+    """2D gaussian dipole profile on the unit square."""
+    f1 = np.exp(-((x - 0.7) ** 2 + (y - 0.6) ** 2) / 0.02) * 0.5
+    f2 = -np.exp(-((x - 0.3) ** 2 + (y - 0.35) ** 2) / 0.02) * 0.5
+    return f1 + f2
 
 
-def small_source_2D(x, y):
-    """2D Gaussian small source profile - to be used to test csd
-    Parameters
-    ----------
-    x : np.array
-        Spatial x pts. at which the true csd is evaluated
-    y : np.array
-        Spatial y pts. at which the true csd is evaluated
-    Returns
-    -------
-    f : np.array
-        The value of the csd at the requested points
-    """
+def small_source_2d(x, y):
+    """2D 'small source' profile (four gaussian lobes) from the upstream
+    kCSD toolbox, used as a reconstruction benchmark."""
 
     def gauss2d(x, y, p):
         rcen_x = p[0] * np.cos(p[5]) - p[1] * np.sin(p[5])
         rcen_y = p[0] * np.sin(p[5]) + p[1] * np.cos(p[5])
         xp = x * np.cos(p[5]) - y * np.sin(p[5])
         yp = x * np.sin(p[5]) + y * np.cos(p[5])
-
-        g = p[4] * np.exp(
+        return p[4] * np.exp(
             -(((rcen_x - xp) / p[2]) ** 2 + ((rcen_y - yp) / p[3]) ** 2) / 2.0
         )
-        return g
 
-    f1 = gauss2d(x, y, [0.3, 0.7, 0.038, 0.058, 0.5, 0.0])
-    f2 = gauss2d(x, y, [0.3, 0.6, 0.038, 0.058, -0.5, 0.0])
-    f3 = gauss2d(x, y, [0.45, 0.7, 0.038, 0.058, 0.5, 0.0])
-    f4 = gauss2d(x, y, [0.45, 0.6, 0.038, 0.058, -0.5, 0.0])
-    f = f1 + f2 + f3 + f4
-    return f
+    return (
+        gauss2d(x, y, [0.3, 0.7, 0.038, 0.058, 0.5, 0.0])
+        + gauss2d(x, y, [0.3, 0.6, 0.038, 0.058, -0.5, 0.0])
+        + gauss2d(x, y, [0.45, 0.7, 0.038, 0.058, 0.5, 0.0])
+        + gauss2d(x, y, [0.45, 0.6, 0.038, 0.058, -0.5, 0.0])
+    )
 
 
-def gauss_3d_dipole(x, y, z):
-    """3D Gaussian dipole profile - to be used to test csd.
+# ---------------------------------------------------------------------------
+# Forward modelling (ground-truth LFP generation for tests)
+# ---------------------------------------------------------------------------
+
+
+def generate_lfp(
+    csd_profile,
+    x_positions,
+    y_positions=None,
+    x_limits=(0.0, 1.0),
+    y_limits=(0.0, 1.0),
+    resolution=50,
+    h=1.0,
+    sigma=1.0,
+):
+    """Forward modelling: potentials generated by an analytic CSD profile.
+
+    The plain-NumPy counterpart of Elephant's ``generate_lfp`` (no
+    neo/quantities). Note ``h`` defaults to 1.0 — consistent with the kCSD
+    forward model in this package — rather than Elephant's 50, and (unlike
+    Elephant's transposed quadrature) the 2D integrals are evaluated over
+    the correct axes.
+
     Parameters
     ----------
-    x : np.array
-        Spatial x pts. at which the true csd is evaluated
-    y : np.array
-        Spatial y pts. at which the true csd is evaluated
-    z : np.array
-        Spatial z pts. at which the true csd is evaluated
+    csd_profile : callable
+        CSD(x) for 1D or CSD(x, y) for 2D.
+    x_positions : np.ndarray
+        Electrode x coordinates (1D case), or (n_ele,) positions.
+    y_positions : np.ndarray | None
+        Electrode y coordinates; supply for the 2D case.
+    x_limits, y_limits : tuple
+        Extent of the 'true' CSD grid.
+    resolution : int
+        Number of grid points per dimension of the charge grid.
+    h : float
+        Slice thickness (sets the kernel smoothing scale).
+    sigma : float
+        Conductivity.
+
     Returns
     -------
-    f : np.array
-        The value of the csd at the requested points
+    pots : np.ndarray (n_ele,)
     """
-    x0, y0, z0 = 0.3, 0.7, 0.3
-    x1, y1, z1 = 0.6, 0.5, 0.7
-    sig_2 = 0.023
-    A = (2 * np.pi * sig_2) ** -1
-    f1 = A * np.exp((-((x - x0) ** 2) - (y - y0) ** 2 - (z - z0) ** 2) / (2 * sig_2))
-    f2 = (
-        -1
-        * A
-        * np.exp((-((x - x1) ** 2) - (y - y1) ** 2 - (z - z1) ** 2) / (2 * sig_2))
-    )
-    f = f1 + f2
-    return f
+    x = np.linspace(x_limits[0], x_limits[1], resolution)
+    if y_positions is None:
+        chrg_x = x
+        csd = csd_profile(chrg_x)
+        xe = np.asarray(x_positions, dtype=float).ravel()
+        dist = np.abs(xe[:, np.newaxis] - chrg_x[np.newaxis, :])
+        m = np.sqrt(dist**2 + h**2) - dist
+        integrand = m * csd[np.newaxis, :]
+        pots = simpson(integrand, x=chrg_x, axis=1)
+        pots /= 2.0 * sigma
+        return pots
+    y = np.linspace(y_limits[0], y_limits[1], resolution)
+    chrg_x = x[:, np.newaxis]
+    chrg_y = y[np.newaxis, :]
+    csd = csd_profile(chrg_x, chrg_y)
+    xe = np.asarray(x_positions, dtype=float).ravel()
+    ye = np.asarray(y_positions, dtype=float).ravel()
+    m = np.sqrt(
+        (xe[:, np.newaxis, np.newaxis] - chrg_x[np.newaxis, :, :]) ** 2
+        + (ye[:, np.newaxis, np.newaxis] - chrg_y[np.newaxis, :, :]) ** 2
+    )  # (n_ele, res_x, res_y)
+    np.clip(m, a_min=1e-7, a_max=None, out=m)
+    integrand = np.arcsinh(h / m) * csd[np.newaxis, :, :]
+    inner = simpson(integrand, x=y, axis=2)  # integrate over y
+    pots = simpson(inner, x=x, axis=1)  # integrate over x
+    pots /= 2 * np.pi * sigma
+    return pots
+
