@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def gen_countinglist(proof_element, xy, x1x, x):
     not_in = 0
     t = 1
