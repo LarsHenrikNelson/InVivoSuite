@@ -104,8 +104,7 @@ It intentionally avoids `neo`/`quantities` unit arrays — everything is plain N
   compatibility; `csd_spike_phase` uses the correct analysis rate.
 - `invivosuite/asymp_pdc/pdc.py` and `invivosuite/functions/curve_fit.py`
   contain pre-existing syntax errors (they do not import); they are excluded
-  from `ruff check` (see `pyproject.toml`). `load_acq`/`load_hdf5_acqs` in
-  `load_ad.py` are stale helpers that call methods that no longer exist.
+  from `ruff check` (see `pyproject.toml`).
 - Spike removal must run on the raw wideband with `ref_type="none"`
   *before* any CMR/CAR referencing: the virtual references contain spike
   transients and would remix them into clean channels (`csd`, `get_clean_lfp`

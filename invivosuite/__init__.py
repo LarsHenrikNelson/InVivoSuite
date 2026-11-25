@@ -7,7 +7,6 @@ from .acq import (
     LFPManager,
     SpkLFPManager,
     SpkManager,
-    load_hdf5_acqs,
 )
 from .functions import *
 
