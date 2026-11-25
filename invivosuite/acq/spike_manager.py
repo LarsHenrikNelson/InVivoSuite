@@ -4,28 +4,46 @@ from pathlib import Path
 from typing import Literal, Optional, Union
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy import ndimage
 from send2trash import send2trash
 
-from ..functions import spike_functions as spkf
 from ..functions import signal_functions as signal_f
-from ..utils import concatenate_dicts, save_tsv, TempMemmap
+from ..functions import spike_functions as spkf
+from ..utils import concatenate_dicts, save_tsv
+from .acq_manager import AcqManager
+
+DTYPE_MAP = {"f32": np.float32, "f64": np.float64, "f16": np.float16}
+OUTPUT_TYPE = Literal["sec", "ms", "sample"]
 
 Callback = Callable[[str], None]
+LoadType = Literal["r+", "r", "w+", "c", "memory"]
 
 
-class SpkManager:
-    def load_ks_data(self, load_type: str = "r+"):
+class SpkManager(AcqManager):
+    def load_ks_data(self, load_type: LoadType = "r+", matlab_indexing: bool = False):
         self._load_sparse_templates(load_type=load_type)
         self._load_spike_templates(load_type=load_type)
         self._load_spike_clusters(load_type=load_type)
-        self._load_spike_times(load_type=load_type)
+        self._load_spike_times(load_type=load_type, matlab_indexing=matlab_indexing)
         self._load_amplitudes(load_type=load_type)
         self._load_spike_waveforms(load_type=load_type)
         self._load_accepted_units(load_type=load_type)
         self._load_celltypes()
 
-    def _load_amplitudes(self, load_type: str = "r+"):
+    def load_kilosort(
+        self,
+        file_directory,
+        load_type: LoadType = "r+",
+        matlab_indexing: bool = False,
+    ):
+        """Load kilosort output. Set matlab_indexing=True only for output from
+        MATLAB versions of kilosort (1-based spike times). Kilosort 4 is 0-based.
+        """
+        self.ks_directory = Path(file_directory)
+        self.load_ks_data(load_type=load_type, matlab_indexing=matlab_indexing)
+
+    def _load_amplitudes(self, load_type: LoadType = "r+"):
         if load_type == "memory":
             self.amplitudes = np.array(
                 np.load(self.ks_directory / "amplitudes.npy", "r").flatten()
@@ -40,7 +58,7 @@ class SpkManager:
         if temp_path.exists():
             send2trash(str(temp_path))
 
-    def _load_sparse_templates(self, load_type: str = "r+"):
+    def _load_sparse_templates(self, load_type: LoadType = "r+"):
         temp_path = self.ks_directory / "templates.npy"
         if temp_path.exists():
             if load_type == "memory":
@@ -54,18 +72,27 @@ class SpkManager:
         else:
             self.sparse_templates = np.zeros((0, 0, 0))
 
-    def _load_spike_templates(self, load_type: str = "r+"):
-        if load_type == "memory":
-            self.spike_templates = np.array(
-                np.load(self.ks_directory / "spike_templates.npy", "r").flatten()
-            )
+    def _load_spike_templates(self, load_type: LoadType = "r+"):
+        mode = "r" if load_type == "memory" else load_type
+        spike_templates = np.load(self.ks_directory / "spike_templates.npy", mode)
+        if spike_templates.ndim == 2:
+            # Kilosort 4 may save shape (n, 2). Flattening would interleave the
+            # columns, so keep the first column (the template id of each spike).
+            if spike_templates.shape[1] > 1:
+                self.callback(
+                    "spike_templates.npy has shape "
+                    f"{spike_templates.shape}; using the first column."
+                )
+            spike_templates = spike_templates[:, 0]
         else:
-            self.spike_templates = np.load(
-                self.ks_directory / "spike_templates.npy", load_type
-            ).flatten()
+            spike_templates = spike_templates.flatten()
+        if load_type == "memory" or spike_templates.base is not None:
+            # A column slice is a strided view, make it a contiguous array.
+            spike_templates = np.array(spike_templates)
+        self.spike_templates = spike_templates
         self.template_ids = np.unique(self.spike_templates)
 
-    def _load_spike_clusters(self, load_type: str = "r+"):
+    def _load_spike_clusters(self, load_type: LoadType = "r+"):
         if load_type == "memory":
             self.spike_clusters = np.array(
                 np.load(self.ks_directory / "spike_clusters.npy", "r").flatten()
@@ -76,21 +103,25 @@ class SpkManager:
             ).flatten()
         self.cluster_ids = np.unique(self.spike_clusters)
 
-    def _load_spike_times(self, load_type: str = "r+"):
-        # Ignoring load_type here because kilosort spike_times may be
-        # matlab index (start at 1, ending at length) so spikes need to have 1 subtracted
-        # from them.
-        # if load_type == "memory":
+    def _load_spike_times(
+        self, load_type: LoadType = "r+", matlab_indexing: bool = False
+    ):
+        # Ignoring load_type here because the spike times are copied into memory.
+        # Kilosort 4 spike times are 0-based. Only MATLAB kilosort output is
+        # 1-based (start at 1) and needs 1 subtracted.
         self.spike_times = np.array(
             np.load(self.ks_directory / "spike_times.npy", "r").flatten()
         )
-        # else:
-        #     self.spike_times = np.load(
-        #         self.ks_directory / "spike_times.npy", load_type
-        #     ).flatten()
-        self.spike_times -= 1
+        if matlab_indexing:
+            self.spike_times -= 1
+        n_neg = int(np.count_nonzero(self.spike_times < 0))
+        if n_neg > 0:
+            self.callback(
+                f"Warning: {n_neg} spikes have negative sample indices. They are kept "
+                "but skipped during waveform extraction."
+            )
 
-    def _load_spike_waveforms(self, load_type: str = "r+"):
+    def _load_spike_waveforms(self, load_type: LoadType = "r+"):
         temp_path = self.ks_directory / "_phy_spikes_subset.waveforms.npy"
         if temp_path.exists():
             if load_type == "memory":
@@ -102,29 +133,33 @@ class SpkManager:
             np.save(temp_path, self.spike_waveforms)
             self._load_spike_waveforms()
 
-    def _load_accepted_units(self, load_type: str = "r+"):
+    def _load_accepted_units(self, load_type: LoadType = "r+"):
         temp_path = self.ks_directory / "accepted_units.npy"
         if temp_path.exists():
             if load_type == "memory":
-                self.accepted_units = np.array(np.load(temp_path, "r"))
+                self.accepted_units = np.load(temp_path, "r")
             else:
                 self.accepted_units = np.load(temp_path, load_type)
         else:
             self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
             self.accepted_units[:] = True
             np.save(temp_path, self.accepted_units)
+            self.accepted_units = np.load(temp_path, "r")
 
         if self.accepted_units.size != self.cluster_ids.size:
             self.accepted_units = np.zeros(self.cluster_ids.size, dtype=bool)
             self.accepted_units[:] = True
             np.save(temp_path, self.accepted_units)
+            self.accepted_units = np.load(temp_path, "r")
 
     def _load_celltypes(self):
         temp_path = self.ks_directory / "celltype.csv"
         if temp_path.exists():
-            self.celltypes = np.loadtxt(temp_path, delimiter="\t", dtype=str)
+            self.celltypes: np.ndarray = np.loadtxt(
+                temp_path, delimiter="\t", dtype=str
+            )
         else:
-            self.celltypes = [None] * self.cluster_ids.size
+            self.celltypes: list[None] = [None] * self.cluster_ids.size
 
     def cluster_spike_ids(self, cluster_id: int, start: int = 0, end: int = 0):
         if end == 0:
@@ -160,8 +195,8 @@ class SpkManager:
     def get_cluster_spike_times(
         self,
         cluster_id: int,
-        fs: Optional[int] = None,
-        output_type: Literal["sec", "ms", "samples"] = "samples",
+        fs: float | None = None,
+        output_type: OUTPUT_TYPE = "sample",
         start: int = 0,
         end: int = 0,
     ) -> np.ndarray:
@@ -170,7 +205,7 @@ class SpkManager:
 
         Args:
             cluster_id (int): _description_
-            fs (Optional[int], optional): _description_. Defaults to None.
+            fs (int | None, optional): _description_. Defaults to None.
             output_type (Literal[&quot;sec&quot;, &quot;ms&quot;, &quot;samples&quot;], optional): _description_. Defaults to "samples".
             start (int, optional): _description_. Defaults to 0.
             end (int, optional): _description_. Defaults to 0.
@@ -180,17 +215,19 @@ class SpkManager:
         """
         indices = self.cluster_spike_ids(cluster_id, start, end)
         spk_times = self.spike_times[indices]
-        if fs is None or output_type == "samples":
+        if fs is None or output_type in ("sample", "samples"):
             return spk_times
-        if output_type == "ms":
+        elif output_type == "ms":
             return spk_times / (fs / 1000)
         elif output_type == "sec":
             return spk_times / fs
+        else:
+            raise ValueError("dtype not recognized.")
 
     def get_spike_times(
         self,
-        fs: Optional[int] = None,
-        output_type: Literal["sec", "ms", "samples"] = "samples",
+        fs: int | None = None,
+        output_type: OUTPUT_TYPE = "sample",
         accepted: bool = False,
         start: int = 0,
         end: int = 0,
@@ -224,7 +261,7 @@ class SpkManager:
         indices = self.cluster_spike_ids(cluster_id, start, end)
         return self.amplitudes[indices]
 
-    def set_accepted_units(self, accepted_units: Union[list[bool], np.ndarray[bool]]):
+    def set_accepted_units(self, accepted_units: list[bool] | NDArray[np.bool]):
         for index, _ in enumerate(self.cluster_ids):
             self.accepted_units[index] = accepted_units[index]
             self.accepted_units.flush()
@@ -294,7 +331,7 @@ class SpkManager:
 
     def get_channel_clusters(
         self, center: int | None = None, accepted: bool = False
-    ) -> dict[str, list[int]]:
+    ) -> dict[int, list[int]]:
         channel_dict = defaultdict(list)
         indices = np.arange(self.cluster_ids.size)
         if accepted:
@@ -320,17 +357,17 @@ class SpkManager:
             channels[temp_index] = best_chan
         return channels
 
-    def get_cluster_channel(self, cluster_id: int, center: Optional[int] = None) -> int:
+    def get_cluster_channel(self, cluster_id: int, center: int | None = None) -> int:
         template = self.sparse_templates[self.cluster_ids == cluster_id, :, :]
         return spkf._best_channel(template=template, center=center)
 
     def _get_channel_clusters(
         self,
-        channel: Union[int, list[int]] | None = None,
+        channel: int | None = None,
         accepted: bool = False,
     ):
         chan_cid_dict = self.get_channel_clusters(center=None, accepted=accepted)
-        chans = sorted(list(chan_cid_dict.keys()))
+        chans = sorted(chan_cid_dict.keys())
         if channel is not None:
             cids = np.zeros(len(chan_cid_dict[channel]), dtype=int)
             cluster_channel = np.zeros(len(chan_cid_dict[channel]), dtype=int)
@@ -387,9 +424,7 @@ class SpkManager:
 
         if accepted:
             accepted_cids = self.cluster_ids[self.accepted_units]
-            truth_index = [
-                True if i in accepted_cids else False for i in self.spike_clusters
-            ]
+            truth_index = [i in accepted_cids for i in self.spike_clusters]
             id_to_row = {
                 uid: i for i, uid in enumerate(self.cluster_ids[self.accepted_units])
             }
@@ -423,14 +458,14 @@ class SpkManager:
     def get_binned_spikes_channel(
         self,
         nperseg: int = 1,
-        channel: Optional[int] = None,
+        channel: int | None = None,
         start: int = 0,
         end: int = 0,
         accepted: bool = False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if end == 0:
-            temp_end = self.end - self.start
-        length = (temp_end - start) // nperseg
+            end = self.end - self.start
+        length = (end - start) // nperseg
         index = 0
         cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
             channel=channel, accepted=accepted
@@ -446,32 +481,30 @@ class SpkManager:
 
     def get_continuous_spikes_channel(
         self,
-        channel: Optional[int] = None,
+        channel: int | None = None,
         nperseg: int = 1,
         fs: float = 40000.0,
         window: spkf.Windows = "boxcar",
-        sigma: float | int = 200,
+        sigma: float = 200,
         method: spkf.Methods = "convolve",
         start: int = 0,
         end: int = 0,
         accepted: bool = False,
         aggregrate: bool = False,
-        dtype: np.floating = np.float32,
-    ) -> np.ndarray:
-        start = self.start + start
-        if end > 0:
-            end = self.start + end
-        else:
-            end = self.end
+        dtype: Literal["f32", "f64", "f16"] = "f32",
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        # Spike times are already relative to self.start so do not offset them.
+        if end <= 0:
+            end = self.end - self.start
         length = (end - start) // nperseg
         index = 0
         cids, cluster_channel, chans, chan_cid_dict = self._get_channel_clusters(
             channel=channel, accepted=accepted
         )
         if aggregrate:
-            output = np.zeros(length, dtype=dtype)
+            output = np.zeros(length, dtype=DTYPE_MAP[dtype])
         else:
-            output = np.zeros((cids.size, length), dtype=dtype)
+            output = np.zeros((cids.size, length), dtype=DTYPE_MAP[dtype])
         for chan in chans:
             for cid in chan_cid_dict[chan]:
                 if aggregrate:
@@ -504,11 +537,11 @@ class SpkManager:
     def get_cluster_spike_properties(
         self,
         cluster_id: int,
-        fs: int = 40000,
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
         isi_threshold: float = 0.0015,
-        R: Optional[float] = 0.005,
+        R: float = 0.005,
         min_isi: float = 0.0,
         nperseg: int = 40,
         output_type: Literal["sec", "ms"] = "sec",
@@ -537,24 +570,28 @@ class SpkManager:
                 output_dict["fr_iei"] = 1 / mean_isi
             else:
                 output_dict["fr_iei"] = 1000 / mean_isi
-            output_dict["fr"] = times.size / (time_end - time_start)
+            output_dict["fr"] = times.size / (time_end - time_start)  # Hz
             output_dict["abi_sfa"] = spkf.sfa_abi(isi)
             output_dict["local_sfa"] = spkf.sfa_local_var(isi)
             output_dict["rlocal_sfa"] = spkf.sfa_rlocal_var(isi, R)
             output_dict["divisor_sfa"] = spkf.sfa_divisor(isi)
+            # isi_threshold and min_isi are in seconds, so the violation metrics
+            # are computed on a spike train in seconds with time bounds in
+            # seconds (start and end are in samples).
+            times_sec = times / 1000.0 if output_type == "ms" else times
             fpRate, nv = spkf.isi_violations(
-                spike_train=times,
-                min_time=start,
-                max_time=end,
+                spike_train=times_sec,
+                min_time=time_start,
+                max_time=time_end,
                 isi_threshold=isi_threshold,
                 min_isi=min_isi,
             )
             output_dict["fp_rate"] = fpRate
             output_dict["num_violations"] = nv
             rp_contam, _ = spkf.rb_violations(
-                spike_train=times,
-                min_time=start,
-                max_time=end,
+                spike_train=times_sec,
+                min_time=time_start,
+                max_time=time_end,
                 isi_threshold=isi_threshold,
                 min_isi=min_isi,
             )
@@ -572,11 +609,9 @@ class SpkManager:
             output_dict["divisor_sfa"] = np.nan
             output_dict["rp_contam"] = 1.0
         output_dict["n_spikes"] = times.size
-        if output_type == "sec":
-            divisor = fs
-        else:
-            divisor = fs / 1000
-        pr = spkf.presence(times, start / divisor, end / divisor)
+        # times are in output_type units so the bounds must be as well.
+        scale = 1000.0 if output_type == "ms" else 1.0
+        pr = spkf.presence(times, time_start * scale, time_end * scale)
         output_dict["presence_ratio"] = pr["presence_ratio"]
         cutoff = spkf.amplitude_cutoff(amps)
         output_dict["amp_cutoff"] = cutoff
@@ -584,11 +619,11 @@ class SpkManager:
 
     def get_spike_properties(
         self,
-        fs: int = 40000,
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
         isi_threshold: float = 0.0015,
-        R: Optional[float] = 0.005,
+        R: float = 0.005,
         min_isi: float = 0.0,
         nperseg: int = 40,
         output_type: Literal["sec", "ms"] = "sec",
@@ -617,12 +652,15 @@ class SpkManager:
     def get_template_properties(
         self,
         templates: np.ndarray,
+        waveforms: np.ndarray | None = None,
         center: int = 41,
         nchans: int = 4,
         total_chans: int = 64,
         upsample_factor: int = 2,
     ):
         t_props_list = []
+        if waveforms is None:
+            waveforms = self.spike_waveforms
         for temp_index in range(self.cluster_ids.size):
             cluster_id = self.cluster_ids[temp_index]
             chan, start_chan, _ = spkf._template_channels(
@@ -634,7 +672,7 @@ class SpkManager:
                 upsample_factor=upsample_factor,
             )
             indexes = np.where(self.spike_clusters == cluster_id)[0]
-            temp_spikes_waveforms = self.spike_waveforms[indexes]
+            temp_spikes_waveforms = waveforms[indexes]
             template_stdev = np.mean(
                 np.std(temp_spikes_waveforms, axis=0)[:, int(chan - start_chan)]
             )
@@ -654,7 +692,7 @@ class SpkManager:
         max_end: float = 0.34,
         R: float = 0.005,
         output_type: Literal["sec", "ms", "sample"] = "sec",
-        fs: Union[float, int] = 40000,
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
     ):
@@ -685,8 +723,8 @@ class SpkManager:
 
     def get_properties(
         self,
-        templates: Optional[np.ndarray] = None,
-        fs: int = 40000,
+        templates: np.ndarray | None = None,
+        fs: float = 40000,
         center=41,
         nchans: int = 4,
         total_chans: int = 64,
@@ -702,7 +740,7 @@ class SpkManager:
         start: int = 0,
         end: int = 0,
         output_type: Literal["sec", "ms", "sample"] = "sec",
-    ) -> dict:
+    ) -> tuple[dict, dict]:
         if templates is None:
             templates = self.sparse_templates
         output_dict = {}
@@ -729,6 +767,8 @@ class SpkManager:
             max_int=max_int,
             max_end=max_end,
             output_type=output_type,
+            start=start,
+            end=end,
         )
         output_dict.update(temp_props)
         output_dict.update(spk_props)
@@ -758,18 +798,22 @@ class SpkManager:
             max_end=max_end,
             fs=fs,
             output_type="sample",
+            start=start,
+            end=end,
         )
+        if end == 0:
+            end = self.end - self.start
         length = end - start
         output_data = np.zeros(length // nperseg, dtype=int)
         for i in b_data:
-            start = max(0, i[0] // nperseg - dt)
-            end = min(i[1] // nperseg + dt, output_data.size)
-            output_data[start:end] = 1
+            b_start = max(0, (i[0] - start) // nperseg - dt)
+            b_end = min((i[1] - start) // nperseg + dt, output_data.size)
+            output_data[b_start:b_end] = 1
         return output_data
 
     def get_channel_binary_burst(
         self,
-        channel: Optional[int] = None,
+        channel: int | None = None,
         min_count: int = 3,
         min_dur: float = 0.01,
         max_start: float = 0.170,
@@ -783,7 +827,7 @@ class SpkManager:
             end = self.end - self.start
         length = end - start
         chan_cid_dict = self.get_channel_clusters()
-        chans = sorted(list(chan_cid_dict.keys()))
+        chans = sorted(chan_cid_dict.keys())
         length = (end - start) // nperseg
         index = 0
         if channel is not None:
@@ -793,8 +837,8 @@ class SpkManager:
             )
         else:
             output_data = np.zeros((self.cluster_ids.size, length), dtype=np.int16)
-        for channel in chans:
-            for cluster_id in chan_cid_dict[channel]:
+        for ch in chans:
+            for cluster_id in chan_cid_dict[ch]:
                 b_data = self.get_cluster_bursts(
                     cluster_id=cluster_id,
                     min_count=min_count,
@@ -807,9 +851,9 @@ class SpkManager:
                     end=end,
                 )
                 for i in b_data:
-                    start = i[0] // nperseg
-                    end = i[1] // nperseg
-                    output_data[index, start:end] = 1
+                    b_start = max(0, (i[0] - start) // nperseg)
+                    b_end = min((i[1] - start) // nperseg, length)
+                    output_data[index, b_start:b_end] = 1
                 index += 1
         return output_data
 
@@ -821,13 +865,15 @@ class SpkManager:
         max_start: float = 0.170,
         max_int: float = 0.3,
         max_end: float = 0.34,
-        output_type: Literal["sec", "ms", "sample"] = "sec",
-        fs: Union[float, int] = 40000,
+        output_type: OUTPUT_TYPE = "sec",
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
     ) -> list[np.ndarray]:
+        # Burst detection always runs on spike times in seconds because the
+        # thresholds are in seconds. output_type only converts the result.
         indexes = self.get_cluster_spike_times(
-            cluster_id, output_type=output_type, fs=fs, start=start, end=end
+            cluster_id, output_type="sec", fs=fs, start=start, end=end
         )
         b_data = spkf.max_int_bursts(
             indexes,
@@ -838,8 +884,6 @@ class SpkManager:
             max_int=max_int,
             max_end=max_end,
             output_type=output_type,
-            start=start,
-            end=end,
         )
         return b_data
 
@@ -852,11 +896,13 @@ class SpkManager:
         max_int: float = 0.3,
         max_end: float = 0.34,
         output_type: Literal["sec", "ms", "sample"] = "sec",
-        fs: Union[float, int] = 40000,
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
-    ) -> tuple[dict[str, Union[float, int]], dict[str, np.ndarray], list[np.ndarray]]:
-        indexes = self.get_cluster_spike_times(cluster_id, start=start, end=end)
+    ) -> tuple[dict[str, float], dict[str, np.ndarray], list[np.ndarray]]:
+        indexes = self.get_cluster_spike_times(
+            cluster_id, output_type="sec", fs=fs, start=start, end=end
+        )
         bursts = spkf.max_int_bursts(
             indexes,
             fs,
@@ -934,14 +980,15 @@ class SpkManager:
         start: int,
         end: int,
         waveform_length: int,
-        center: Optional[int],
+        center: int,
         peaks: np.ndarray,
-        channels: int,
+        channels: np.ndarray,
         template_amplitudes: np.ndarray,
         subtract: bool = True,
     ):
         # Get only the current spikes
-        current_spikes = np.where((spike_times < end) & (spike_times > start))[0]
+        # Negative spike times can never satisfy spike_times >= start (start >= 0)
+        current_spikes = np.where((spike_times < end) & (spike_times >= start))[0]
         if len(current_spikes) > 0:
             self.callback(f"Current spikes: {current_spikes[0]}-{current_spikes[-1]}")
             self.callback(
@@ -955,7 +1002,7 @@ class SpkManager:
         spk_chans = nchans * 2
         if center is None:
             wbegin = waveform_length // 2
-            wend = wbegin
+            wend = waveform_length - wbegin
             cutoff_end = end - wend
         else:
             wend = waveform_length - center
@@ -969,7 +1016,11 @@ class SpkManager:
             cur_template = self.sparse_templates[cur_template_index]
             chans = channels[cur_template_index, 1:3]
             peak_chan = channels[cur_template_index, 0]
-            if (cur_spk_time < cutoff_end) and ((cur_spk_time - wbegin) > start):
+            if (
+                cur_template_index >= 0
+                and (cur_spk_time <= cutoff_end)
+                and ((cur_spk_time - wbegin) >= start)
+            ):
                 output[curr_spk_index, :, :spk_chans] = recording_chunk[
                     int(cur_spk_time - start - wbegin) : int(
                         cur_spk_time - start + wend
@@ -996,7 +1047,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
-        center: Optional[int] = 41,
+        center: int = 41,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -1009,9 +1060,11 @@ class SpkManager:
     ):
         if end == 0:
             end = self.end - self.start
-        spike_times = self.spike_times[
-            (self.spike_times > start) & (self.spike_times < end)
-        ]
+        # Do not filter the spike times here. The output must have exactly one
+        # row per spike so that it stays aligned with spike_templates,
+        # spike_clusters and amplitudes. Spikes that cannot be extracted
+        # (negative times or windows outside the recording) stay as zero rows.
+        spike_times = self.spike_times
         n_chunks = (end - start) // (chunk_size)
         chunk_starts = (np.arange(n_chunks) * chunk_size) + start
         output = np.zeros((len(spike_times), waveform_length, (nchans * 2)))
@@ -1022,11 +1075,15 @@ class SpkManager:
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
         )
 
-        temps = np.unique(self.spike_templates)
-        template_peaks = {key: value for key, value in zip(temps, peaks.flatten())}
-        template_amplitudes = np.zeros((self.spike_templates.size))
-        for i in range(template_amplitudes.size):
-            template_amplitudes[i] = template_peaks[self.spike_templates[i]]
+        # Index peaks directly by template row so this is robust to
+        # non-contiguous template ids and to -1 (unassigned) templates.
+        valid_templates = (self.spike_templates >= 0) & (
+            self.spike_templates < peaks.shape[0]
+        )
+        template_amplitudes = np.zeros(self.spike_templates.size)
+        template_amplitudes[valid_templates] = peaks[
+            self.spike_templates[valid_templates], 0
+        ]
 
         for index, i in enumerate(chunk_starts):
             self.callback(
@@ -1059,14 +1116,17 @@ class SpkManager:
         leftover = (end - start) % (chunk_size)
         if leftover > 0:
             i = end - leftover
-            self.callback(f"Starting chunk {index + 1} at sample {i}.")
+            # Include a pre-buffer so spikes near the seam with the previous
+            # chunk are not skipped by both chunks.
+            chunk_start = max(0, i - waveform_length)
+            self.callback(f"Starting final chunk at sample {chunk_start}.")
             recording_chunk = self.multichan_acq(
                 acq_type=acq_type,
                 ref_probe=ref_probe,
                 ref_type=ref_type,
                 map_channel=map_channel,
                 probe=probe,
-                start=i,
+                start=chunk_start,
                 end=end,
             ).T
             self._extract_waveforms_chunk(
@@ -1074,7 +1134,7 @@ class SpkManager:
                 output=output,
                 recording_chunk=recording_chunk,
                 nchans=nchans,
-                start=i,
+                start=chunk_start,
                 end=end,
                 waveform_length=waveform_length,
                 center=center,
@@ -1101,7 +1161,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
-        center: Optional[int] = 41,
+        center: int = 41,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -1147,7 +1207,13 @@ class SpkManager:
             # exponent = (np.abs((np.abs(min_val) - np.abs(max_val))) // 4) * 3
             # self.callback(f"Multiplying by 10**{exponent} to reduce dtype.")
             # output = (output * float(10**exponent)).astype(dtypes[dtype])
-            self.spike_waveforms.astype(dtype=dtypes[dtype], copy=False)
+            self.spike_waveforms = self.spike_waveforms.astype(dtypes[dtype])
+
+        n_unused = int(np.count_nonzero(~self.spike_waveforms.any(axis=(1, 2))))
+        if n_unused > 0:
+            self.callback(
+                f"{n_unused} spikes have no waveform (negative or out-of-bounds spike times)."
+            )
 
         self.callback("Saving spikes waveforms.")
         self._remove_file("_phy_spikes_subset.waveforms.npy")
@@ -1188,39 +1254,51 @@ class SpkManager:
             self.sparse_templates, nchans=nchans, total_chans=total_chans
         )
         waveform_length = spike_waveforms.shape[1]
-        sparse_templates_new = np.zeros((self.cluster_ids.size, waveform_length, 64))
+        sparse_templates_new = np.zeros(
+            (self.cluster_ids.size, waveform_length, total_chans)
+        )
         self.callback("Beginning template extraction")
         spk_templates = np.full(self.spike_clusters.size, -1, dtype=int)
+        n_old_templates = channels.shape[0]
         for template_index in range(self.cluster_ids.size):
             clust_id = self.cluster_ids[template_index]
             self.callback(f"Extracting cluster {clust_id} template")
-            indexes = np.where(self.spike_clusters == clust_id)[0]
-            indexes = self.cluster_spike_ids(clust_id, start, end)
-            temp_spikes_waveforms = spike_waveforms[indexes]
-            test = np.mean(temp_spikes_waveforms, axis=0)
-            temp_index = np.unique(self.spike_templates[indexes])
-            if temp_index.size > 0:
-                temp_index = temp_index[0]
-                start_chan = channels[temp_index][0] - nchans
-                end_chan = channels[temp_index][0] + nchans
-                if start_chan < 0:
-                    end_chan -= start_chan
-                    start_chan = 0
-                if end_chan > total_chans:
-                    start_chan -= end_chan - total_chans
-                    end_chan = total_chans
-                best_chans = np.arange(start_chan, end_chan)
-                sparse_templates_new[template_index, :, best_chans] = test.T
+            # Every spike of the cluster gets this template row, even spikes
+            # outside of start/end, so no spike is left with a -1 template id.
+            all_indexes = np.where(self.spike_clusters == clust_id)[0]
+            spk_templates[all_indexes] = template_index
 
-                indexes = np.where(self.spike_clusters == clust_id)[0]
-                spk_templates[indexes] = template_index
+            indexes = self.cluster_spike_ids(clust_id, start, end)
+            if indexes.size == 0:
+                # No spikes in the window; leave this template as zeros.
+                continue
+            test = np.mean(spike_waveforms[indexes], axis=0)
+            temp_index = np.unique(self.spike_templates[indexes])
+            # Ignore unassigned (-1) and out of range template ids.
+            temp_index = temp_index[(temp_index >= 0) & (temp_index < n_old_templates)]
+            if temp_index.size == 0:
+                continue
+            temp_index = temp_index[0]
+            start_chan = channels[temp_index][0] - nchans
+            end_chan = channels[temp_index][0] + nchans
+            if start_chan < 0:
+                end_chan -= start_chan
+                start_chan = 0
+            if end_chan > total_chans:
+                start_chan -= end_chan - total_chans
+                end_chan = total_chans
+            start_chan = max(start_chan, 0)
+            best_chans = np.arange(start_chan, end_chan)
+            sparse_templates_new[template_index, :, best_chans] = test.T[
+                : best_chans.size
+            ]
         return sparse_templates_new, spk_templates
 
     def save_templates(
         self,
         nchans: int = 4,
         waveform_length: int = 82,
-        center: Optional[int] = 41,
+        center: int = 41,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -1244,13 +1322,15 @@ class SpkManager:
                 chunk_size=chunk_size,
                 dtype=dtype,
             )
-            self._load_spike_waveforms()
+            return
 
         channel_map = self.get_grp_dataset("channel_maps", probe)
 
         self.sparse_templates, self.spike_templates = self.extract_templates(
             spike_waveforms=self.spike_waveforms,
             total_chans=channel_map.size,
+            start=start,
+            end=end,
         )
         _, channels = spkf.get_template_channels(
             self.sparse_templates, nchans=nchans, total_chans=channel_map.size
@@ -1299,7 +1379,7 @@ class SpkManager:
         self,
         nchans: int = 4,
         waveform_length: int = 82,
-        center: Optional[int] = 41,
+        center: int = 41,
         ref_type: Literal["none", "cmr", "car"] = "cmr",
         ref_probe: str = "all",
         map_channel: bool = False,
@@ -1340,25 +1420,25 @@ class SpkManager:
 
     def compute_sttc(
         self,
-        dt: Union[float, int] = 25,
+        dt: float = 25.0,
         start: int = 0,
         end: int = 0,
         sttc_version: Literal["ivs", "elephant"] = "ivs",
-        output_type: Literal["sec", "ms", "samples"] = "ms",
+        output_type: OUTPUT_TYPE = "ms",
         fs: float = 40000.0,
         accepted: bool = False,
-        test_sig: Optional[Literal["shuffle", "distribution"]] = None,
-        reps: int = 1000,
-        gen_type: Literal[
-            "poisson", "gamma", "inverse_gaussian", "lognormal"
-        ] = "poisson",
     ):
         if end == 0:
             temp = self.end - self.start
+        else:
+            temp = end
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
         sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
-        size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
+        n_clusters = (
+            int(self.accepted_units.sum()) if accepted else self.cluster_ids.size
+        )
+        size = (n_clusters * (n_clusters - 1)) // 2
         sttc_data = np.zeros(size)
         cluster_ids_output = np.zeros((size, 4), dtype=int)
         if sttc_version == "ivs":
@@ -1366,9 +1446,6 @@ class SpkManager:
             num2dt_array = np.zeros(size, dtype=int)
             num1_2_array = np.zeros(size, dtype=int)
             num2_1_array = np.zeros(size, dtype=int)
-
-        if test_sig is not None:
-            sig_vals = np.zeros(size)
 
         # Cache all the clusters so we don't have to call this more than once for each cluster.
         # Could probably make this a little bit faster but maybe not worth it.
@@ -1383,22 +1460,16 @@ class SpkManager:
             )
 
         output_index = 0
-        for index1 in range(self.cluster_ids.size - 1):
-            clust_id1 = self.cluster_ids[index1]
+        for index1 in range(cluster_ids.size - 1):
+            clust_id1 = cluster_ids[index1]
             indexes1 = cluster_dict[clust_id1]
 
-            if indexes1.size > 3:
-                iei_1 = np.diff(indexes1)
-
-            for index2 in range(index1 + 1, self.cluster_ids.size):
-                clust_id2 = self.cluster_ids[index2]
+            for index2 in range(index1 + 1, cluster_ids.size):
+                clust_id2 = cluster_ids[index2]
                 self.callback(
                     f"Analyzing sttc for cluster {clust_id1} and {clust_id2}."
                 )
                 indexes2 = cluster_dict[clust_id2]
-
-                if indexes2.size > 3:
-                    iei_2 = np.diff(indexes2)
 
                 if sttc_version == "ivs":
                     sttc_index, num1dt, num1_2, num2dt, num2_1 = spkf.sttc(
@@ -1423,25 +1494,6 @@ class SpkManager:
                         stop=sttc_end,
                     )
 
-                if test_sig is not None:
-                    if indexes1.size > 3 and indexes2.size > 3:
-                        sig, _ = spkf._sttc_sig(
-                            sttc_value=sttc_index,
-                            iei_1=iei_1,
-                            iei_2=iei_2,
-                            dt=5,
-                            start=start,
-                            end=end,
-                            reps=reps,
-                            sttc_version="ivs",
-                            test_version=test_sig,
-                            gen_type=gen_type,
-                            input_type=output_type,
-                        )
-                        sig_vals[output_index] = sig
-                    else:
-                        sig_vals[output_index] = 0.9999
-
                 sttc_data[output_index] = sttc_index
                 cluster_ids_output[output_index, 0] = clust_id1
                 cluster_ids_output[output_index, 1] = clust_id2
@@ -1460,21 +1512,21 @@ class SpkManager:
             data["2_before_1"] = num2_1_array
             data["1_dt_2"] = num1dt_array
             data["2_dt_1"] = num2dt_array
-        if test_sig is not None:
-            data["sttc_sig"] = sig_vals
         return data
 
     def compute_correlation(
         self,
-        dt: Union[float, int] = 200,
+        dt: float = 200.0,
         start: int = 0,
         end: int = 0,
-        output_type: Literal["sec", "ms", "samples"] = "samples",
+        output_type: OUTPUT_TYPE = "sample",
         fs: float = 40000.0,
     ):
         output_index = 0
         if end == 0:
             temp = self.end - self.start
+        else:
+            temp = end
         size = (self.cluster_ids.size * (self.cluster_ids.size - 1)) // 2
         correlation_data = np.zeros(size)
         cluster_ids = np.zeros((size, 4), dtype=int)
@@ -1516,11 +1568,11 @@ class SpkManager:
 
     def synchronous_periods(
         self,
-        threshold: int | float = 3.0,
+        threshold: float = 3.0,
         threshold_type: Literal["relative", "absolute"] = "relative",
-        min_length: float | int = 0,
+        min_length: float = 0,
         window: spkf.Windows = "gaussian",
-        sigma: float | int = 200,
+        sigma: float = 200,
         method: spkf.Methods = "convolve",
         fs: float = 40000.0,
         nperseg: int = 1,
@@ -1546,8 +1598,11 @@ class SpkManager:
                 accepted=accepted, nperseg=nperseg, start=start, end=end
             )
         else:
-            raster_binary, _, _ = self.get_binary_spikes_channel(
-                accepted=accepted, dtype=bool
+            raster_binary, _ = self.get_raster(
+                start=start,
+                end=end,
+                accepted=accepted,
+                dtype="bool",
             )
 
         self.callback("Computing synchronous periods.")
@@ -1573,7 +1628,7 @@ class SpkManager:
         end: int = 0,
         accepted: bool = False,
     ):
-        cluster_ids, channels, _, _ = self._get_channel_clusters(
+        cluster_ids, _, _, _ = self._get_channel_clusters(
             channel=None, accepted=accepted
         )
         if accepted:
@@ -1590,10 +1645,12 @@ class SpkManager:
                 accepted=accepted, nperseg=nperseg, start=start, end=end
             )
         else:
-            raster_binary, _, _ = self.get_binary_spikes_channel(
-                accepted=accepted, dtype=bool
+            raster_binary, _ = self.get_raster(
+                start=start,
+                end=end,
+                accepted=accepted,
+                dtype="bool",
             )
-
         # Might need to normalized to total number of cells as well.
         pyr = raster_binary[cluster_celltypes == "Pyramidal", :].sum(axis=0)
         inter = raster_binary[cluster_celltypes == "Interneuron", :].sum(axis=0)
@@ -1605,19 +1662,21 @@ class SpkManager:
 
     def isttc(
         self,
-        dt: Union[float, int] = 25,
+        dt: float = 25,
         start_lag: float | None = None,
         nlags: int = 50,
         max_lag: float = 1000.0,
         sttc_limit: float = 1.0,
         start: int = 0,
         end: int = 0,
-        output_type: Literal["sec", "ms", "samples"] = "ms",
+        output_type: OUTPUT_TYPE = "ms",
         fs: float = 40000.0,
         accepted: bool = False,
     ):
         if end == 0:
             temp = self.end - self.start
+        else:
+            temp = end
         sttc_start = self.index_to_time(start, fs=fs, output_type=output_type)
         sttc_end = self.index_to_time(temp, fs=fs, output_type=output_type)
 
@@ -1633,13 +1692,17 @@ class SpkManager:
             )
             lags, corrs = spkf._sttc_positive_lags(
                 cluster_times,
+                cluster_times,
                 dt=dt,
                 nlags=nlags,
                 max_lag=max_lag,
                 start=sttc_start,
                 stop=sttc_end,
             )
-            mask = lags >= start_lag
+            if start_lag is None:
+                mask = np.ones(lags.shape, dtype=bool)
+            else:
+                mask = lags >= start_lag
             sttc_corrs.append(corrs[mask])
             lag_corrs.append(lags[mask])
         sttc_corrs = np.concatenate(sttc_corrs)
@@ -1688,7 +1751,7 @@ class SpkManager:
         bin_size: int = 1,
         stpr_width: int = 500,
         accepted: bool = False,
-        fs: float | int = 40000,
+        fs: float = 40000,
         start: int = 0,
         end: int = 0,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -1731,22 +1794,18 @@ class SpkManager:
             smoothed = ndimage.gaussian_filter1d(temp, sigma, output=smoothed_output)
             # hsum = signal.hilbert(smoothed)
             times = timestamps[raster_binary[i,] == 1]
-            stpr = (
-                np.array(
-                    [
-                        smoothed[i - stpr_width : i + stpr_width]
-                        for i in times
-                        if i < longest and i > stpr_width
-                    ]
-                ).mean(axis=0)
-                - summed_activity.mean()
-            )
-            if len(stpr) > 0:
+            segments = [
+                smoothed[t - stpr_width : t + stpr_width]
+                for t in times
+                if t < longest and t > stpr_width
+            ]
+            if len(segments) > 0:
+                stpr = np.array(segments).mean(axis=0) - summed_activity.mean()
                 stprs.append(stpr)
                 n_spikes.append(len(times))
             else:
                 stprs.append(np.zeros(stpr_width * 2))
-                n_spikes.append(times.sum())
+                n_spikes.append(len(times))
 
         stprs = np.array(stprs)
         stdev = np.sqrt((stprs**2).sum(axis=1))

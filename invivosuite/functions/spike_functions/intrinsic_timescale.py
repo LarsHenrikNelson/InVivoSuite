@@ -102,7 +102,7 @@ class SExpDecay:
 
             self._fit_success = True
 
-        except Exception:
+        except RuntimeError:
             self._params = self._create_nan_result()
             self._fit_success = False
 

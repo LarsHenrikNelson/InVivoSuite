@@ -1,16 +1,17 @@
-from typing import TypedDict, Literal
+from typing import Literal, TypedDict
 
 import numpy as np
 
 from ..circular_stats import (
     h_test,
     mean_vector_length,
-    periodic_mean_std,
     periodic_mean,
-    rayleightest,
+    periodic_mean_std,
     ppc_dot_product,
     ppc_numba,
+    rayleightest,
 )
+
 
 class CircStats(TypedDict):
     rayleigh_pval: float
@@ -57,14 +58,15 @@ def analyze_spike_phase(phases: np.ndarray) -> CircStats:
 def extract_spike_phase_data(
     phase_dict: dict[str, np.ndarray],
     spike_times: np.ndarray,
-) -> tuple[dict[str, np.ndarray]]:
+) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     output_dict = {}
-    output_stats = {}
+    output_stats: dict[str, float] = {}
     for b_name, phase in phase_dict.items():
         b_phases = phase[spike_times]
         output_dict[b_name] = b_phases
         stats = analyze_spike_phase(b_phases)
+        temp = {f"{b_name}_{key}": value for key, value in stats.items()}
         output_stats.update(
-            {f"{b_name}_{key}": value for key, value in stats.items()}
+            temp
         )
     return output_stats, output_dict

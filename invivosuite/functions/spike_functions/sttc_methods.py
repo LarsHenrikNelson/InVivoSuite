@@ -73,9 +73,9 @@ def _gen_bootstrap_sttc(
     spk_rate_2: float,
     shape_1: float,
     shape_2: float,
-    dt: Union[float, int],
-    start: Union[float, int],
-    end: Union[float, int],
+    dt: float | int,
+    start: float | int,
+    end: float | int,
     gen_type: Literal["poisson", "gamma", "inverse_gaussian", "lognormal"] = "poisson",
     reps: int = 1000,
     sttc_version: Literal["ivs", "elephant", "python"] = "ivs",
@@ -89,9 +89,9 @@ def _gen_bootstrap_sttc(
         spk_rate_2 (float): Spike rate of unit 2
         shape_1 (float): Shape of gen_type distribution for spk_rate_1
         shape_2 (float): Shape of gen_type distribution for spk_rate_1
-        dt (Union[float, int]): dt for STTC test
-        start (Union[float, int]): Recording start time. Must be in seconds.
-        end (Union[float, int]): Recording end time. Must be in seconds.
+        dt (float | int): dt for STTC test
+        start (float | int): Recording start time. Must be in seconds.
+        end (float | int): Recording end time. Must be in seconds.
         gen_type (Literal[ &quot;poisson&quot;, &quot;gamma&quot;, &quot;inverse_gaussian&quot;, &quot;lognormal&quot; ], optional): Distrution used to generate synthetic spike trains. Defaults to "poisson".
         reps (int, optional): Number of boostrap replications to use. Defaults to 1000.
         sttc_version (Literal[&quot;ivs&quot;, &quot;elephant&quot;, &quot;python&quot;], optional): STTC version to use. ivs (numba), elephant (slow), python (slow). Defaults to "ivs".
@@ -237,10 +237,10 @@ def run_T(
 def sttc(
     spk_times_1: np.ndarray,
     spk_times_2: np.ndarray,
-    dt: Union[float, int],
-    start: Union[float, int],
-    stop: Union[float, int],
-) -> tuple[float, int, int, int, int]:
+    dt: float | int,
+    start: float | int,
+    stop: float | int,
+) -> tuple[float | int, int, int, int, int]:
     """This is a Numba accelerated version of spike timing tiling coefficient.
     It is faster than Elephants version by about 50 times. This adds up when
     there are 10000+ comparisons to make. This function can run using unsigned ints

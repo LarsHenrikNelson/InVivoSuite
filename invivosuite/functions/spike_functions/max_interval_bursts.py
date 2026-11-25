@@ -135,7 +135,7 @@ def bursts_len(bursts: list[np.ndarray]) -> np.ndarray[float]:
     return output
 
 
-def get_burst_data(bursts: list[np.ndarray], R: float) -> tuple[dict, dict]:
+def get_burst_data(bursts: list[np.ndarray], R: float = 0.005) -> tuple[dict, dict]:
     iei_bursts = [np.diff(i) for i in bursts]
     props_dict = {}
     props_dict["intra_burst_iei"] = intra_burst_iei(bursts)
@@ -190,6 +190,14 @@ def max_int_bursts(
     max_int=None,
     output_type: Literal["sec", "ms", "sample"] = "sec",
 ):
+    """Max interval burst detection.
+
+    ``spikes`` must always be in seconds and all thresholds (min_dur,
+    max_start, max_end, max_int) are in seconds. ``output_type`` only
+    controls the units of the returned bursts.
+    """
+    if output_type not in ("sec", "ms", "sample"):
+        raise ValueError("output_type must be 'sec', 'ms' or 'sample'.")
     if len(spikes) < min_count:
         return []
     bursts = []
@@ -219,7 +227,7 @@ def max_int_bursts(
         bursts, max_int=max_int, min_dur=min_dur, min_count=min_count
     )
     if output_type == "ms":
-        bursts = [(i / fs) * 1000 for i in bursts]
+        bursts = [np.asarray(i) * 1000.0 for i in bursts]
     elif output_type == "sample":
-        bursts = [(i * fs).astype(int) for i in bursts]
+        bursts = [np.rint(np.asarray(i) * fs).astype(int) for i in bursts]
     return bursts
