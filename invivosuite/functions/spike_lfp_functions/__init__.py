@@ -1,1 +1,2 @@
-from . import spike_power, spike_phase
+from . import spike_power, spike_phase, spike_removal
+
