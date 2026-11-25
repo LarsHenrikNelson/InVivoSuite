@@ -39,10 +39,21 @@ invivosuite = ["acq/bin/*.dll"]
 [project.urls]
 Homepage = "https://github.com/LarsHenrikNelson/InVivoSuite"
 
+[tool.ruff]
+# These two legacy modules contain pre-existing syntax errors (they cannot be
+# imported at all) and are documented in AGENTS.md; excluded so lint stays
+# meaningful for the rest of the package.
+extend-exclude = [
+    "invivosuite/asymp_pdc/pdc.py",
+    "invivosuite/functions/curve_fit.py",
+]
+
 [tool.ruff.lint]
-ignore = ["F401", "F403"]
+# F401/F403 ok (re-export style). F841 (unused locals) is noisy in research code.
+ignore = ["F401", "F403", "F841"]
 
 [dependency-groups]
 dev = [
+    "pytest>=9.2.0",
     "ruff>=0.15.12",
 ]
