@@ -5,13 +5,6 @@ from typing import Union
 import numpy as np
 
 from .acq_manager import AcqManager
-from .pypl2 import PL2DigitalChannelInfo
-from .pypl2 import PL2SpikeChannelInfo
-from .pypl2 import pl2_comments
-from .pypl2 import pl2_events
-from .pypl2 import pl2_info
-from .pypl2 import pl2_spikes
-from .pypl2 import PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
 
 PL2Ad = namedtuple("PL2Ad", "adfrequency n timestamps fragmentcounts ad")
 
@@ -22,6 +15,18 @@ __all__ = [
 ]
 
 
+def _import_pypl2():
+    """Lazily import the Plexon PL2 wrappers (requires the Plexon DLL, Windows only).
+
+    Importing at module load time would make the whole package unimportable on
+    machines without the DLL (e.g. CI runners); keep these imports inside the
+    functions that actually read PL2 files.
+    """
+    from .pypl2 import PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
+
+    return PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad
+
+
 def load_pl2_acqs(
     pl2_path: str | Path,
     save_path: str | Path = "",
@@ -30,6 +35,7 @@ def load_pl2_acqs(
 ):
     name = Path(pl2_path).stem
     _ = _path_checker(pl2_path, save_path)
+    PL2AnalogChannelInfo, PL2FileInfo, PyPL2FileReader, pl2_ad = _import_pypl2()
     if save_path == "":
         save_path = Path(pl2_path).with_suffix(".hdf5")
     else:
@@ -135,6 +141,7 @@ def load_acq(
     acq = AcqManager()
     _ = _path_checker(file_path, save_path)
     if Path(file_path).suffix == ".pl2":
+        _, _, _, pl2_ad = _import_pypl2()
         data = pl2_ad(file_path, channel)
         acq.load_pl2_acq(
             data.ad,
