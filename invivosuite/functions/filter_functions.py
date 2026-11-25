@@ -491,7 +491,7 @@ def iirnotch_zero(array: np.ndarray, freq: float, q: float, fs: float):
 
 
 def iirnotch(array: np.ndarray, freq: float, q: float, fs: float):
-    a, b = signal.iirnotch(freq, q, fs)
+    b, a = signal.iirnotch(freq, q, fs)
     filtered_array = signal.lfilter(b, a, array)
     return filtered_array
 
